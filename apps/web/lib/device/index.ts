@@ -4,4 +4,5 @@ export { useSession, useDiaryItems, useSyncStatus, type SessionState } from "./h
 export { getSession, adoptDevice, forgetDevice, api } from "./session";
 export { DeviceGate } from "./gate";
 export { currentDeviceKind } from "./kind";
+export { addDevice, listDevices, type ListedDevice } from "./devices";
 export type { Diary, DiaryItem, SyncStatus, WriteInput } from "@map-diary/sync";

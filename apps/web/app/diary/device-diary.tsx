@@ -26,11 +26,17 @@ function SignedIn({ diary }: { diary: Diary }) {
     <DiaryView
       source={source}
       toolbarExtra={
-        <Link href="/inbox" className="inbox-link" aria-label={`Inbox${needsMe ? `, ${needsMe} to check` : waiting ? `, ${waiting} being looked up` : ""}`}>
-          <span aria-hidden>📥</span>
-          <span className="inbox-label">Inbox</span>
-          {needsMe > 0 ? <span className="inbox-count">{needsMe}</span> : waiting > 0 ? <span className="inbox-count quiet">{waiting}</span> : null}
-        </Link>
+        <>
+          <Link href="/inbox" className="inbox-link" aria-label={`Inbox${needsMe ? `, ${needsMe} to check` : waiting ? `, ${waiting} being looked up` : ""}`}>
+            <span aria-hidden>📥</span>
+            <span className="inbox-label">Inbox</span>
+            {needsMe > 0 ? <span className="inbox-count">{needsMe}</span> : waiting > 0 ? <span className="inbox-count quiet">{waiting}</span> : null}
+          </Link>
+          <Link href="/devices" className="inbox-link" aria-label="Devices">
+            <span aria-hidden>📱</span>
+            <span className="inbox-label">Devices</span>
+          </Link>
+        </>
       }
     />
   );

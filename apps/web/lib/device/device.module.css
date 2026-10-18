@@ -104,3 +104,12 @@
   color: var(--fg);
   border: 1px solid var(--muted);
 }
+
+/* A short code shown whole, on one line. */
+.code {
+  composes: phrase;
+  display: block;
+  text-align: center;
+  font-size: 1.75rem;
+  white-space: nowrap;
+}

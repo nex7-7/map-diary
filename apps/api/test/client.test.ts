@@ -1,13 +1,25 @@
 // The device-side flows in @map-diary/sync, run against the real Worker and a local D1.
 import { env, exports } from "cloudflare:workers";
 import { describe, expect, it } from "vitest";
-import { generateBoardKey, randomId, ready, toBase64, wrapKeyForMember, type BoardKey } from "@map-diary/crypto";
+import {
+  generateBoardKey,
+  generateIdentity,
+  pairingId,
+  randomId,
+  ready,
+  toBase64,
+  wrapKeyForMember,
+  type BoardKey,
+} from "@map-diary/crypto";
 import {
   Api,
   Diary,
   MemoryStorage,
+  PairingError,
   SetupError,
+  joinPairing,
   prepareSetup,
+  startPairing,
   signInWithPassphrase,
   signInWithRecoveryPhrase,
   type DeviceState,
@@ -114,6 +126,73 @@ describe("device setup, sign-in and sync", () => {
     expect(me.devices.find((d) => d.id === phone.deviceId)?.kind).toBe("web");
     expect(tablet.accountBox.publicKey).toEqual(phone.accountBox.publicKey);
     expect(tablet.boardKeys.find((k) => k.boardId === group.boardId)?.key).toEqual(group.key);
+  });
+
+  it("links a new device from one already signed in, without the passphrase", async () => {
+    const pairing = await startPairing(api, phone, "https://map.snehilsinha.com");
+    expect(pairing.link).toBe(`https://map.snehilsinha.com/link#${pairing.secret}`);
+    expect(await pairing.check()).toEqual({ state: "waiting" });
+
+    // Typed by hand, in lower case with a space: still the same pairing.
+    const secret = pairing.secret;
+    const joining = await joinPairing(api, secret.toLowerCase().replace("-", " "), "android");
+    expect(await joining.check()).toBeNull();
+
+    const seen = await pairing.check();
+    expect(seen).toEqual({ state: "joined", code: joining.code, kind: "android" });
+    // The link works once.
+    await expect(joinPairing(api, secret)).rejects.toMatchObject({ code: "expired" });
+    await expect(joinPairing(api, "not a code")).rejects.toMatchObject({ code: "bad_code" });
+
+    await pairing.approve();
+    const linked = await joining.check();
+    expect(linked).not.toBeNull();
+    expect(linked!.accountId).toBe(phone.accountId);
+    expect(linked!.kind).toBe("android");
+    expect(linked!.accountBox.publicKey).toEqual(phone.accountBox.publicKey);
+    expect(linked!.boardKeys.map((k) => k.boardId).sort()).toEqual([phone.personalBoardId, group.boardId].sort());
+
+    // It syncs like any other device, and the pairing is gone.
+    const d = diaryOf(linked!);
+    await d.sync();
+    expect((await d.listItems()).length).toBeGreaterThan(0);
+    expect(d.skipped).toEqual([]);
+    await expect(joining.check()).rejects.toBeInstanceOf(PairingError);
+  });
+
+  it("refuses a joining device whose keys were not sent by the link holder", async () => {
+    const pairing = await startPairing(api, phone, "https://map.snehilsinha.com");
+    const secret = pairing.link.split("#")[1]!;
+    // Someone who knows the pairing id but not the secret (the server, say) offers its own keys.
+    const keys = generateIdentity();
+    const res = await exports.default.fetch(
+      new Request(`https://map.snehilsinha.com/api/pairings/${pairingId(secret)}/join`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          device: { id: randomId(), kind: "web", signPublicKey: toBase64(keys.signPublicKey), boxPublicKey: toBase64(keys.boxPublicKey) },
+          mac: toBase64(new Uint8Array(32)),
+        }),
+      }),
+    );
+    expect(res.status).toBe(200);
+    await expect(pairing.check()).rejects.toMatchObject({ code: "tampered" });
+  });
+
+  it("registers a linked device only with an approving device's own signature", async () => {
+    const pairing = await startPairing(api, phone, "https://map.snehilsinha.com");
+    const joining = await joinPairing(api, pairing.link.split("#")[1]!);
+    await pairing.check();
+    const id = pairingId(pairing.link.split("#")[1]!);
+    const err = await api
+      .approvePairing(id, { authorization: toBase64(new Uint8Array(64)), sealedTransfer: toBase64(new Uint8Array(100)) }, {
+        deviceId: phone.deviceId,
+        signSecretKey: phone.identity.signSecretKey,
+      })
+      .catch((e: unknown) => e);
+    expect(err).toMatchObject({ status: 403 });
+    expect(await joining.check()).toBeNull();
+    await pairing.cancel();
   });
 
   it("signs in with the recovery phrase and replaces the passphrase", async () => {

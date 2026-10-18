@@ -7,7 +7,7 @@ Hono API Worker on `map.snehilsinha.com/api/*`. The web app Worker (`map-diary-w
 | Worker | `map-diary-api` (route `map.snehilsinha.com/api/*`, workers.dev off; the web app owns the hostname as a Custom Domain) | |
 | D1 | `map-diary` (`4362f68c-cca6-412f-a8fa-455e4d0db8d1`, APAC) | `DB` |
 | R2 | `map-diary-tiles`, object `mumbai.pmtiles` | `TILES` |
-| Cron | `17 * * * *`, expires stale resolver jobs | |
+| Cron | `17 * * * *`, expires stale resolver jobs and device pairings | |
 | Secret | `RESOLVER_TOKEN`, the resolver's bearer token (see docs/resolver.md) | `RESOLVER_TOKEN` |
 
 ## Routes
@@ -21,6 +21,13 @@ Signed routes need the `X-Device-Id`, `X-Timestamp` and `X-Signature` headers fr
 | `POST /api/devices` | the new device, authorised by the account key | Signs a new device in |
 | `GET /api/me` | device | The account and its box public key, its boards with their keys wrapped to the account, and its devices |
 | `PUT /api/board-keys` | device | Stores board keys wrapped to the account's box key |
+| `POST /api/pairings` | device | Opens a ten-minute device pairing under an id derived from the link secret |
+| `GET /api/pairings/:id` | device of the same account | The joining device's public keys and MAC, once it has joined |
+| `POST /api/pairings/:id/approve` | device of the same account | Registers the joining device (authorised by the approving device's key) and stores the account keys sealed to it |
+| `DELETE /api/pairings/:id` | device of the same account | Cancels a pairing |
+| `POST /api/pairings/:id/join` | none, needs the id from the link | The new device offers its public keys and a MAC under the link secret |
+| `GET /api/pairings/:id/status` | none, needs the id from the link | Waiting, joined or approved |
+| `GET /api/pairings/:id/transfer` | the new device, once approved | The sealed account keys; deletes the pairing |
 | `POST /api/key-backup/fetch` | none, needs the passphrase-derived lookup id | Returns the passphrase key backup |
 | `PUT /api/key-backup` | device | Replaces the key backup |
 | `POST /api/envelopes` | device | Pushes up to 100 envelopes; last write wins per envelope on `updatedAt` |
