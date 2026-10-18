@@ -8,5 +8,9 @@
     "directory": ".open-next/assets",
     "binding": "ASSETS"
   },
+  "workers_dev": false,
+  // The API Worker serves map.snehilsinha.com/api/* through a route that runs
+  // before this Custom Domain; everything else is the web app.
+  "routes": [{ "pattern": "map.snehilsinha.com", "custom_domain": true }],
   "observability": { "enabled": true }
 }

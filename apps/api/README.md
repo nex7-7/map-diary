@@ -1,10 +1,10 @@
 # @map-diary/api
 
-Hono API Worker on `map.snehilsinha.com`. Every route is under `/api`, so the web app can later serve the rest of the hostname from the same origin.
+Hono API Worker on `map.snehilsinha.com/api/*`. The web app Worker (`map-diary-web`) is the Custom Domain for the rest of the hostname, so both share one origin.
 
 | Resource | Name | Binding |
 | --- | --- | --- |
-| Worker | `map-diary-api` (custom domain `map.snehilsinha.com`, workers.dev off) | |
+| Worker | `map-diary-api` (route `map.snehilsinha.com/api/*`, workers.dev off; the web app owns the hostname as a Custom Domain) | |
 | D1 | `map-diary` (`4362f68c-cca6-412f-a8fa-455e4d0db8d1`, APAC) | `DB` |
 | R2 | `map-diary-tiles`, object `mumbai.pmtiles` | `TILES` |
 | Cron | `17 * * * *`, expires stale resolver jobs | |
