@@ -2,11 +2,12 @@
 
 import dynamic from "next/dynamic";
 import Link from "next/link";
-import { useMemo, useState } from "react";
-import type { Diary } from "@/lib/device";
+import { useEffect, useMemo, useState } from "react";
+import { api, type Diary } from "@/lib/device";
 import { addPlace, findDuplicate } from "@/lib/entries/actions";
 import { buildFacts } from "@/lib/entries/facts";
-import { parseEntry, type ParsedEntry } from "@/lib/entries/parse-input";
+import { parseEntry, parseLink, type ParsedEntry } from "@/lib/entries/parse-input";
+import { getPendingQueue, MAX_QUERY_LENGTH, type PendingItem } from "@/lib/pending";
 import type { TagDefPayload } from "@/lib/places/payloads";
 import type { Category, LngLat, Status } from "@/lib/places/types";
 import { BoardNote, CategoryPicker, StatusToggle, TagPicker, type TagChoice } from "./fields";
@@ -24,12 +25,16 @@ export interface AddInitial {
   text?: string;
   /** A pin dropped on the main map. */
   location?: LngLat;
+  /** An Inbox item the resolver couldn't find, to place by hand instead. */
+  pending?: PendingItem;
 }
 
 interface Props {
   diary: Diary;
   initial?: AddInitial;
   onSaved: (placeId: string) => void;
+  /** Saved without a location: it waits in the Inbox for the resolver. */
+  onQueued: () => void;
   onCancel?: () => void;
 }
 
@@ -45,22 +50,31 @@ function guessCategory(parsed: ParsedEntry): Category {
  * save. Only the save tap is required once the place has a location. Everything is
  * encrypted on the device and goes to the Personal board.
  */
-export function AddForm({ diary, initial, onSaved, onCancel }: Props) {
+export function AddForm({ diary, initial, onSaved, onQueued, onCancel }: Props) {
   const { items, snapshot } = useItems(diary);
-  const [text, setText] = useState(initial?.text ?? "");
-  const [nameEdit, setNameEdit] = useState<string | null>(null);
+  const draft = initial?.pending?.draft;
+  const [text, setText] = useState(initial?.text ?? draft?.link ?? draft?.label ?? "");
+  const [nameEdit, setNameEdit] = useState<string | null>(draft?.link ? draft.label : null);
   const [pinned, setPinned] = useState<LngLat | null>(initial?.location ?? null);
-  const [adjusting, setAdjusting] = useState(false);
-  const [categoryEdit, setCategoryEdit] = useState<Category | null>(null);
-  const [status, setStatus] = useState<Status>("want");
-  const [selected, setSelected] = useState<Set<string>>(new Set());
-  const [newTags, setNewTags] = useState<TagDefPayload[]>([]);
-  const [comment, setComment] = useState("");
+  const [adjusting, setAdjusting] = useState(draft !== undefined);
+  const [categoryEdit, setCategoryEdit] = useState<Category | null>(draft?.category ?? null);
+  const [status, setStatus] = useState<Status>(draft?.status ?? "want");
+  const [selected, setSelected] = useState<Set<string>>(new Set(draft?.tagIds));
+  const [newTags, setNewTags] = useState<TagDefPayload[]>(draft?.newTags ?? []);
+  const [comment, setComment] = useState(draft?.comment ?? "");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const parsed = useMemo(() => parseEntry(text), [text]);
+  const typed = useMemo(() => parseEntry(text), [text]);
+  const expansion = useExpandedLink(typed);
+  // A short Maps link the Worker expanded reads like the full link, but keeps the link as shared.
+  const parsed: ParsedEntry =
+    expansion.kind === "done"
+      ? { ...typed, location: expansion.location, source: "google-maps", shortLink: false, ...(typed.name || expansion.name ? { name: typed.name ?? expansion.name } : {}) }
+      : typed;
   const location = pinned ?? parsed.location ?? null;
+  // No location yet, but something the resolver can look up: save now, find it later.
+  const findLater = location === null && expansion.kind !== "loading" && (parsed.link !== undefined || !!parsed.name);
   // A place is catalogue-bound only when a Google Maps link located it; anything placed by
   // hand is a dropped pin, which stays private.
   const fromLink = !pinned && parsed.location !== undefined && parsed.source === "google-maps";
@@ -70,7 +84,7 @@ export function AddForm({ diary, initial, onSaved, onCancel }: Props) {
   const name = nameEdit ?? parsed.name ?? "";
   const category = categoryEdit ?? guessCategory(parsed);
   const duplicate = useMemo(() => (parsed.link ? findDuplicate(items, parsed.link) : undefined), [items, parsed.link]);
-  const showPicker = adjusting || location === null;
+  const showPicker = adjusting || (location === null && !findLater && expansion.kind !== "loading");
 
   const tagChoices: TagChoice[] = [
     ...snapshot.tags.map((t) => ({ id: t.id, name: t.name, emoji: t.emoji, description: t.description })),
@@ -90,8 +104,36 @@ export function AddForm({ diary, initial, onSaved, onCancel }: Props) {
     setSelected(next);
   };
 
+  const queue = async () => {
+    const label = (nameEdit ?? parsed.name ?? "").trim() || parsed.link || "";
+    // The resolver sees only this: the link as shared, or the name. Never a location.
+    const query = parsed.link ? (nameEdit?.trim() ? `${nameEdit.trim()} ${parsed.link}` : parsed.link) : label;
+    if (query.length > MAX_QUERY_LENGTH) {
+      setError("That's too long to look up. Paste just the link or the name.");
+      return;
+    }
+    setSaving(true);
+    try {
+      const q = await getPendingQueue(diary);
+      await q.add(query, {
+        label,
+        ...(parsed.link ? { link: parsed.link } : {}),
+        ...(categoryEdit ? { category: categoryEdit } : {}),
+        status,
+        tagIds: [...selected],
+        newTags,
+        comment,
+      });
+      onQueued();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not save the place");
+      setSaving(false);
+    }
+  };
+
   const save = async () => {
     setError(null);
+    if (findLater) return queue();
     const result = buildFacts({
       name: name || (location && !parsed.link ? "Dropped pin" : ""),
       category,
@@ -100,7 +142,7 @@ export function AddForm({ diary, initial, onSaved, onCancel }: Props) {
       cuisine: "",
       dishName: "",
       dishPrice: "",
-      sourceLinks: parsed.link ? [parsed.link] : [],
+      sourceLinks: [parsed.link, expansion.kind === "done" ? expansion.url : undefined].filter((l): l is string => !!l),
     });
     if (!result.ok) {
       setError(result.message);
@@ -109,6 +151,7 @@ export function AddForm({ diary, initial, onSaved, onCancel }: Props) {
     setSaving(true);
     try {
       const id = await addPlace(diary, { kind, facts: result.facts, status, tagIds: [...selected], newTags, comment });
+      if (initial?.pending) await (await getPendingQueue(diary)).dismiss(initial.pending.id);
       onSaved(id);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not save the place");
@@ -144,7 +187,7 @@ export function AddForm({ diary, initial, onSaved, onCancel }: Props) {
             }
           }}
         />
-        <InputSummary parsed={parsed} pinned={pinned} />
+        <InputSummary parsed={parsed} pinned={pinned} expansion={expansion.kind} findLater={findLater && !adjusting} />
         {duplicate && (
           <p className={styles.found}>
             Already in your diary.{" "}
@@ -178,6 +221,11 @@ export function AddForm({ diary, initial, onSaved, onCancel }: Props) {
               Adjust pin
             </button>
           )}
+          {findLater && !showPicker && (
+            <button type="button" className={styles.textbutton} onClick={() => setAdjusting(true)}>
+              Drop a pin instead
+            </button>
+          )}
         </div>
         {showPicker ? (
           <>
@@ -192,6 +240,8 @@ export function AddForm({ diary, initial, onSaved, onCancel }: Props) {
               {location ? "Pin dropped. A pin you place stays private." : "Move the map until the pin sits on the place."}
             </p>
           </>
+        ) : findLater ? (
+          <p className={styles.note}>⏳ It goes in the Inbox until it&apos;s found. Only the {parsed.link ? (nameEdit?.trim() ? "name and link" : "link") : "name"} is sent to look it up.</p>
         ) : (
           location && (
             <p className={styles.note}>
@@ -247,8 +297,8 @@ export function AddForm({ diary, initial, onSaved, onCancel }: Props) {
               Cancel
             </button>
           )}
-          <button type="submit" className={`${styles.primary} ${styles.grow}`} disabled={saving || !location}>
-            {saving ? "Saving…" : location ? "Save" : "Drop a pin to save"}
+          <button type="submit" className={`${styles.primary} ${styles.grow}`} disabled={saving || (!location && !findLater)}>
+            {saving ? "Saving…" : location ? "Save" : findLater ? "Save and find it" : expansion.kind === "loading" ? "Opening the link…" : "Drop a pin to save"}
           </button>
         </div>
       </div>
@@ -256,21 +306,53 @@ export function AddForm({ diary, initial, onSaved, onCancel }: Props) {
   );
 }
 
-function InputSummary({ parsed, pinned }: { parsed: ParsedEntry; pinned: LngLat | null }) {
-  if (parsed.shortLink && !pinned) {
-    return (
-      <p className={styles.note}>
-        Short Google Maps links can&apos;t be opened from a web page. Drop the pin below, or paste the full link from the
-        address bar of Google Maps in a browser.
-      </p>
-    );
-  }
+interface SummaryProps {
+  parsed: ParsedEntry;
+  pinned: LngLat | null;
+  expansion: Expansion["kind"];
+  findLater: boolean;
+}
+
+function InputSummary({ parsed, pinned, expansion, findLater }: SummaryProps) {
+  if (expansion === "loading") return <p className={styles.note}>Opening the short link…</p>;
   if (parsed.source === "google-maps" && parsed.location) return <p className={styles.note}>Found the place on the link.</p>;
-  if ((parsed.source === "zomato" || parsed.source === "district") && !pinned) {
-    return <p className={styles.note}>Saved as a source link. Check the name, then drop the pin below.</p>;
-  }
-  if (parsed.name && !parsed.link && !parsed.location && !pinned) {
-    return <p className={styles.note}>Drop the pin below to put it on the map.</p>;
+  if (pinned || !findLater) return null;
+  if (parsed.shortLink) return <p className={styles.note}>Couldn&apos;t open the short link here, so it will be looked up.</p>;
+  if (parsed.source === "zomato" || parsed.source === "district") {
+    return <p className={styles.note}>Saved as a source link. The place and its signature dish get looked up.</p>;
   }
   return null;
 }
+
+type Expansion = { kind: "none" } | { kind: "loading" } | { kind: "failed" } | { kind: "done"; url: string; location: LngLat; name?: string };
+
+/**
+ * Short Google Maps links carry the place only in their redirect, which a web page can't
+ * follow, so the Worker expands them. Only the link is sent; the coordinates are read here.
+ */
+function useExpandedLink(parsed: ParsedEntry): Expansion {
+  const link = parsed.shortLink ? parsed.link : undefined;
+  const [result, setResult] = useState<{ link: string; expansion: Expansion } | null>(null);
+  useEffect(() => {
+    if (!link) return;
+    let live = true;
+    api.expandMapsLink(link).then(
+      ({ url }) => {
+        const full = parseLink(url);
+        const expansion: Expansion = full.location
+          ? { kind: "done", url, location: full.location, ...(full.name ? { name: full.name } : {}) }
+          : { kind: "failed" };
+        if (live) setResult({ link, expansion });
+      },
+      () => {
+        if (live) setResult({ link, expansion: { kind: "failed" } });
+      },
+    );
+    return () => {
+      live = false;
+    };
+  }, [link]);
+  if (!link) return { kind: "none" };
+  return result?.link === link ? result.expansion : { kind: "loading" };
+}
+

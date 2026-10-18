@@ -4,9 +4,15 @@ Next.js app, client-rendered: decryption and everything the map shows happen in 
 
 ## Map and list
 
-- `/` shows the map and list over sample data (`lib/places/fixtures.ts`) through the `DiarySource` interface in `lib/places/types.ts`. The on-device store plugs in by implementing that interface.
+- `/` shows the map and list over this device's decrypted items (`createItemsSource` in `lib/places/items-source.ts`) once it is signed in. `/sample` shows the same views over sample data (`lib/places/fixtures.ts`).
 - Filtering, sorting and distance live in `lib/places/filter.ts` (tested in `test/places.test.ts`). Near me asks for the position only on tap and keeps it in memory; it is never sent anywhere.
 - The Mumbai map file is downloaded whole, once, into Cache Storage (`lib/map/map-file.ts`), and MapLibre reads tiles from that local copy, so the server never learns which area is on screen.
+
+## Places without a pin (Phase 3)
+
+- The Add sheet saves a name, a Zomato or District link, or a short Google Maps link without a location. Short Maps links go to `POST /api/resolver/expand` first; if the full URL carries coordinates the place is saved straight away. Everything else becomes an anonymous resolver job (`docs/resolver.md`): only the link or name is sent, with a one-time public key.
+- `lib/pending` keeps these on the device, in their own IndexedDB database (`map-diary-pending`), with the job's one-time secret key. They are not synced, so a place waiting on the phone shows in the phone's Inbox only. `PendingQueue.poll` runs every minute while the app is open (every 15 seconds on the Inbox), writes a single match to the diary with the Add sheet's status, tags and note, and keeps several matches for the person to pick from. Tested in `test/pending.test.ts`.
+- `/inbox` lists matches to pick, lookups that failed (try again, drop a pin, or remove) and those still waiting.
 
 ## Map file in development
 

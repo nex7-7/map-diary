@@ -51,14 +51,18 @@
   flex: none;
 }
 
-@media (max-width: 420px) {
+@media (max-width: 480px) {
   .toolbar .count {
     visibility: hidden;
     width: 0;
   }
 
   .toolbar .sort select {
-    max-width: 7.5rem;
+    max-width: 6rem;
+  }
+
+  .inbox-label {
+    display: none;
   }
 }
 
@@ -104,6 +108,45 @@
   color: #fff;
 }
 
+.inbox-link {
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--bg);
+  padding: 6px 10px;
+  white-space: nowrap;
+  color: inherit;
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.inbox-count {
+  min-width: 1.4em;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: var(--want);
+  color: #fff;
+  font-size: 0.75rem;
+  line-height: 1.4em;
+  text-align: center;
+}
+
+.inbox-count.quiet {
+  background: var(--line);
+  color: inherit;
+}
+
+.price-input {
+  width: 7em;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--bg);
+  color: inherit;
+  font: inherit;
+  padding: 4px 10px;
+}
+
 .notice {
   margin: 0 16px 8px;
   font-size: 0.875rem;
@@ -124,6 +167,7 @@
 
 .filter-row input {
   flex: 1;
+  min-width: 0;
 }
 
 .chips {

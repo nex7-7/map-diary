@@ -1,6 +1,7 @@
 "use client";
 
 import { Api, Diary, IdbStorage, type DeviceState } from "@map-diary/sync";
+import { clearPending } from "../pending/session";
 
 /**
  * The API Worker's origin. In production the web app and the API share
@@ -71,6 +72,7 @@ export async function forgetDevice(): Promise<void> {
   stopTriggers = null;
   const s = await openStorage();
   await s.clear();
+  await clearPending();
   current = Promise.resolve({ state: "signed-out" });
   notify();
 }

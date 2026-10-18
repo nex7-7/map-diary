@@ -14,6 +14,7 @@ import {
 import { buildFacts, customCategory, type FactsForm } from "../lib/entries/facts";
 import { normaliseLink, parseCoordinates, parseEntry } from "../lib/entries/parse-input";
 import { snapshotFromItems, type StoredItem } from "../lib/places/items-source";
+import { FakeDiary } from "./fake-diary";
 
 describe("parseEntry", () => {
   it("takes the place pin from a full Google Maps link over the viewport", () => {
@@ -133,39 +134,6 @@ describe("buildFacts", () => {
     expect(customCategory("  ")).toBeNull();
   });
 });
-
-/** An in-memory stand-in for the device diary: every item goes to the Personal board. */
-class FakeDiary implements DiaryWriter {
-  readonly device = { accountId: "acct-me", personalBoardId: "board-personal" };
-  items = new Map<string, StoredItem>();
-  private n = 0;
-  async listItems() {
-    return [...this.items.values()];
-  }
-  async write(input: { type: EnvelopeType; placeId: string | null; payload: JsonValue; id?: string }) {
-    const id = input.id ?? `i-${++this.n}`;
-    const prior = this.items.get(id);
-    const now = 1_760_000_000_000 + ++this.n;
-    const item: StoredItem = {
-      id,
-      type: input.type,
-      authorId: this.device.accountId,
-      placeId: input.placeId,
-      createdAt: prior?.createdAt ?? now,
-      updatedAt: now,
-      boardIds: [this.device.personalBoardId],
-      payload: input.payload,
-    };
-    this.items.set(id, item);
-    return item;
-  }
-  async remove(id: string) {
-    this.items.delete(id);
-  }
-  snapshot() {
-    return snapshotFromItems([...this.items.values()], this.device.accountId, this.device.personalBoardId);
-  }
-}
 
 const facts = () => {
   const r = buildFacts(form({ sourceLinks: ["https://www.zomato.com/mumbai/kyani/info"] }));
