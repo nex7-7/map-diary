@@ -289,8 +289,9 @@
 }
 
 .pickermap {
-  position: absolute;
-  inset: 0;
+  /* MapLibre makes its container position: relative, so size it rather than inset it. */
+  width: 100%;
+  height: 100%;
 }
 
 .crosshair {

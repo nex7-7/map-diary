@@ -65,7 +65,8 @@ export function AddForm({ diary, initial, onSaved, onCancel }: Props) {
   // hand is a dropped pin, which stays private.
   const fromLink = !pinned && parsed.location !== undefined && parsed.source === "google-maps";
   const kind = fromLink ? "place" : "private_place";
-  const hasLinkOrCoords = parsed.link !== undefined || (parsed.location !== undefined && !parsed.name) || pinned !== null;
+  // A typed name is already the name; links and coordinates get a name field to fill or fix.
+  const hasLinkOrCoords = parsed.link !== undefined || (parsed.location !== undefined && !parsed.name) || (pinned !== null && !parsed.name);
   const name = nameEdit ?? parsed.name ?? "";
   const category = categoryEdit ?? guessCategory(parsed);
   const duplicate = useMemo(() => (parsed.link ? findDuplicate(items, parsed.link) : undefined), [items, parsed.link]);
