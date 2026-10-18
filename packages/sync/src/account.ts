@@ -17,6 +17,7 @@ import {
   wrapKeyForMember,
   type AccountKeys,
   type BoardKey,
+  type DeviceKind,
   type RecoveredAccount,
   type IdentityKeys,
   type KdfParams,
@@ -68,8 +69,13 @@ function signerOf(deviceId: string, identity: IdentityKeys): Signer {
   return { deviceId, signSecretKey: identity.signSecretKey };
 }
 
-function deviceBody(accountId: string, deviceId: string, identity: IdentityKeys, account: AccountKeys): DeviceBody {
-  const kind = "web" as const;
+function deviceBody(
+  accountId: string,
+  deviceId: string,
+  kind: DeviceKind,
+  identity: IdentityKeys,
+  account: AccountKeys,
+): DeviceBody {
   return {
     id: deviceId,
     kind,
@@ -91,6 +97,8 @@ function backupBody(bundle: KeyBundle, passphrase: string, kdf: KdfParams): KeyB
 
 export interface SetupOptions {
   passphrase: string;
+  /** What this device is; defaults to `web`. */
+  kind?: DeviceKind;
   /** Argon2id cost; only tests lower it. */
   kdf?: KdfParams;
 }
@@ -118,6 +126,7 @@ export async function prepareSetup(options: SetupOptions): Promise<PreparedSetup
   const personal = account.personalBoardKey(1);
   const identity = generateIdentity();
   const deviceId = randomId();
+  const kind = options.kind ?? "web";
 
   const body = {
     account: {
@@ -125,7 +134,7 @@ export async function prepareSetup(options: SetupOptions): Promise<PreparedSetup
       signPublicKey: toBase64(account.accountKeys.signPublicKey),
       boxPublicKey: toBase64(accountBox.publicKey),
     },
-    device: deviceBody(account.accountId, deviceId, identity, account.accountKeys),
+    device: deviceBody(account.accountId, deviceId, kind, identity, account.accountKeys),
     personalBoard: { id: personal.boardId, wrappedKey: toBase64(wrapKeyForMember(personal.key, accountBox.publicKey)) },
     keyBackup: backupBody(
       { v: 2, recoverySeed: seed, accountId: account.accountId, personalBoardId: personal.boardId },
@@ -146,7 +155,7 @@ export async function prepareSetup(options: SetupOptions): Promise<PreparedSetup
         v: 2,
         accountId: account.accountId,
         deviceId,
-        kind: "web",
+        kind,
         identity,
         accountBox,
         personalBoardId: personal.boardId,
@@ -165,13 +174,14 @@ export async function prepareSetup(options: SetupOptions): Promise<PreparedSetup
 async function registerDevice(
   api: Api,
   account: RecoveredAccount,
+  kind: DeviceKind,
   notFound: SetupErrorCode,
 ): Promise<DeviceState> {
   const identity = generateIdentity();
   const deviceId = randomId();
   const signer = signerOf(deviceId, identity);
   try {
-    const device = deviceBody(account.accountId, deviceId, identity, account.accountKeys);
+    const device = deviceBody(account.accountId, deviceId, kind, identity, account.accountKeys);
     await api.registerDevice({ accountId: account.accountId, device }, signer);
   } catch (err) {
     throw asSetupError(err, notFound);
@@ -203,7 +213,7 @@ async function registerDevice(
     v: 2,
     accountId: account.accountId,
     deviceId,
-    kind: "web",
+    kind,
     identity,
     accountBox,
     personalBoardId: account.personalBoardId,
@@ -213,7 +223,7 @@ async function registerDevice(
 }
 
 /** Signs this device in with the passphrase, from the key backup on the server. */
-export async function signInWithPassphrase(api: Api, passphrase: string): Promise<DeviceState> {
+export async function signInWithPassphrase(api: Api, passphrase: string, kind: DeviceKind = "web"): Promise<DeviceState> {
   await ready();
   if (passphrase.length === 0) throw new SetupError("wrong_passphrase");
   let bundle: KeyBundle;
@@ -224,13 +234,15 @@ export async function signInWithPassphrase(api: Api, passphrase: string): Promis
     if (err instanceof CryptoError && err.code === "bad_backup") throw new SetupError("wrong_passphrase");
     throw asSetupError(err, "wrong_passphrase");
   }
-  return registerDevice(api, deriveAccount(bundle.recoverySeed), "wrong_passphrase");
+  return registerDevice(api, deriveAccount(bundle.recoverySeed), kind, "wrong_passphrase");
 }
 
 export interface RecoveryOptions {
   recoveryPhrase: string;
   /** Replaces the forgotten passphrase. */
   newPassphrase: string;
+  /** What this device is; defaults to `web`. */
+  kind?: DeviceKind;
   kdf?: KdfParams;
 }
 
@@ -248,7 +260,7 @@ export async function signInWithRecoveryPhrase(api: Api, options: RecoveryOption
     throw new SetupError("invalid_recovery_phrase");
   }
   const account = deriveAccount(seed);
-  const device = await registerDevice(api, account, "unknown_recovery_phrase");
+  const device = await registerDevice(api, account, options.kind ?? "web", "unknown_recovery_phrase");
 
   const bundle: KeyBundle = { v: 2, recoverySeed: seed, accountId: account.accountId, personalBoardId: account.personalBoardId };
   try {

@@ -1,4 +1,4 @@
-import { fromBase64, toBase64, type BoardKey, type IdentityKeys } from "@map-diary/crypto";
+import { fromBase64, toBase64, type BoardKey, type DeviceKind, type IdentityKeys } from "@map-diary/crypto";
 
 /** An account box keypair as a device stores it. */
 export interface StoredAccountBoxKeys {
@@ -16,7 +16,7 @@ export interface DeviceState {
   v: 2;
   accountId: string;
   deviceId: string;
-  kind: "web";
+  kind: DeviceKind;
   identity: IdentityKeys;
   /** The account's box keypair, current version; board keys are wrapped to its public half. */
   accountBox: StoredAccountBoxKeys;

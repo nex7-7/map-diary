@@ -20,6 +20,7 @@ export {
   type SetupOptions,
 } from "./account";
 export { currentBoardKey, type DeviceState } from "./device";
+export type { DeviceKind } from "@map-diary/crypto";
 export { MemoryStorage, type DiaryItem, type DiaryStorage } from "./storage";
 export { IdbStorage, IDB_NAME } from "./idb";
 export { Diary, type SkippedEnvelope, type SyncPhase, type SyncStatus, type WriteInput } from "./sync";

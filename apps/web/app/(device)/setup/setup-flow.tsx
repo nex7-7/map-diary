@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState, type FormEvent } from "react";
 import { PASSPHRASE_MIN_LENGTH, prepareSetup, type PreparedSetup } from "@map-diary/sync";
-import { adoptDevice, api, useSession } from "@/lib/device";
+import { adoptDevice, api, currentDeviceKind, useSession } from "@/lib/device";
 import styles from "@/lib/device/device.module.css";
 import { errorMessage } from "../messages";
 import { InstallWarning } from "../install-warning";
@@ -41,7 +41,7 @@ export function SetupFlow() {
     setBusy(true);
     setError(null);
     try {
-      setStep({ name: "phrase", setup: await prepareSetup({ passphrase }) });
+      setStep({ name: "phrase", setup: await prepareSetup({ passphrase, kind: currentDeviceKind() }) });
       // Nothing else needs the passphrase; drop it from the form.
       setPassphrase("");
       setConfirm("");

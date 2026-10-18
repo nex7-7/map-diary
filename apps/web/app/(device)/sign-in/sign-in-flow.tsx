@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState, type FormEvent } from "react";
 import { PASSPHRASE_MIN_LENGTH, signInWithPassphrase, signInWithRecoveryPhrase } from "@map-diary/sync";
-import { adoptDevice, api, useSession } from "@/lib/device";
+import { adoptDevice, api, currentDeviceKind, useSession } from "@/lib/device";
 import styles from "@/lib/device/device.module.css";
 import { errorMessage } from "../messages";
 import { InstallWarning } from "../install-warning";
@@ -44,8 +44,8 @@ export function SignInFlow() {
     try {
       const device =
         mode === "passphrase"
-          ? await signInWithPassphrase(api, passphrase)
-          : await signInWithRecoveryPhrase(api, { recoveryPhrase: phrase, newPassphrase });
+          ? await signInWithPassphrase(api, passphrase, currentDeviceKind())
+          : await signInWithRecoveryPhrase(api, { recoveryPhrase: phrase, newPassphrase, kind: currentDeviceKind() });
       await adoptDevice(device);
       router.push("/");
     } catch (err) {
