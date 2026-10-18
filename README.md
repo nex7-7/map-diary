@@ -6,7 +6,7 @@ A private, end-to-end encrypted map diary of Mumbai places. Design: [docs/archit
 
 | Path | What lives there |
 | --- | --- |
-| `apps/web` | Next.js + React web app (client-rendered, deployed to Cloudflare Workers via OpenNext) |
+| `apps/web` | Next.js + React web app (client-rendered, deployed to Cloudflare Workers via OpenNext; `pnpm --filter @map-diary/web preview` runs it in workerd locally) |
 | `apps/api` | Hono API Worker on `map.snehilsinha.com`: sync, invites, key backups, MCP, resolver queue; D1 migrations |
 | `packages/crypto` | `@map-diary/crypto`: every libsodium call, key handling and envelope seal/open, with unit tests |
 
