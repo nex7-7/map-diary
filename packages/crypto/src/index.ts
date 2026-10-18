@@ -50,3 +50,11 @@ export {
   type DeviceKind,
   type DeviceToAuthorize,
 } from "./auth";
+export {
+  RECOVERY_SEED_BYTES,
+  generateRecoveryPhrase,
+  recoveryPhraseFromSeed,
+  parseRecoveryPhrase,
+  deriveAccount,
+  type RecoveredAccount,
+} from "./recovery";

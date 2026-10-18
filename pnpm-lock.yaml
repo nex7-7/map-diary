@@ -20,6 +20,9 @@ importers:
       '@cloudflare/vitest-plugin':
         specifier: ^1.4.4
         version: 1.4.4(@types/node@22.20.5)(vitest@4.1.12(@types/node@22.20.5)(vite@8.3.4(@types/node@22.20.5)(esbuild@0.28.2)(terser@5.36.0)(yaml@2.9.1)))
+      '@map-diary/sync':
+        specifier: workspace:*
+        version: link:../../packages/sync
       typescript:
         specifier: ^5.9.3
         version: 5.9.3
@@ -35,6 +38,9 @@ importers:
       '@map-diary/crypto':
         specifier: workspace:*
         version: link:../../packages/crypto
+      '@map-diary/sync':
+        specifier: workspace:*
+        version: link:../../packages/sync
       '@protomaps/basemaps':
         specifier: 5.7.2
         version: 5.7.2
@@ -88,6 +94,22 @@ importers:
       '@types/libsodium-wrappers-sumo':
         specifier: 0.8.2
         version: 0.8.2
+      typescript:
+        specifier: 5.9.3
+        version: 5.9.3
+      vitest:
+        specifier: 4.1.12
+        version: 4.1.12(@types/node@22.20.5)(vite@8.3.4(@types/node@22.20.5)(esbuild@0.28.2)(terser@5.36.0)(yaml@2.9.1))
+
+  packages/sync:
+    dependencies:
+      '@map-diary/crypto':
+        specifier: workspace:*
+        version: link:../crypto
+    devDependencies:
+      fake-indexeddb:
+        specifier: 6.2.5
+        version: 6.2.5
       typescript:
         specifier: 5.9.3
         version: 5.9.3
@@ -1463,6 +1485,10 @@ packages:
   express@5.3.0:
     resolution: {integrity: sha512-qCqy1xSoaugxOD4IVHb1ZWdkvCF2W3aE2okKouWj8VwJ+ztskSiXoBnCSJqfKT+cVPJhuJqe9YLbY425+Zh00g==}
     engines: {node: '>= 18'}
+
+  fake-indexeddb@6.2.5:
+    resolution: {integrity: sha512-CGnyrvbhPlWYMngksqrSSUT1BAVP49dZocrHuK0SvtR0D5TMs5wP0o3j7jexDJW01KSadjBp1M/71o/KR3nD1w==}
+    engines: {node: '>=18'}
 
   fdir@6.5.0:
     resolution: {integrity: sha512-tIbYtZbucOs0BRGqPJkshJUYdL+SDH7dVM8gjy+ERp3WAUjLEFJE+02kanyHtwjWOnwrKYBiwAmM0p4kLJAnXg==}
@@ -3907,6 +3933,8 @@ snapshots:
       vary: 1.1.2
     transitivePeerDependencies:
       - supports-color
+
+  fake-indexeddb@6.2.5: {}
 
   fdir@6.5.0(picomatch@4.0.7):
     optionalDependencies:

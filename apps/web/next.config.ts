@@ -3,7 +3,7 @@ import { initOpenNextCloudflareForDev } from "@opennextjs/cloudflare";
 
 const nextConfig: NextConfig = {
   // Workspace packages ship TypeScript source.
-  transpilePackages: ["@map-diary/crypto"],
+  transpilePackages: ["@map-diary/crypto", "@map-diary/sync"],
   poweredByHeader: false,
 };
 

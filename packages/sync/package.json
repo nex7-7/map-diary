@@ -1,0 +1,21 @@
+{
+  "name": "@map-diary/sync",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@map-diary/crypto": "workspace:*"
+  },
+  "devDependencies": {
+    "fake-indexeddb": "6.2.5",
+    "typescript": "5.9.3",
+    "vitest": "4.1.12"
+  }
+}
