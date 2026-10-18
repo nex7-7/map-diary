@@ -120,15 +120,21 @@ Places hold shared facts, people attach opinions to them, and every opinion is p
 
 ## Encryption and key management
 
-Each person holds a personal keypair, each board has a symmetric key, and the server only ever stores keys in wrapped (encrypted) form.
+Keys sit at three levels: each board has a symmetric key, board keys are wrapped to people (accounts), and each person's account key is wrapped to each of their devices. The server only ever stores keys in wrapped (encrypted) form.
 
-- **Personal keys:** an X25519 keypair for encryption and an Ed25519 keypair for signing, generated on the device. A personal symmetric key encrypts the Personal board.
-- **Master key:** one symmetric key encrypts the master board and the place catalogue. Every member's devices hold it, wrapped to their public key, so the server cannot read Public items either.
-- **Group keys:** one symmetric key per group (XChaCha20-Poly1305), wrapped to each member's public key.
-- **Invites:** a link shared in the group's WhatsApp chat. The invite secret sits after the `#`, which browsers never send to the server. Joining grants the group key and the master key.
-- **Multi-device and recovery:** keys are backed up on the server, encrypted with a key derived from my passphrase (Argon2id). A new device signs in with the passphrase. A forgotten passphrase means the data is unrecoverable.
+- **Recovery seed:** 128 random bits, shown once at setup as a 28-character recovery phrase. Every version of a person's account keys and personal board key is derived from it, so the phrase alone restores the whole account.
+- **Account keys (one set per person):** an X25519 keypair that board keys are wrapped to, and an Ed25519 keypair that proves which devices belong to the account. Both are versioned; revoking a device moves the account to the next version.
+- **Device keys (one set per device):** an X25519 and an Ed25519 keypair generated on the device. The device signs every request and envelope with its own key, and holds the account keys wrapped to its X25519 key.
+- **Personal board key:** a symmetric key for the Personal board, derived from the recovery seed per version.
+- **Master key:** one symmetric key encrypts the master board and the place catalogue, wrapped to every person's account key, so the server cannot read Public items either.
+- **Group keys:** one symmetric key per group (XChaCha20-Poly1305), wrapped to each member's account key. Rotation re-wraps for people (at most 10), not for every device.
+- **Invites:** links shared over WhatsApp, with the secret after the `#`, which browsers never send to the server. An **app invite** (admin only, one-time, expires in 7 days) lets a friend create an account and grants the master key; it replaces open signup, which exists only for the very first (admin) account. A **group invite** (any member) grants that group's key.
+- **Adding a device:** on a device you already have, open "Add a device" to show a QR code or link (secret after the `#`). The new device scans it and sends its public keys through a short-lived pairing slot on the Worker; both screens show the same 6-character code and you approve on the old device, which authorises the new one and wraps the account keys to it. The server accepts a new device authorised by any active device of the same account. Passphrase sign-in stays as the fallback when no other device is at hand.
+- **Passphrase backup:** the recovery seed and board keys, encrypted with a key derived from a passphrase (Argon2id) and stored on the server. Optional for friends (they can set one later); the recovery phrase is mandatory for everyone.
+- **Devices screen and revocation:** each person sees their devices (name, kind, added, last seen) and can revoke any other one. The server refuses the revoked device at once; one of the person's remaining devices then moves the account keys to the next version, re-wraps them for the remaining devices, and rotates every board the person is in (personal, master and their groups) so the revoked device cannot read anything new. The admin can revoke any device on the app but still cannot read anyone's boards.
+- **Lost devices and recovery:** with another device, revoke the lost one there. With no other device, sign in with the passphrase or the recovery phrase on a new device, then revoke the old ones. The recovery phrase restores every board, because shared board keys are wrapped to account keys the seed derives. Losing every device, the passphrase and the recovery phrase means the data is unrecoverable; the admin cannot help.
 - **Removing a member:** the group key is rotated and re-wrapped for the remaining members. Removing someone from the app entirely also rotates the master key.
-- **Devices as members:** my phone, my laptop browser, the Android app and the Claude connector are each separate devices with their own key, so any one can be revoked alone.
+- **Devices as members:** my phone, my laptop browser, the Android app and the Claude connector are each separate devices (kind `web`, `android` or `claude`) with their own key, so any one can be revoked alone.
 - **Sync engine: custom, on libsodium.** Every item has exactly one author, so two people never edit the same item. Sync is last-write-wins per envelope, with no CRDT needed. Jazz (v2 trusts the server for access control; classic is in maintenance) and Evolu (single-secret shared owners, no per-member revocation, relay not on Workers) were considered and rejected.
 
 ## Core flows
@@ -238,10 +244,11 @@ Each phase ends with something I can use daily.
 1. **Foundation:** Next.js + TypeScript project, API Worker on `map.snehilsinha.com`, D1 envelope schema, R2 with the Mumbai map file.
 2. **Solo diary:** keys and passphrase backup, envelope sync, Add sheet, map and list, dropped pins, Google Maps link parsing, categories, tags, comments, Visited. Personal board only.
 3. **Resolver:** anonymous job queue, Claude scheduled task, signature dish and price, Inbox.
-4. **Sharing:** master key and the master board, groups and invites, tagging and commenting on others' places, member removal with key rotation.
-5. **Claude assistant:** connector, Claude device with master and personal access, revocation.
-6. **Android app:** Capacitor shell, native share target, geofencing plugin.
-7. **Friends onboarding:** install guide for iPhone, import of my existing notes list.
+4. **Accounts and devices:** per-person account keys with board keys wrapped to people, device kinds, QR device linking, Devices screen with revocation and key rotation, admin app invites.
+5. **Sharing:** master key and the master board, groups and invites, tagging and commenting on others' places, member removal with key rotation.
+6. **Claude assistant:** connector, Claude device with master and personal access, revocation.
+7. **Android app:** Capacitor shell, native share target, geofencing plugin.
+8. **Friends onboarding:** install guide for iPhone, import of my existing notes list.
 
 ## Open questions
 
@@ -259,7 +266,7 @@ Each phase ends with something I can use daily.
 
 **Technical**
 
-- [ ] Passphrase or passkeys for friends' key backup?
+- [x] Passphrase or passkeys for friends' key backup? Recovery phrase mandatory, passphrase optional; passkeys (WebAuthn PRF) revisited later.
 - [ ] Is offline adding (no network) required?
 - [ ] Proximity alert radius, cooldown and quiet hours.
 - [ ] Format of my existing notes list for import.
