@@ -1,5 +1,5 @@
-import { getSodium } from "./sodium.js";
-import { CryptoError } from "./errors.js";
+import { getSodium } from "./sodium";
+import { CryptoError } from "./errors";
 
 /** Base64url without padding: the only binary-to-text encoding used on the wire. */
 export function toBase64(bytes: Uint8Array): string {

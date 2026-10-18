@@ -1,6 +1,6 @@
-import { getSodium } from "./sodium.js";
-import { CryptoError } from "./errors.js";
-import { canonicalBytes, fromBase64, toBase64, utf8 } from "./encoding.js";
+import { getSodium } from "./sodium";
+import { CryptoError } from "./errors";
+import { canonicalBytes, fromBase64, toBase64, utf8 } from "./encoding";
 
 export const KEY_BACKUP_VERSION = 1;
 

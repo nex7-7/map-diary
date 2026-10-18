@@ -13,7 +13,7 @@ import {
   type BoardKey,
   type Envelope,
   type IdentityKeys,
-} from "../src/index.js";
+} from "../src/index";
 
 let alice: IdentityKeys;
 let mallory: IdentityKeys;

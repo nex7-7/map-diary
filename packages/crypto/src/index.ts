@@ -1,6 +1,6 @@
-export { ready } from "./sodium.js";
-export { CryptoError, type CryptoErrorCode } from "./errors.js";
-export { toBase64, fromBase64, randomId } from "./encoding.js";
+export { ready } from "./sodium";
+export { CryptoError, type CryptoErrorCode } from "./errors";
+export { toBase64, fromBase64, randomId } from "./encoding";
 export {
   generateIdentity,
   publicIdentity,
@@ -10,7 +10,7 @@ export {
   type IdentityKeys,
   type PublicIdentity,
   type BoardKey,
-} from "./keys.js";
+} from "./keys";
 export {
   ENVELOPE_VERSION,
   ENVELOPE_TYPES,
@@ -25,7 +25,7 @@ export {
   type SealInput,
   type OpenOptions,
   type OpenedEnvelope,
-} from "./envelope.js";
+} from "./envelope";
 export {
   KEY_BACKUP_VERSION,
   createKeyBackup,
@@ -33,4 +33,4 @@ export {
   defaultKdfParams,
   type KeyBackup,
   type KdfParams,
-} from "./backup.js";
+} from "./backup";

@@ -1,5 +1,5 @@
-import { getSodium } from "./sodium.js";
-import { CryptoError } from "./errors.js";
+import { getSodium } from "./sodium";
+import { CryptoError } from "./errors";
 
 /** A person's (or device's) long-term keys, generated on the device. */
 export interface IdentityKeys {

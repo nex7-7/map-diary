@@ -1,6 +1,6 @@
 import { beforeAll, describe, expect, it } from "vitest";
 import sodium from "libsodium-wrappers-sumo";
-import { CryptoError, createKeyBackup, openKeyBackup, ready, type KdfParams } from "../src/index.js";
+import { CryptoError, createKeyBackup, openKeyBackup, ready, type KdfParams } from "../src/index";
 
 // Minimum Argon2id cost keeps the suite fast; production uses defaultKdfParams().
 let fast: KdfParams;

@@ -6,7 +6,7 @@ import {
   ready,
   unwrapKeyFromMember,
   wrapKeyForMember,
-} from "../src/index.js";
+} from "../src/index";
 
 beforeAll(async () => {
   await ready();

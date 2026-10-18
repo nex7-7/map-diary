@@ -1,7 +1,7 @@
-import { getSodium } from "./sodium.js";
-import { CryptoError } from "./errors.js";
-import { canonicalBytes, fromBase64, fromUtf8, randomId, toBase64, utf8 } from "./encoding.js";
-import type { BoardKey } from "./keys.js";
+import { getSodium } from "./sodium";
+import { CryptoError } from "./errors";
+import { canonicalBytes, fromBase64, fromUtf8, randomId, toBase64, utf8 } from "./encoding";
+import type { BoardKey } from "./keys";
 
 export const ENVELOPE_VERSION = 1;
 
