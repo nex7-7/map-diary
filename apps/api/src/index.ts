@@ -1,3 +1,4 @@
+import "./sodium-wasm";
 import { app } from "./app";
 import { expireResolverJobs } from "./scheduled";
 

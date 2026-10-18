@@ -10,9 +10,16 @@
     "test": "vitest run",
     "cf-typegen": "wrangler types --env-interface Env src/worker-configuration.d.ts",
     "db:migrate:local": "wrangler d1 migrations apply map-diary --local",
-    "db:migrate:remote": "wrangler d1 migrations apply map-diary --remote"
+    "db:migrate:remote": "wrangler d1 migrations apply map-diary --remote",
+    "sodium-wasm": "node ../../packages/crypto/scripts/extract-wasm.mjs src/generated/libsodium-sumo.wasm",
+    "predev": "pnpm run sodium-wasm",
+    "prebuild": "pnpm run sodium-wasm",
+    "predeploy": "pnpm run sodium-wasm",
+    "pretypecheck": "pnpm run sodium-wasm",
+    "pretest": "pnpm run sodium-wasm"
   },
   "dependencies": {
+    "@map-diary/crypto": "workspace:*",
     "hono": "^4.13.13"
   },
   "devDependencies": {

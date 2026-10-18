@@ -34,3 +34,19 @@ export {
   type KeyBackup,
   type KdfParams,
 } from "./backup";
+export {
+  REQUEST_AUTH_VERSION,
+  REQUEST_MAX_SKEW_MS,
+  AUTH_HEADERS,
+  generateAccountKeys,
+  requestSignedBytes,
+  signRequest,
+  verifyRequest,
+  authorizeDevice,
+  verifyDeviceAuthorization,
+  backupLookupId,
+  type AccountKeys,
+  type RequestToSign,
+  type DeviceKind,
+  type DeviceToAuthorize,
+} from "./auth";

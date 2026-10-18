@@ -13,6 +13,6 @@ export default defineConfig({
     }),
   ],
   test: {
-    setupFiles: ["./test/apply-migrations.ts"],
+    setupFiles: ["./test/sodium.ts", "./test/apply-migrations.ts"],
   },
 });

@@ -10,6 +10,9 @@ importers:
 
   apps/api:
     dependencies:
+      '@map-diary/crypto':
+        specifier: workspace:*
+        version: link:../../packages/crypto
       hono:
         specifier: ^4.13.13
         version: 4.13.13
