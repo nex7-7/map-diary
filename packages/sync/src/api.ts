@@ -1,4 +1,4 @@
-import { signRequest, type Envelope, type KeyBackup } from "@map-diary/crypto";
+import { signRequest, type DeviceKind, type Envelope, type KeyBackup } from "@map-diary/crypto";
 
 /** The device's request-signing identity. */
 export interface Signer {
@@ -37,7 +37,7 @@ export interface ApiOptions {
 
 export interface DeviceBody {
   id: string;
-  kind: "web" | "android" | "claude";
+  kind: DeviceKind;
   signPublicKey: string;
   boxPublicKey: string;
   authorization: string;

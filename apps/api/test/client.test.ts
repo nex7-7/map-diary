@@ -107,7 +107,11 @@ describe("device setup, sign-in and sync", () => {
       { deviceId: phone.deviceId, signSecretKey: phone.identity.signSecretKey },
     );
 
-    const tablet = await signInWithPassphrase(api, PASSPHRASE);
+    const tablet = await signInWithPassphrase(api, PASSPHRASE, "android");
+    expect(tablet.kind).toBe("android");
+    const me = await api.me({ deviceId: tablet.deviceId, signSecretKey: tablet.identity.signSecretKey });
+    expect(me.devices.find((d) => d.id === tablet.deviceId)?.kind).toBe("android");
+    expect(me.devices.find((d) => d.id === phone.deviceId)?.kind).toBe("web");
     expect(tablet.accountBox.publicKey).toEqual(phone.accountBox.publicKey);
     expect(tablet.boardKeys.find((k) => k.boardId === group.boardId)?.key).toEqual(group.key);
   });
