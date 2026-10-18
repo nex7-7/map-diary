@@ -411,6 +411,24 @@
   color: var(--accent);
 }
 
+.add-fab {
+  position: absolute;
+  right: 16px;
+  bottom: calc(40px + env(safe-area-inset-bottom));
+  z-index: 3;
+  width: 56px;
+  height: 56px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--accent);
+  color: #fff;
+  font-size: 2rem;
+  line-height: 1;
+  text-decoration: none;
+  box-shadow: 0 4px 16px rgb(0 0 0 / 0.25);
+}
+
 /* Wide screens: list and map side by side, whatever the toggle says. */
 @media (min-width: 900px) {
   .segmented {

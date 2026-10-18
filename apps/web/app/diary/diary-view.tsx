@@ -2,6 +2,8 @@
 
 import "./diary.css";
 import dynamic from "next/dynamic";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { cuisinesOf, EMPTY_FILTERS, filterPlaces, sortPlaces, type PlaceFilters, type SortKey } from "@/lib/places/filter";
 import type { DiarySnapshot, DiarySource, LngLat, Status } from "@/lib/places/types";
@@ -26,6 +28,7 @@ export function DiaryView({ source }: { source: DiarySource }) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [locate, setLocate] = useState<Locate>({ kind: "off" });
   const here = locate.kind === "on" ? locate.here : undefined;
+  const router = useRouter();
 
   useEffect(() => {
     let cancelled = false;
@@ -110,7 +113,13 @@ export function DiaryView({ source }: { source: DiarySource }) {
 
       <div className="panes">
         <div className="pane pane-map">
-          <PlacesMap listed={listed} here={here} selectedId={selectedId} onSelect={setSelectedId} />
+          <PlacesMap
+            listed={listed}
+            here={here}
+            selectedId={selectedId}
+            onSelect={setSelectedId}
+            onLongPress={({ lat, lng }) => router.push(`/add#pin=${lat.toFixed(6)},${lng.toFixed(6)}`)}
+          />
         </div>
         <div className="pane pane-list">
           <PlacesList
@@ -120,6 +129,11 @@ export function DiaryView({ source }: { source: DiarySource }) {
             onSetStatus={setStatus}
           />
         </div>
+        {!selected && (
+          <Link href="/add" className="add-fab" aria-label="Add a place">
+            +
+          </Link>
+        )}
         {selected && (
           <PlaceCard item={selected} snapshot={snapshot} onClose={() => setSelectedId(null)} onSetStatus={setStatus} />
         )}

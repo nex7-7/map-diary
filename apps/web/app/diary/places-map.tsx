@@ -1,18 +1,10 @@
 "use client";
 
 import "maplibre-gl/dist/maplibre-gl.css";
-import {
-  addProtocol,
-  AttributionControl,
-  getVersion,
-  Map as MapLibre,
-  NavigationControl,
-  setWorkerUrl,
-  type GeoJSONSource,
-} from "maplibre-gl";
-import { FileSource, PMTiles, Protocol } from "pmtiles";
+import { AttributionControl, Map as MapLibre, NavigationControl, type GeoJSONSource, type MapMouseEvent, type MapTouchEvent } from "maplibre-gl";
 import { useEffect, useRef, useState } from "react";
 import { loadMapFile } from "@/lib/map/map-file";
+import { registerProtocol } from "@/lib/map/protocol";
 import {
   basemapStyle,
   HERE_SOURCE,
@@ -27,17 +19,7 @@ import {
 import type { ListedPlace } from "@/lib/places/filter";
 import type { LngLat } from "@/lib/places/types";
 
-let protocol: Protocol | undefined;
-
-function registerProtocol(file: File): void {
-  if (!protocol) {
-    // Copied into public/ by scripts/copy-maplibre-worker.mjs.
-    setWorkerUrl(`/map/maplibre/${getVersion()}/maplibre-gl-worker.mjs`);
-    protocol = new Protocol();
-    addProtocol("pmtiles", protocol.tile);
-  }
-  protocol.add(new PMTiles(new FileSource(file)));
-}
+const LONG_PRESS_MS = 600;
 
 type LoadState = { kind: "loading"; loaded: number; total: number | undefined } | { kind: "ready" } | { kind: "failed"; message: string };
 
@@ -46,15 +28,17 @@ interface Props {
   here: LngLat | undefined;
   selectedId: string | null;
   onSelect: (id: string | null) => void;
+  /** A long press (or right-click) on the map, to drop a pin there. */
+  onLongPress?: (at: LngLat) => void;
 }
 
-export function PlacesMap({ listed, here, selectedId, onSelect }: Props) {
+export function PlacesMap({ listed, here, selectedId, onSelect, onLongPress }: Props) {
   const container = useRef<HTMLDivElement>(null);
   const mapRef = useRef<MapLibre | null>(null);
   const [state, setState] = useState<LoadState>({ kind: "loading", loaded: 0, total: undefined });
   const [attempt, setAttempt] = useState(0);
-  const latest = useRef({ listed, here, selectedId, onSelect });
-  latest.current = { listed, here, selectedId, onSelect };
+  const latest = useRef({ listed, here, selectedId, onSelect, onLongPress });
+  latest.current = { listed, here, selectedId, onSelect, onLongPress };
 
   useEffect(() => {
     const abort = new AbortController();
@@ -94,6 +78,7 @@ export function PlacesMap({ listed, here, selectedId, onSelect }: Props) {
         map.on("click", (e) => {
           if (map?.queryRenderedFeatures(e.point, { layers: [PIN_LAYER] }).length === 0) latest.current.onSelect(null);
         });
+        addLongPress(map, (at) => latest.current.onLongPress?.(at));
         map.on("mouseenter", PIN_LAYER, () => map && (map.getCanvas().style.cursor = "pointer"));
         map.on("mouseleave", PIN_LAYER, () => map && (map.getCanvas().style.cursor = ""));
         dark.addEventListener("change", onScheme);
@@ -157,6 +142,35 @@ export function PlacesMap({ listed, here, selectedId, onSelect }: Props) {
       )}
     </div>
   );
+}
+
+/**
+ * Long press on touch screens; right-click (contextmenu) elsewhere. Android
+ * Chrome fires both for one press, so a press reports once.
+ */
+function addLongPress(map: MapLibre, fire: (at: LngLat) => void): void {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  let lastFired = 0;
+  const report = ({ lng, lat }: { lng: number; lat: number }) => {
+    if (Date.now() - lastFired < 1000) return;
+    lastFired = Date.now();
+    fire({ lng, lat });
+  };
+  const cancel = () => clearTimeout(timer);
+
+  map.on("touchstart", (e: MapTouchEvent) => {
+    cancel();
+    if (e.originalEvent.touches.length !== 1) return;
+    const at = e.lngLat;
+    timer = setTimeout(() => report(at), LONG_PRESS_MS);
+  });
+  map.on("touchend", cancel);
+  map.on("touchcancel", cancel);
+  map.on("movestart", cancel);
+  map.on("contextmenu", (e: MapMouseEvent) => {
+    e.preventDefault();
+    report(e.lngLat);
+  });
 }
 
 function padBounds([w, s, e, n]: [number, number, number, number], pad: number): [number, number, number, number] {
