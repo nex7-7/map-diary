@@ -9,7 +9,7 @@ describe("routes", () => {
   it("reports health with the applied migration count", async () => {
     const res = await fetchApi("/api/health");
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ ok: true, migrations: 1 });
+    expect(await res.json()).toEqual({ ok: true, migrations: 2 });
   });
 
   it("returns JSON 404 for unknown routes and paths outside /api", async () => {
