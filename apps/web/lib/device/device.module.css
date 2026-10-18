@@ -1,0 +1,106 @@
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  margin-top: 24px;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.field input,
+.field textarea {
+  font: inherit;
+  font-size: 1rem; /* 16px keeps iOS Safari from zooming in */
+  padding: 12px;
+  border: 1px solid var(--muted);
+  border-radius: 10px;
+  background: transparent;
+  color: inherit;
+}
+
+.field textarea {
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  text-transform: uppercase;
+  resize: none;
+}
+
+.button {
+  font: inherit;
+  font-size: 1rem;
+  padding: 12px 16px;
+  border: none;
+  border-radius: 10px;
+  background: var(--fg);
+  color: var(--bg);
+  cursor: pointer;
+  text-align: center;
+  text-decoration: none;
+}
+
+.button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.secondary {
+  composes: button;
+  background: transparent;
+  color: var(--fg);
+  border: 1px solid var(--muted);
+}
+
+.phrase {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(5.5ch, 1fr));
+  gap: 8px 12px;
+  padding: 16px;
+  border: 1px dashed var(--muted);
+  border-radius: 10px;
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 1.25rem;
+  letter-spacing: 0.08em;
+  user-select: all;
+}
+
+.check {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+}
+
+.check input {
+  width: 20px;
+  height: 20px;
+  margin: 2px 0 0;
+}
+
+.error {
+  color: #c0392b;
+  margin: 0;
+}
+
+.warning {
+  padding: 12px;
+  border-radius: 10px;
+  border: 1px solid #d4a017;
+  margin: 0;
+}
+
+.tabs {
+  display: flex;
+  gap: 8px;
+}
+
+.tabs button {
+  flex: 1;
+}
+
+.tabs [aria-pressed="false"] {
+  background: transparent;
+  color: var(--fg);
+  border: 1px solid var(--muted);
+}

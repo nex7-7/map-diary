@@ -26,6 +26,7 @@
   },
   "devDependencies": {
     "@cloudflare/vitest-plugin": "^1.4.4",
+    "@map-diary/sync": "workspace:*",
     "typescript": "^5.9.3",
     "vitest": "^4.1.0",
     "wrangler": "^4.151.1"
