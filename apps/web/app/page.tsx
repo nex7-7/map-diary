@@ -1,5 +1,5 @@
-import { FixtureDiary } from "./diary/fixture-diary";
+import { DeviceDiary } from "./diary/device-diary";
 
 export default function Home() {
-  return <FixtureDiary />;
+  return <DeviceDiary />;
 }

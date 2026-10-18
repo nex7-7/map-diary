@@ -10,12 +10,17 @@ interface Props {
   cuisines: string[];
   filters: PlaceFilters;
   onChange: (next: PlaceFilters) => void;
+  /** Shown at the end of the search row. */
+  extra?: ReactNode;
 }
+
+/** Quick picks for the wallet-bleeder filter, in rupees; any other amount can be typed. */
+const PRICE_STEPS = [200, 500, 1000, 2000];
 
 const toggle = <T,>(list: readonly T[], value: T): T[] =>
   list.includes(value) ? list.filter((v) => v !== value) : [...list, value];
 
-export function FilterBar({ snapshot, cuisines, filters, onChange }: Props) {
+export function FilterBar({ snapshot, cuisines, filters, onChange, extra }: Props) {
   const set = (patch: Partial<PlaceFilters>) => onChange({ ...filters, ...patch });
   const categories: Category[] = [
     ...BUILTIN_CATEGORIES,
@@ -47,6 +52,7 @@ export function FilterBar({ snapshot, cuisines, filters, onChange }: Props) {
             </option>
           ))}
         </select>
+        {extra}
       </div>
 
       <div className="chips" role="group" aria-label="Status and category">
@@ -108,11 +114,25 @@ export function FilterBar({ snapshot, cuisines, filters, onChange }: Props) {
         <fieldset>
           <legend>Signature dish up to</legend>
           <div className="chips">
-            {[200, 500, 1000].map((max) => (
+            {PRICE_STEPS.map((max) => (
               <Chip key={max} on={filters.maxPriceInr === max} onClick={() => set({ maxPriceInr: filters.maxPriceInr === max ? null : max })}>
                 ₹{max.toLocaleString("en-IN")}
               </Chip>
             ))}
+            <input
+              type="number"
+              inputMode="numeric"
+              min={0}
+              step={50}
+              className="price-input"
+              aria-label="Signature dish up to, in rupees"
+              placeholder="₹ other"
+              value={filters.maxPriceInr !== null && !PRICE_STEPS.includes(filters.maxPriceInr) ? filters.maxPriceInr : ""}
+              onChange={(e) => {
+                const n = Number(e.target.value);
+                set({ maxPriceInr: e.target.value && Number.isFinite(n) && n >= 0 ? Math.round(n) : null });
+              }}
+            />
           </div>
         </fieldset>
       </details>

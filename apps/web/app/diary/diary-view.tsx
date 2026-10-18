@@ -4,7 +4,7 @@ import "./diary.css";
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { cuisinesOf, EMPTY_FILTERS, filterPlaces, sortPlaces, type PlaceFilters, type SortKey } from "@/lib/places/filter";
 import type { DiarySnapshot, DiarySource, LngLat, Status } from "@/lib/places/types";
 import { FilterBar } from "./filter-bar";
@@ -20,7 +20,8 @@ const PlacesMap = dynamic(() => import("./places-map").then((m) => m.PlacesMap),
 type View = "map" | "list";
 type Locate = { kind: "off" } | { kind: "locating" } | { kind: "on"; here: LngLat } | { kind: "failed"; message: string };
 
-export function DiaryView({ source }: { source: DiarySource }) {
+/** `toolbarExtra` sits beside the search box, for links such as the Inbox. */
+export function DiaryView({ source, toolbarExtra }: { source: DiarySource; toolbarExtra?: ReactNode }) {
   const [snapshot, setSnapshot] = useState<DiarySnapshot | null>(null);
   const [filters, setFilters] = useState<PlaceFilters>(EMPTY_FILTERS);
   const [sort, setSort] = useState<SortKey>("added");
@@ -109,7 +110,7 @@ export function DiaryView({ source }: { source: DiarySource }) {
         </p>
       )}
 
-      <FilterBar snapshot={snapshot} cuisines={cuisines} filters={filters} onChange={setFilters} />
+      <FilterBar snapshot={snapshot} cuisines={cuisines} filters={filters} onChange={setFilters} extra={toolbarExtra} />
 
       <div className="panes">
         <div className="pane pane-map">
