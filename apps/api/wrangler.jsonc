@@ -1,0 +1,23 @@
+{
+  "$schema": "../../node_modules/wrangler/config-schema.json",
+  "name": "map-diary-api",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-10-13",
+  "upload_source_maps": true,
+  "minify": true,
+  "workers_dev": false,
+  "routes": [{ "pattern": "map.snehilsinha.com", "custom_domain": true }],
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "map-diary",
+      "database_id": "4362f68c-cca6-412f-a8fa-455e4d0db8d1",
+      "migrations_dir": "migrations"
+    }
+  ],
+  // Mumbai PMTiles map; the file lives at the object key "mumbai.pmtiles".
+  "r2_buckets": [{ "binding": "TILES", "bucket_name": "map-diary-tiles" }],
+  // Expires stale resolver jobs. No other scheduled work.
+  "triggers": { "crons": ["17 * * * *"] },
+  "observability": { "enabled": true }
+}

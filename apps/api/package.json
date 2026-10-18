@@ -1,0 +1,24 @@
+{
+  "name": "@map-diary/api",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "build": "wrangler deploy --dry-run --outdir dist",
+    "deploy": "wrangler deploy",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "cf-typegen": "wrangler types --env-interface Env src/worker-configuration.d.ts",
+    "db:migrate:local": "wrangler d1 migrations apply map-diary --local",
+    "db:migrate:remote": "wrangler d1 migrations apply map-diary --remote"
+  },
+  "dependencies": {
+    "hono": "^4.13.13"
+  },
+  "devDependencies": {
+    "@cloudflare/vitest-plugin": "^1.4.4",
+    "typescript": "^5.9.3",
+    "vitest": "^4.1.0",
+    "wrangler": "^4.151.1"
+  }
+}
