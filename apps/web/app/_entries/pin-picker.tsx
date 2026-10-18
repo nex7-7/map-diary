@@ -1,24 +1,13 @@
 "use client";
 
 import "maplibre-gl/dist/maplibre-gl.css";
-import { addProtocol, AttributionControl, getVersion, Map as MapLibre, setWorkerUrl } from "maplibre-gl";
-import { FileSource, PMTiles, Protocol } from "pmtiles";
+import { AttributionControl, Map as MapLibre } from "maplibre-gl";
 import { useEffect, useRef, useState } from "react";
 import { loadMapFile } from "@/lib/map/map-file";
+import { registerProtocol } from "@/lib/map/protocol";
 import { basemapStyle, MUMBAI_CENTER } from "@/lib/map/style";
 import type { LngLat } from "@/lib/places/types";
 import styles from "./entries.module.css";
-
-let protocol: Protocol | undefined;
-
-function registerProtocol(file: File): void {
-  if (!protocol) {
-    setWorkerUrl(`/map/maplibre/${getVersion()}/maplibre-gl-worker.mjs`);
-    protocol = new Protocol();
-    addProtocol("pmtiles", protocol.tile);
-  }
-  protocol.add(new PMTiles(new FileSource(file)));
-}
 
 type LoadState = { kind: "loading"; loaded: number; total: number | undefined } | { kind: "ready" } | { kind: "failed"; message: string };
 
