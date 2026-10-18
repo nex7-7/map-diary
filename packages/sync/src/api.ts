@@ -83,6 +83,16 @@ export interface SyncResponse {
   more: boolean;
 }
 
+export type ResolverJobStatus = "pending" | "resolved" | "failed";
+
+export interface ResolverJobResponse {
+  id: string;
+  status: ResolverJobStatus;
+  /** base64url sealed box; open it with `openResolverResult` and the job's reply keys. */
+  sealedResult?: string;
+  expiresAt: number;
+}
+
 const encoder = new TextEncoder();
 
 /** A thin, typed client for the routes in apps/api/README.md. Every signed call carries its own signature. */
@@ -179,5 +189,25 @@ export class Api {
   pull(since: number, signer: Signer, limit?: number) {
     const query = `since=${since}` + (limit === undefined ? "" : `&limit=${limit}`);
     return this.call<SyncResponse>("GET", `/api/sync?${query}`, undefined, signer);
+  }
+
+  // Resolver jobs are anonymous: these calls are never signed, so the server cannot tie a
+  // job to an account. The job id is the only handle on it.
+
+  submitResolverJob(query: string, replyPublicKey: string) {
+    return this.call<ResolverJobResponse>("POST", "/api/resolver/jobs", { query, replyPublicKey }, null);
+  }
+
+  getResolverJob(id: string) {
+    return this.call<ResolverJobResponse>("GET", `/api/resolver/jobs/${encodeURIComponent(id)}`, undefined, null);
+  }
+
+  deleteResolverJob(id: string) {
+    return this.call<undefined>("DELETE", `/api/resolver/jobs/${encodeURIComponent(id)}`, undefined, null);
+  }
+
+  /** Expands a short Google Maps link to the full URL; parse its coordinates on the device. */
+  expandMapsLink(url: string) {
+    return this.call<{ url: string }>("POST", "/api/resolver/expand", { url }, null);
   }
 }

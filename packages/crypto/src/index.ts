@@ -58,3 +58,20 @@ export {
   deriveAccount,
   type RecoveredAccount,
 } from "./recovery";
+export {
+  RESOLVER_RESULT_VERSION,
+  RESOLVER_CATEGORIES,
+  MUMBAI_BOUNDS,
+  MAX_CANDIDATES,
+  REPLY_PUBLIC_KEY_BYTES,
+  parseResolution,
+  generateReplyKeys,
+  sealResolverResult,
+  openResolverResult,
+  type ResolverCategory,
+  type ResolvedPlace,
+  type ResolverResult,
+  type ResolutionProblem,
+  type ParsedResolution,
+  type ReplyKeys,
+} from "./resolver";

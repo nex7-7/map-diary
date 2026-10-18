@@ -8,7 +8,7 @@ export default defineConfig({
       const migrations = await readD1Migrations(path.join(import.meta.dirname, "migrations"));
       return {
         wrangler: { configPath: "./wrangler.jsonc" },
-        miniflare: { bindings: { TEST_MIGRATIONS: migrations } },
+        miniflare: { bindings: { TEST_MIGRATIONS: migrations, RESOLVER_TOKEN: "test-resolver-token" } },
       };
     }),
   ],

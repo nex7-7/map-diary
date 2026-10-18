@@ -21,5 +21,8 @@
   "r2_buckets": [{ "binding": "TILES", "bucket_name": "map-diary-tiles" }],
   // Expires stale resolver jobs. No other scheduled work.
   "triggers": { "crons": ["17 * * * *"] },
+  // Bearer token for the resolver (Claude's scheduled task). Set with
+  // `wrangler secret put RESOLVER_TOKEN`; tests bind a fixed value.
+  "secrets": { "required": ["RESOLVER_TOKEN"] },
   "observability": { "enabled": true }
 }
