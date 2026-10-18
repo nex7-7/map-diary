@@ -18,4 +18,5 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm typecheck
       - run: pnpm test
+      - run: pnpm --filter @map-diary/api smoke
       - run: pnpm --filter @map-diary/web build

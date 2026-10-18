@@ -16,7 +16,9 @@
     "prebuild": "pnpm run sodium-wasm",
     "predeploy": "pnpm run sodium-wasm",
     "pretypecheck": "pnpm run sodium-wasm",
-    "pretest": "pnpm run sodium-wasm"
+    "pretest": "pnpm run sodium-wasm",
+    "smoke": "node scripts/smoke.mjs",
+    "presmoke": "pnpm run sodium-wasm"
   },
   "dependencies": {
     "@map-diary/crypto": "workspace:*",

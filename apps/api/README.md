@@ -31,6 +31,7 @@ libsodium cannot compile its embedded WebAssembly inside workerd, so `pnpm run s
 
 ```sh
 pnpm --filter @map-diary/api test               # Vitest in workerd, migrations applied to a local D1
+pnpm --filter @map-diary/api smoke              # wrangler dev + real requests; catches workerd-only failures
 pnpm --filter @map-diary/api dev                # wrangler dev
 pnpm --filter @map-diary/api db:migrate:remote  # apply new migrations in migrations/
 pnpm --filter @map-diary/api deploy
