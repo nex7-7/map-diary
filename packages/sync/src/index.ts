@@ -1,4 +1,12 @@
-export { Api, ApiError, NetworkError, type ApiOptions, type Signer } from "./api";
+export {
+  Api,
+  ApiError,
+  NetworkError,
+  type ApiOptions,
+  type ResolverJobResponse,
+  type ResolverJobStatus,
+  type Signer,
+} from "./api";
 export {
   PASSPHRASE_MIN_LENGTH,
   SetupError,
