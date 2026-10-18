@@ -1,0 +1,183 @@
+import { signRequest, type Envelope, type KeyBackup } from "@map-diary/crypto";
+
+/** The device's request-signing identity. */
+export interface Signer {
+  deviceId: string;
+  signSecretKey: Uint8Array;
+}
+
+/** An error response from the API Worker; `code` is its `error` field. */
+export class ApiError extends Error {
+  readonly status: number;
+  readonly code: string;
+
+  constructor(status: number, code: string) {
+    super(`API ${status}: ${code}`);
+    this.name = "ApiError";
+    this.status = status;
+    this.code = code;
+  }
+}
+
+/** The network failed before any response; the sync loop treats this as offline. */
+export class NetworkError extends Error {
+  constructor() {
+    super("Network request failed");
+    this.name = "NetworkError";
+  }
+}
+
+export interface ApiOptions {
+  /** Origin of the API Worker, for example `https://map.snehilsinha.com`. Empty means same origin. */
+  origin: string;
+  fetch?: (request: Request) => Promise<Response>;
+  /** Server clock offset correction; defaults to Date.now. */
+  now?: () => number;
+}
+
+export interface DeviceBody {
+  id: string;
+  kind: "web" | "android" | "claude";
+  signPublicKey: string;
+  boxPublicKey: string;
+  authorization: string;
+}
+
+export interface WrappedBoardKey {
+  boardId: string;
+  keyVersion: number;
+  wrappedKey: string;
+}
+
+export interface KeyBackupBody {
+  lookup: string;
+  backup: KeyBackup;
+}
+
+export interface MeResponse {
+  account: { id: string; isAdmin: boolean };
+  deviceId: string;
+  boards: { id: string; kind: string; keyVersion: number; keys: { keyVersion: number; wrappedKey: string }[] }[];
+  devices: {
+    id: string;
+    kind: string;
+    signPublicKey: string;
+    boxPublicKey: string;
+    createdAt: number;
+    lastSeenAt: number | null;
+    revokedAt: number | null;
+  }[];
+}
+
+export interface PushResponse {
+  accepted: string[];
+  unchanged: string[];
+  rejected: { id: string | null; reason: string }[];
+}
+
+export interface SyncResponse {
+  envelopes: Envelope[];
+  deleted: string[];
+  devices: Record<string, { accountId: string; signPublicKey: string; revokedAt: number | null }>;
+  cursor: number;
+  more: boolean;
+}
+
+const encoder = new TextEncoder();
+
+/** A thin, typed client for the routes in apps/api/README.md. Every signed call carries its own signature. */
+export class Api {
+  private readonly origin: string;
+  private readonly doFetch: (request: Request) => Promise<Response>;
+  private readonly now: () => number;
+
+  constructor(options: ApiOptions) {
+    this.origin = options.origin.replace(/\/$/, "");
+    this.doFetch = options.fetch ?? ((r) => fetch(r));
+    this.now = options.now ?? Date.now;
+  }
+
+  private async call<T>(method: string, path: string, body: unknown, signer: Signer | null): Promise<T> {
+    const text = body === undefined ? "" : JSON.stringify(body);
+    const headers: Record<string, string> = {};
+    if (text) headers["Content-Type"] = "application/json";
+    if (signer) {
+      Object.assign(
+        headers,
+        signRequest(
+          { method, path, deviceId: signer.deviceId, timestamp: this.now(), body: encoder.encode(text) },
+          signer.signSecretKey,
+        ),
+      );
+    }
+    // A relative URL needs a base outside the browser; same-origin requests resolve against the page.
+    const base = this.origin || (typeof location === "undefined" ? "http://localhost" : location.origin);
+    const request = new Request(base + path, { method, headers, ...(text ? { body: text } : {}) });
+
+    let res: Response;
+    try {
+      res = await this.doFetch(request);
+    } catch {
+      throw new NetworkError();
+    }
+    let json: unknown;
+    try {
+      json = await res.json();
+    } catch {
+      json = undefined;
+    }
+    if (!res.ok) {
+      const code =
+        typeof json === "object" && json !== null && typeof (json as { error?: unknown }).error === "string"
+          ? (json as { error: string }).error
+          : "http_error";
+      throw new ApiError(res.status, code);
+    }
+    return json as T;
+  }
+
+  createAccount(
+    body: {
+      account: { id: string; signPublicKey: string };
+      device: DeviceBody;
+      personalBoard: { id: string; wrappedKey: string };
+      keyBackup: KeyBackupBody;
+    },
+    signer: Signer,
+  ) {
+    return this.call<{ accountId: string; deviceId: string; personalBoardId: string }>("POST", "/api/accounts", body, signer);
+  }
+
+  registerDevice(body: { accountId: string; device: DeviceBody; boardKeys: WrappedBoardKey[] }, signer: Signer) {
+    return this.call<{ accountId: string; deviceId: string }>("POST", "/api/devices", body, signer);
+  }
+
+  fetchKeyBackup(lookup: string) {
+    return this.call<{ accountId: string; backup: KeyBackup }>("POST", "/api/key-backup/fetch", { lookup }, null);
+  }
+
+  putKeyBackup(body: KeyBackupBody, signer: Signer) {
+    return this.call<{ ok: true }>("PUT", "/api/key-backup", body, signer);
+  }
+
+  me(signer: Signer) {
+    return this.call<MeResponse>("GET", "/api/me", undefined, signer);
+  }
+
+  putBoardKeys(boardKeys: WrappedBoardKey[], signer: Signer) {
+    return this.call<{ stored: number }>("PUT", "/api/board-keys", { boardKeys }, signer);
+  }
+
+  pushEnvelopes(envelopes: Envelope[], signer: Signer) {
+    return this.call<PushResponse>("POST", "/api/envelopes", { envelopes }, signer);
+  }
+
+  deleteEnvelopes(ids: string[], signer: Signer) {
+    return this.call<{ deleted: string[] }>("POST", "/api/envelopes/delete", { ids }, signer);
+  }
+
+  pull(since: number, signer: Signer, limit?: number) {
+    const query = `since=${since}` + (limit === undefined ? "" : `&limit=${limit}`);
+    return this.call<SyncResponse>("GET", `/api/sync?${query}`, undefined, signer);
+  }
+}
