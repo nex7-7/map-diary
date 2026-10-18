@@ -1,0 +1,26 @@
+node_modules/
+.pnpm-store/
+dist/
+coverage/
+*.tsbuildinfo
+
+# Next.js / OpenNext
+.next/
+.open-next/
+next-env.d.ts
+
+# Wrangler
+.wrangler/
+.dev.vars*
+!.dev.vars.example
+
+# Env
+.env
+.env*.local
+
+# OS / editors
+.DS_Store
+Thumbs.db
+.vscode/*
+!.vscode/extensions.json
+.idea/
