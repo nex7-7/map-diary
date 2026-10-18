@@ -1,0 +1,438 @@
+.diary {
+  --line: color-mix(in srgb, var(--fg) 14%, transparent);
+  --surface: color-mix(in srgb, var(--bg) 92%, var(--fg));
+  --accent: #228be6;
+  --visited: #2b8a3e;
+  --want: #e8590c;
+  display: flex;
+  flex-direction: column;
+  height: 100dvh;
+  padding-top: env(safe-area-inset-top);
+}
+
+.pad {
+  padding: 16px;
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.diary button,
+.diary select,
+.diary input {
+  font: inherit;
+  color: inherit;
+}
+
+.diary button {
+  cursor: pointer;
+}
+
+.toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+}
+
+.toolbar .count {
+  margin-right: auto;
+  font-size: 0.875rem;
+  white-space: nowrap;
+}
+
+.segmented {
+  flex: none;
+}
+
+@media (max-width: 420px) {
+  .toolbar .count {
+    visibility: hidden;
+    width: 0;
+  }
+
+  .toolbar .sort select {
+    max-width: 7.5rem;
+  }
+}
+
+.segmented {
+  display: inline-flex;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.segmented button {
+  border: 0;
+  background: transparent;
+  padding: 6px 14px;
+}
+
+.segmented button[aria-selected="true"] {
+  background: var(--fg);
+  color: var(--bg);
+}
+
+.toolbar select,
+.filters select,
+.filters input[type="search"] {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--bg);
+  padding: 6px 8px;
+  min-width: 0;
+}
+
+.near-me {
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--bg);
+  padding: 6px 12px;
+  white-space: nowrap;
+}
+
+.near-me[aria-pressed="true"] {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+.notice {
+  margin: 0 16px 8px;
+  font-size: 0.875rem;
+  color: var(--want);
+}
+
+.filters {
+  padding: 0 16px 8px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 8px;
+}
+
+.filter-row {
+  display: flex;
+  gap: 8px;
+}
+
+.filter-row input {
+  flex: 1;
+}
+
+.chips {
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.more-filters .chips {
+  flex-wrap: wrap;
+}
+
+.chip {
+  flex: none;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--bg);
+  padding: 4px 10px;
+  font-size: 0.875rem;
+  white-space: nowrap;
+}
+
+.chip[aria-pressed="true"] {
+  background: var(--fg);
+  border-color: var(--fg);
+  color: var(--bg);
+}
+
+.chip-sep {
+  flex: none;
+  width: 1px;
+  background: var(--line);
+}
+
+.more-filters summary {
+  font-size: 0.875rem;
+  cursor: pointer;
+  display: flex;
+  gap: 12px;
+}
+
+.more-filters fieldset {
+  border: 0;
+  margin: 8px 0 0;
+  padding: 0;
+}
+
+.more-filters legend {
+  font-size: 0.75rem;
+  color: var(--muted);
+  margin-bottom: 4px;
+}
+
+.link {
+  border: 0;
+  background: none;
+  padding: 0;
+  color: var(--accent);
+  text-decoration: underline;
+}
+
+.dot {
+  display: inline-block;
+  width: 0.6em;
+  height: 0.6em;
+  border-radius: 50%;
+  vertical-align: 0.05em;
+}
+
+.dot-visited {
+  background: var(--visited);
+}
+
+.dot-want {
+  border: 2px solid var(--want);
+}
+
+.panes {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  border-top: 1px solid var(--line);
+}
+
+.pane {
+  min-height: 0;
+  flex: 1;
+}
+
+.pane-list {
+  overflow-y: auto;
+}
+
+.diary[data-view="map"] .pane-list,
+.diary[data-view="list"] .pane-map {
+  display: none;
+}
+
+.map-wrap,
+.map {
+  position: relative;
+  width: 100%;
+  height: 100%;
+}
+
+.map-overlay {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: 4px;
+  text-align: center;
+  background: var(--bg);
+  padding: 16px;
+}
+
+.map-overlay p {
+  margin: 0;
+}
+
+.places {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.place-row {
+  position: relative;
+  border-bottom: 1px solid var(--line);
+  overflow: hidden;
+}
+
+.swipe-hint {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  padding-left: 16px;
+  background: var(--visited);
+  color: #fff;
+  font-weight: 600;
+}
+
+.place-row-body {
+  position: relative;
+  display: flex;
+  align-items: center;
+  background: var(--bg);
+  border-inline-start: 4px solid transparent;
+  touch-action: pan-y;
+  transition: transform 0.15s ease-out;
+}
+
+.place-row[aria-current="true"] .place-row-body {
+  background: var(--surface);
+}
+
+.place-main {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+  text-align: left;
+  border: 0;
+  background: none;
+  padding: 10px 12px;
+}
+
+.place-name {
+  font-weight: 600;
+}
+
+.place-meta {
+  font-size: 0.8125rem;
+}
+
+.place-dish {
+  font-size: 0.875rem;
+}
+
+.mark-visited {
+  flex: none;
+  width: 36px;
+  height: 36px;
+  margin-right: 12px;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  background: var(--bg);
+  color: var(--visited);
+}
+
+.badge {
+  display: inline-block;
+  margin-left: 4px;
+  padding: 0 6px;
+  border-radius: 4px;
+  font-size: 0.6875rem;
+  font-weight: 500;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  vertical-align: 0.1em;
+}
+
+.empty {
+  padding: 24px 16px;
+  text-align: center;
+}
+
+.place-card {
+  position: absolute;
+  left: 8px;
+  right: 8px;
+  bottom: calc(8px + env(safe-area-inset-bottom));
+  max-height: 60%;
+  overflow-y: auto;
+  padding: 12px 16px;
+  border-radius: 12px;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  box-shadow: 0 6px 24px rgb(0 0 0 / 0.18);
+  z-index: 2;
+}
+
+.place-card header {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.place-card h2 {
+  margin: 0;
+  font-size: 1.125rem;
+}
+
+.place-card p {
+  margin: 6px 0;
+}
+
+.place-card .icon {
+  border: 0;
+  background: none;
+  font-size: 1.5rem;
+  line-height: 1;
+  padding: 0 4px;
+}
+
+.status-buttons {
+  display: flex;
+  gap: 8px;
+  margin: 8px 0;
+}
+
+.status-buttons button {
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--bg);
+  padding: 4px 12px;
+}
+
+.status-buttons button[aria-pressed="true"] {
+  border-color: var(--fg);
+  font-weight: 600;
+}
+
+.opinions {
+  margin: 8px 0;
+  padding-left: 18px;
+  font-size: 0.875rem;
+  display: grid;
+  gap: 4px;
+}
+
+.links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  font-size: 0.875rem;
+}
+
+.links a {
+  color: var(--accent);
+}
+
+/* Wide screens: list and map side by side, whatever the toggle says. */
+@media (min-width: 900px) {
+  .segmented {
+    display: none;
+  }
+
+  .diary[data-view] .pane-list,
+  .diary[data-view] .pane-map {
+    display: block;
+  }
+
+  .pane-list {
+    flex: 0 0 380px;
+    border-right: 1px solid var(--line);
+  }
+
+  .place-card {
+    left: 8px;
+    right: auto;
+    top: 8px;
+    bottom: auto;
+    width: 360px;
+    max-height: calc(100% - 16px);
+  }
+}

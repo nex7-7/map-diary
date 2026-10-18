@@ -24,3 +24,7 @@ Thumbs.db
 .vscode/*
 !.vscode/extensions.json
 .idea/
+
+# Web app: local map file for next dev, and the copied MapLibre worker
+apps/web/public/dev/
+apps/web/public/map/maplibre/

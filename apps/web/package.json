@@ -4,26 +4,33 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "next dev",
-    "build": "next build",
+    "dev": "node scripts/copy-maplibre-worker.mjs && next dev",
+    "build": "node scripts/copy-maplibre-worker.mjs && next build",
     "start": "next start",
     "typecheck": "tsc --noEmit",
     "preview": "opennextjs-cloudflare build && opennextjs-cloudflare preview",
     "deploy": "opennextjs-cloudflare build && opennextjs-cloudflare deploy",
-    "cf-typegen": "wrangler types --env-interface CloudflareEnv cloudflare-env.d.ts"
+    "cf-typegen": "wrangler types --env-interface CloudflareEnv cloudflare-env.d.ts",
+    "test": "vitest run",
+    "map:dev": "scripts/dev-map-file.sh"
   },
   "dependencies": {
     "@map-diary/crypto": "workspace:*",
+    "@protomaps/basemaps": "5.7.2",
+    "maplibre-gl": "6.12.0",
     "next": "16.4.2",
+    "pmtiles": "4.5.0",
     "react": "19.3.1",
     "react-dom": "19.3.1"
   },
   "devDependencies": {
     "@opennextjs/cloudflare": "1.20.12",
+    "@types/geojson": "7946.0.16",
     "@types/node": "22.20.5",
     "@types/react": "19.3.0",
     "@types/react-dom": "19.3.0",
     "typescript": "5.9.3",
+    "vitest": "4.1.12",
     "wrangler": "4.151.1"
   }
 }
