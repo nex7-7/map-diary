@@ -32,6 +32,7 @@ Signed routes need the `X-Device-Id`, `X-Timestamp` and `X-Signature` headers fr
 | `POST /api/resolver/expand` | none | Expands a short Google Maps link to the full URL |
 | `GET /api/resolver/pending` | `RESOLVER_TOKEN` | The resolver's list of pending jobs |
 | `POST /api/resolver/jobs/:id/resolution` | `RESOLVER_TOKEN` | The resolver's answer, checked and sealed to the job's key |
+| `POST /api/mcp/:token`, `POST /api/mcp` | `RESOLVER_TOKEN` in the path, or as a Bearer header | MCP server for the resolver: `get_pending_jobs` and `submit_resolution` (see docs/mcp-resolver.md) |
 
 libsodium cannot compile its embedded WebAssembly inside workerd, so `pnpm run sodium-wasm` (run automatically before dev, test, typecheck, build and deploy) extracts the binary from the installed libsodium into `src/generated/`, and `src/sodium-wasm.ts` hands it over as a precompiled module.
 
