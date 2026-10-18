@@ -29,9 +29,12 @@ export function DiaryView({ source }: { source: DiarySource }) {
 
   useEffect(() => {
     let cancelled = false;
-    void source.load().then((s) => !cancelled && setSnapshot(s));
+    const load = () => void source.load().then((s) => !cancelled && setSnapshot(s));
+    load();
+    const off = source.subscribe(load);
     return () => {
       cancelled = true;
+      off();
     };
   }, [source]);
 

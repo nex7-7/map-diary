@@ -5,9 +5,14 @@ import type { DiarySnapshot, DiarySource, Status, StatusOpinion } from "./types"
 export function createFixtureSource(now: () => Date = () => new Date()): DiarySource {
   const snapshot = fixtureSnapshot();
   const current = () => structuredClone(snapshot);
+  const listeners = new Set<() => void>();
 
   return {
     load: async () => current(),
+    subscribe: (listener) => {
+      listeners.add(listener);
+      return () => listeners.delete(listener);
+    },
     setStatus: async (placeId: string, status: Status) => {
       const place = snapshot.places.find((p) => p.id === placeId);
       if (!place) throw new Error(`Unknown place ${placeId}`);
@@ -23,6 +28,7 @@ export function createFixtureSource(now: () => Date = () => new Date()): DiarySo
           boards: ["personal"], createdAt: stamp, updatedAt: stamp,
         });
       }
+      listeners.forEach((l) => l());
       return current();
     },
   };

@@ -100,11 +100,13 @@ export interface DiarySnapshot {
 }
 
 /**
- * The UI's only door to diary data. The fixture source implements it in memory;
- * the real one will read IndexedDB and write sealed envelopes.
+ * The UI's only door to diary data. `createFixtureSource` serves sample data in
+ * memory; `createItemsSource` serves the device's decrypted items.
  */
 export interface DiarySource {
   load(): Promise<DiarySnapshot>;
+  /** Calls `listener` whenever the data may have changed (local writes, sync pulls). */
+  subscribe(listener: () => void): () => void;
   /** Sets the device owner's status on a place, keeping its boards (Personal if new). */
   setStatus(placeId: string, status: Status): Promise<DiarySnapshot>;
 }
