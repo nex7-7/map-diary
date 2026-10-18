@@ -14,8 +14,8 @@ a plain JSON reply. `GET` and `DELETE` answer `405`.
 
 | URL | Auth |
 | --- | --- |
-| `https://map.snehilsinha.com/api/mcp/<RESOLVER_TOKEN>` | token in the path, for claude.ai connectors (they take a URL, not headers) |
-| `https://map.snehilsinha.com/api/mcp` | `Authorization: Bearer <RESOLVER_TOKEN>`, for clients that can send headers |
+| `https://map.snehilsinha.com/api/mcp` | `Authorization: Bearer <RESOLVER_TOKEN>` (use this; claude.ai connectors can send request headers) |
+| `https://map.snehilsinha.com/api/mcp/<RESOLVER_TOKEN>` | token in the path, only for clients that cannot send headers |
 
 | Tool | Input | Output |
 | --- | --- | --- |
@@ -24,8 +24,8 @@ a plain JSON reply. `GET` and `DELETE` answer `405`.
 
 `ResolvedPlace` is the format in [resolver.md](resolver.md#result-format).
 
-The token in the path is visible to anything that logs full URLs, including this Worker's
-own Cloudflare logs. Only the resolver queue sits behind it, so the worst case is someone
+Prefer the header: a token in the path is visible to anything that logs full URLs,
+including this Worker's own Cloudflare logs. Only the resolver queue sits behind it, so the worst case is someone
 answering or failing pending jobs. If it leaks, set a new token and update the connector.
 
 ## Setup (Snehil)
@@ -41,8 +41,9 @@ answering or failing pending jobs. If it leaks, set a new token and update the c
 2. **Deploy** the API Worker (`CI=1 pnpm run deploy` in `apps/api`).
 3. **Add the connector** in Claude: Settings → Connectors → Add custom connector.
    - Name: `Map diary resolver`
-   - URL: `https://map.snehilsinha.com/api/mcp/` followed by the token
-   - Leave the OAuth fields under Advanced settings empty.
+   - URL: `https://map.snehilsinha.com/api/mcp`
+   - Sign-in: No sign-in. Under Request headers, add `Authorization` with the value
+     `Bearer ` followed by the token (note the space).
    Then delete `resolver-token.txt`.
 4. **Try it** in a chat with the connector on: "List pending map diary jobs." An empty list
    means it works.
