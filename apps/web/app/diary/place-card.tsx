@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { categoryStyle, STATUS_LABELS } from "@/lib/places/categories";
 import { formatDistance, type ListedPlace } from "@/lib/places/filter";
 import type { DiarySnapshot, Opinion, Status } from "@/lib/places/types";
@@ -83,6 +84,7 @@ export function PlaceCard({ item, snapshot, onClose, onSetStatus }: Props) {
       </ul>
 
       <p className="links">
+        <Link href={`/place#${encodeURIComponent(place.id)}`}>Place page</Link>
         <a href={mapsUrl} target="_blank" rel="noreferrer noopener">
           Open in Google Maps
         </a>
