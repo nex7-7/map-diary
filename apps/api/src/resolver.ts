@@ -122,7 +122,7 @@ export const requireResolver = createMiddleware<ResolverEnv>(async (c, next) => 
   await next();
 });
 
-function tokensMatch(given: string, expected: string): boolean {
+export function tokensMatch(given: string, expected: string): boolean {
   const enc = new TextEncoder();
   const a = enc.encode(given);
   const b = enc.encode(expected);

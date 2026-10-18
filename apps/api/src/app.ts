@@ -4,6 +4,7 @@ import { AUTH_HEADERS } from "@map-diary/crypto";
 import { accounts, me } from "./accounts";
 import { backupFetch, backupWrite } from "./backup";
 import { envelopes } from "./envelopes";
+import { mcp } from "./mcp";
 import { resolverJobs, resolverWork } from "./resolver";
 import { tiles } from "./tiles";
 
@@ -36,6 +37,7 @@ app.route("/", me);
 app.route("/", backupFetch);
 app.route("/", backupWrite);
 app.route("/", envelopes);
+app.route("/", mcp);
 app.route("/", resolverWork);
 app.route("/", resolverJobs);
 app.route("/", tiles);
