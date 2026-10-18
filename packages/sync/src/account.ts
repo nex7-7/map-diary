@@ -11,15 +11,18 @@ import {
   parseRecoveryPhrase,
   randomId,
   ready,
+  fromBase64,
   toBase64,
+  unwrapKeyFromMember,
   wrapKeyForMember,
   type AccountKeys,
   type BoardKey,
+  type RecoveredAccount,
   type IdentityKeys,
   type KdfParams,
 } from "@map-diary/crypto";
 import { ApiError, NetworkError, type Api, type DeviceBody, type KeyBackupBody, type Signer } from "./api";
-import { decodeKeyBundle, encodeKeyBundle, type DeviceState, type KeyBundle } from "./device";
+import { decodeKeyBundle, encodeKeyBundle, type DeviceState, type KeyBundle, type StoredAccountBoxKeys } from "./device";
 
 export const PASSPHRASE_MIN_LENGTH = 12;
 
@@ -111,16 +114,21 @@ export async function prepareSetup(options: SetupOptions): Promise<PreparedSetup
   const kdf = options.kdf ?? defaultKdfParams();
   const { seed, phrase } = generateRecoveryPhrase();
   const account = deriveAccount(seed);
+  const accountBox = account.accountBoxKeys(1);
   const personal = account.personalBoardKey(1);
   const identity = generateIdentity();
   const deviceId = randomId();
 
   const body = {
-    account: { id: account.accountId, signPublicKey: toBase64(account.accountKeys.signPublicKey) },
+    account: {
+      id: account.accountId,
+      signPublicKey: toBase64(account.accountKeys.signPublicKey),
+      boxPublicKey: toBase64(accountBox.publicKey),
+    },
     device: deviceBody(account.accountId, deviceId, identity, account.accountKeys),
-    personalBoard: { id: personal.boardId, wrappedKey: toBase64(wrapKeyForMember(personal.key, identity.boxPublicKey)) },
+    personalBoard: { id: personal.boardId, wrappedKey: toBase64(wrapKeyForMember(personal.key, accountBox.publicKey)) },
     keyBackup: backupBody(
-      { v: 1, recoverySeed: seed, accountId: account.accountId, personalBoardId: personal.boardId, boardKeys: [personal] },
+      { v: 2, recoverySeed: seed, accountId: account.accountId, personalBoardId: personal.boardId },
       options.passphrase,
       kdf,
     ),
@@ -135,11 +143,12 @@ export async function prepareSetup(options: SetupOptions): Promise<PreparedSetup
         throw asSetupError(err);
       }
       return {
-        v: 1,
+        v: 2,
         accountId: account.accountId,
         deviceId,
         kind: "web",
         identity,
+        accountBox,
         personalBoardId: personal.boardId,
         boardKeys: [personal],
         createdAt: Date.now(),
@@ -149,47 +158,58 @@ export async function prepareSetup(options: SetupOptions): Promise<PreparedSetup
 }
 
 /**
- * Registers a fresh device on the account, then gives it every board key it can: the server
- * says which boards and versions are current, and `keyFor` supplies the key.
+ * Registers a fresh device on the account, then opens every board key the account holds.
+ * Board keys are wrapped to the account's box key, which the recovery seed derives at every
+ * version, so the device needs nothing but the seed.
  */
 async function registerDevice(
   api: Api,
-  accountId: string,
-  personalBoardId: string,
-  account: AccountKeys,
-  keyFor: (boardId: string, version: number) => BoardKey | undefined,
+  account: RecoveredAccount,
   notFound: SetupErrorCode,
 ): Promise<DeviceState> {
   const identity = generateIdentity();
   const deviceId = randomId();
   const signer = signerOf(deviceId, identity);
   try {
-    await api.registerDevice({ accountId, device: deviceBody(accountId, deviceId, identity, account), boardKeys: [] }, signer);
+    const device = deviceBody(account.accountId, deviceId, identity, account.accountKeys);
+    await api.registerDevice({ accountId: account.accountId, device }, signer);
   } catch (err) {
     throw asSetupError(err, notFound);
   }
 
+  let accountBox: StoredAccountBoxKeys;
   const boardKeys: BoardKey[] = [];
   try {
     const me = await api.me(signer);
+    accountBox = account.accountBoxKeys(me.account.boxKeyVersion);
+    const boxes = new Map<number, StoredAccountBoxKeys>([[accountBox.version, accountBox]]);
     for (const board of me.boards) {
-      const key = keyFor(board.id, board.keyVersion);
-      if (key) boardKeys.push(key);
-    }
-    if (boardKeys.length > 0) {
-      await api.putBoardKeys(
-        boardKeys.map((k) => ({
-          boardId: k.boardId,
-          keyVersion: k.version,
-          wrappedKey: toBase64(wrapKeyForMember(k.key, identity.boxPublicKey)),
-        })),
-        signer,
-      );
+      for (const k of board.keys) {
+        let box = boxes.get(k.accountKeyVersion);
+        if (!box) {
+          box = account.accountBoxKeys(k.accountKeyVersion);
+          boxes.set(box.version, box);
+        }
+        const key = unwrapKeyFromMember(fromBase64(k.wrappedKey), { boxPublicKey: box.publicKey, boxSecretKey: box.secretKey });
+        boardKeys.push({ boardId: board.id, version: k.keyVersion, key });
+      }
     }
   } catch (err) {
     throw asSetupError(err);
   }
-  return { v: 1, accountId, deviceId, kind: "web", identity, personalBoardId, boardKeys, createdAt: Date.now() };
+  // The personal board key is also derivable, in case its wrapped copy is missing.
+  if (!boardKeys.some((k) => k.boardId === account.personalBoardId)) boardKeys.push(account.personalBoardKey(1));
+  return {
+    v: 2,
+    accountId: account.accountId,
+    deviceId,
+    kind: "web",
+    identity,
+    accountBox,
+    personalBoardId: account.personalBoardId,
+    boardKeys,
+    createdAt: Date.now(),
+  };
 }
 
 /** Signs this device in with the passphrase, from the key backup on the server. */
@@ -204,11 +224,7 @@ export async function signInWithPassphrase(api: Api, passphrase: string): Promis
     if (err instanceof CryptoError && err.code === "bad_backup") throw new SetupError("wrong_passphrase");
     throw asSetupError(err, "wrong_passphrase");
   }
-  const account = deriveAccount(bundle.recoverySeed);
-  const keyFor = (boardId: string, version: number) =>
-    bundle.boardKeys.find((k) => k.boardId === boardId && k.version === version) ??
-    (boardId === account.personalBoardId ? account.personalBoardKey(version) : undefined);
-  return registerDevice(api, bundle.accountId, bundle.personalBoardId, account.accountKeys, keyFor, "wrong_passphrase");
+  return registerDevice(api, deriveAccount(bundle.recoverySeed), "wrong_passphrase");
 }
 
 export interface RecoveryOptions {
@@ -220,8 +236,7 @@ export interface RecoveryOptions {
 
 /**
  * Signs this device in with the recovery phrase and replaces the key backup under a new
- * passphrase. The new backup holds only what the phrase can derive (the account and the
- * personal board); keys for shared boards are granted again by their members.
+ * passphrase. The phrase derives the account box key, so every board comes back.
  */
 export async function signInWithRecoveryPhrase(api: Api, options: RecoveryOptions): Promise<DeviceState> {
   await ready();
@@ -233,24 +248,9 @@ export async function signInWithRecoveryPhrase(api: Api, options: RecoveryOption
     throw new SetupError("invalid_recovery_phrase");
   }
   const account = deriveAccount(seed);
-  const keyFor = (boardId: string, version: number) =>
-    boardId === account.personalBoardId ? account.personalBoardKey(version) : undefined;
-  const device = await registerDevice(
-    api,
-    account.accountId,
-    account.personalBoardId,
-    account.accountKeys,
-    keyFor,
-    "unknown_recovery_phrase",
-  );
+  const device = await registerDevice(api, account, "unknown_recovery_phrase");
 
-  const bundle: KeyBundle = {
-    v: 1,
-    recoverySeed: seed,
-    accountId: account.accountId,
-    personalBoardId: account.personalBoardId,
-    boardKeys: device.boardKeys,
-  };
+  const bundle: KeyBundle = { v: 2, recoverySeed: seed, accountId: account.accountId, personalBoardId: account.personalBoardId };
   try {
     await api.putKeyBackup(
       backupBody(bundle, options.newPassphrase, options.kdf ?? defaultKdfParams()),

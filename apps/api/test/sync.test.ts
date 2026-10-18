@@ -92,20 +92,23 @@ function seal(d: Device, accountId: string, board: BoardKey, payload: string, ex
 }
 
 let account: AccountKeys;
+// The account's box keypair; board keys are wrapped to it. Only its box half is used here.
+let accountBox: IdentityKeys;
 const accountId = randomId();
 const laptop = newDevice();
 let personal: BoardKey;
 
 beforeAll(() => {
   account = generateAccountKeys();
+  accountBox = generateIdentity();
   personal = generateBoardKey(randomId());
 });
 
 describe("first-run setup", () => {
   const setupBody = () => ({
-    account: { id: accountId, signPublicKey: toBase64(account.signPublicKey) },
+    account: { id: accountId, signPublicKey: toBase64(account.signPublicKey), boxPublicKey: toBase64(accountBox.boxPublicKey) },
     device: deviceBody(accountId, laptop, account),
-    personalBoard: { id: personal.boardId, wrappedKey: toBase64(wrapKeyForMember(personal.key, laptop.keys.boxPublicKey)) },
+    personalBoard: { id: personal.boardId, wrappedKey: toBase64(wrapKeyForMember(personal.key, accountBox.boxPublicKey)) },
     keyBackup: {
       lookup: LOOKUP,
       backup: createKeyBackup(encoder.encode("bundle"), "correct horse", FAST_KDF),
@@ -129,6 +132,12 @@ describe("first-run setup", () => {
     expect(res.status).toBe(400);
   });
 
+  it("needs the account's box public key", async () => {
+    const body = setupBody();
+    const { boxPublicKey: _, ...noBox } = body.account;
+    expect((await call("/api/accounts", { body: { ...body, account: noBox }, device: laptop })).status).toBe(400);
+  });
+
   it("creates the admin account, device, personal board and backup", async () => {
     const res = await call("/api/accounts", { body: setupBody(), device: laptop });
     expect(res.status).toBe(201);
@@ -137,19 +146,20 @@ describe("first-run setup", () => {
 
   it("closes registration once an account exists", async () => {
     const d = newDevice();
-    const body = { ...setupBody(), account: { id: randomId(), signPublicKey: toBase64(account.signPublicKey) } };
+    const body = { ...setupBody(), account: { ...setupBody().account, id: randomId() } };
     body.device = deviceBody(body.account.id, d, account);
     const res = await call("/api/accounts", { body, device: d });
     expect(res.status).toBe(403);
   });
 
-  it("returns the device's boards and wrapped keys from /me", async () => {
+  it("returns the account's boards and keys wrapped to the account from /me", async () => {
     const res = await call("/api/me", { device: laptop });
     expect(res.status).toBe(200);
-    expect(res.json.account).toEqual({ id: accountId, isAdmin: true });
+    expect(res.json.account).toEqual({ id: accountId, isAdmin: true, boxPublicKey: toBase64(accountBox.boxPublicKey), boxKeyVersion: 1 });
     const [board] = res.json.boards;
     expect(board).toMatchObject({ id: personal.boardId, kind: "personal", keyVersion: 1 });
-    expect(unwrapKeyFromMember(fromBase64(board.keys[0].wrappedKey), laptop.keys)).toEqual(personal.key);
+    expect(board.keys[0].accountKeyVersion).toBe(1);
+    expect(unwrapKeyFromMember(fromBase64(board.keys[0].wrappedKey), accountBox)).toEqual(personal.key);
     expect(res.json.devices.map((d: { id: string }) => d.id)).toEqual([laptop.id]);
   });
 });
@@ -277,22 +287,20 @@ describe("second device sign-in", () => {
     expect(new TextDecoder().decode(openKeyBackup(res.json.backup, "correct horse"))).toBe("bundle");
   });
 
-  it("registers a device authorised by the account key, with its board keys", async () => {
-    const boardKeys = [
-      { boardId: personal.boardId, keyVersion: 1, wrappedKey: toBase64(wrapKeyForMember(personal.key, phone.keys.boxPublicKey)) },
-    ];
+  it("registers a device authorised by the account key, which sees the account's board keys", async () => {
     const forged = deviceBody(accountId, phone, generateAccountKeys(), "android");
-    expect((await call("/api/devices", { body: { accountId, device: forged, boardKeys }, device: phone })).status).toBe(403);
+    expect((await call("/api/devices", { body: { accountId, device: forged }, device: phone })).status).toBe(403);
 
     const res = await call("/api/devices", {
-      body: { accountId, device: deviceBody(accountId, phone, account, "android"), boardKeys },
+      body: { accountId, device: deviceBody(accountId, phone, account, "android") },
       device: phone,
     });
     expect(res.status).toBe(201);
 
+    // No keys were stored for the phone: it opens the same account-wrapped key as the laptop.
     const me = await call("/api/me", { device: phone });
     expect(me.json.devices).toHaveLength(2);
-    expect(unwrapKeyFromMember(fromBase64(me.json.boards[0].keys[0].wrappedKey), phone.keys)).toEqual(personal.key);
+    expect(unwrapKeyFromMember(fromBase64(me.json.boards[0].keys[0].wrappedKey), accountBox)).toEqual(personal.key);
     // The phone sees what the laptop wrote.
     const pull = await call("/api/sync?since=0", { device: phone });
     expect(pull.json.envelopes.length).toBeGreaterThan(0);

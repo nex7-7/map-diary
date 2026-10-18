@@ -1,5 +1,5 @@
 import type { Envelope } from "@map-diary/crypto";
-import type { DeviceState } from "./device";
+import { isCurrentDeviceState, type DeviceState } from "./device";
 import { shouldReplace, type DiaryItem, type DiaryStorage, type PulledPage } from "./storage";
 
 export const IDB_NAME = "map-diary";
@@ -70,7 +70,9 @@ export class IdbStorage implements DiaryStorage {
   }
 
   async loadDevice() {
-    return this.read<DeviceState | undefined>(DEVICE, (s) => s.get(SELF) as IDBRequest<DeviceState | undefined>);
+    const stored = await this.read<unknown>(DEVICE, (s) => s.get(SELF) as IDBRequest<unknown>);
+    // An older device format cannot unwrap account-wrapped board keys; it signs in again.
+    return isCurrentDeviceState(stored) ? stored : undefined;
   }
 
   async saveDevice(device: DeviceState) {

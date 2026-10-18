@@ -36,11 +36,12 @@ describe.each(implementations)("%s", (_name, make) => {
     const s = await make();
     expect(await s.loadDevice()).toBeUndefined();
     const device: DeviceState = {
-      v: 1,
+      v: 2,
       accountId: "acct",
       deviceId: "dev",
       kind: "web",
       identity: generateIdentity(),
+      accountBox: { version: 1, publicKey: new Uint8Array(32).fill(1), secretKey: new Uint8Array(32).fill(2) },
       personalBoardId: "b1",
       boardKeys: [{ boardId: "b1", version: 1, key: new Uint8Array(32).fill(3) }],
       createdAt: 5,
@@ -48,6 +49,11 @@ describe.each(implementations)("%s", (_name, make) => {
     await s.saveDevice(device);
     expect(await s.loadDevice()).toEqual(device);
     await s.clear();
+    expect(await s.loadDevice()).toBeUndefined();
+
+    // A device stored before board keys were wrapped per account has to sign in again.
+    const { accountBox: _, ...old } = device;
+    await s.saveDevice({ ...old, v: 1 } as unknown as DeviceState);
     expect(await s.loadDevice()).toBeUndefined();
   });
 

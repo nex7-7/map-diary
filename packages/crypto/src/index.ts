@@ -57,6 +57,7 @@ export {
   parseRecoveryPhrase,
   deriveAccount,
   type RecoveredAccount,
+  type AccountBoxKeys,
 } from "./recovery";
 export {
   RESOLVER_RESULT_VERSION,

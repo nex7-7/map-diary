@@ -10,18 +10,18 @@ beforeAll(async () => {
 describe("key bundle", () => {
   it("round-trips and refuses anything else", () => {
     const bundle: KeyBundle = {
-      v: 1,
+      v: 2,
       recoverySeed: new Uint8Array(16).fill(1),
       accountId: "acct",
       personalBoardId: "b1",
-      boardKeys: [{ boardId: "b1", version: 2, key: new Uint8Array(32).fill(9) }],
     };
     expect(decodeKeyBundle(encodeKeyBundle(bundle))).toEqual(bundle);
     const enc = new TextEncoder();
     expect(() => decodeKeyBundle(enc.encode("bundle"))).toThrow();
     expect(() => decodeKeyBundle(enc.encode(JSON.stringify({ v: 2 })))).toThrow();
+    // A v1 bundle (board keys inside, before they were wrapped per account) is refused.
     expect(() =>
-      decodeKeyBundle(enc.encode(JSON.stringify({ v: 1, recoverySeed: "AQ", accountId: "a", personalBoardId: "b", boardKeys: [{}] }))),
+      decodeKeyBundle(enc.encode(JSON.stringify({ v: 1, recoverySeed: "AQ", accountId: "a", personalBoardId: "b", boardKeys: [] }))),
     ).toThrow();
   });
 });
