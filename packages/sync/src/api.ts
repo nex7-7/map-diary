@@ -55,9 +55,14 @@ export interface KeyBackupBody {
 }
 
 export interface MeResponse {
-  account: { id: string; isAdmin: boolean };
+  account: { id: string; isAdmin: boolean; boxPublicKey: string | null; boxKeyVersion: number };
   deviceId: string;
-  boards: { id: string; kind: string; keyVersion: number; keys: { keyVersion: number; wrappedKey: string }[] }[];
+  boards: {
+    id: string;
+    kind: string;
+    keyVersion: number;
+    keys: { keyVersion: number; accountKeyVersion: number; wrappedKey: string }[];
+  }[];
   devices: {
     id: string;
     kind: string;
@@ -148,7 +153,7 @@ export class Api {
 
   createAccount(
     body: {
-      account: { id: string; signPublicKey: string };
+      account: { id: string; signPublicKey: string; boxPublicKey: string };
       device: DeviceBody;
       personalBoard: { id: string; wrappedKey: string };
       keyBackup: KeyBackupBody;
@@ -158,7 +163,7 @@ export class Api {
     return this.call<{ accountId: string; deviceId: string; personalBoardId: string }>("POST", "/api/accounts", body, signer);
   }
 
-  registerDevice(body: { accountId: string; device: DeviceBody; boardKeys: WrappedBoardKey[] }, signer: Signer) {
+  registerDevice(body: { accountId: string; device: DeviceBody }, signer: Signer) {
     return this.call<{ accountId: string; deviceId: string }>("POST", "/api/devices", body, signer);
   }
 

@@ -1,7 +1,7 @@
 // The device-side flows in @map-diary/sync, run against the real Worker and a local D1.
-import { exports } from "cloudflare:workers";
+import { env, exports } from "cloudflare:workers";
 import { describe, expect, it } from "vitest";
-import { ready } from "@map-diary/crypto";
+import { generateBoardKey, randomId, ready, toBase64, wrapKeyForMember, type BoardKey } from "@map-diary/crypto";
 import {
   Api,
   Diary,
@@ -37,6 +37,7 @@ function diaryOf(device: DeviceState) {
 describe("device setup, sign-in and sync", () => {
   let phone: DeviceState;
   let phrase: string;
+  let group: BoardKey;
 
   it("sets up the account on the first device", async () => {
     const setup = await prepareSetup({ passphrase: PASSPHRASE, kdf: FAST_KDF });
@@ -92,6 +93,25 @@ describe("device setup, sign-in and sync", () => {
     expect((await c.listItems()).map((i) => [i.id, i.payload])).toEqual([[status.id, { status: "visited" }]]);
   });
 
+  it("gives a new device every board key wrapped to the account", async () => {
+    // Groups arrive in a later phase; create one directly so the account is in two boards.
+    group = generateBoardKey(randomId());
+    const now = Date.now();
+    await env.DB.batch([
+      env.DB.prepare("INSERT INTO boards (id, kind, key_version, created_at) VALUES (?, 'group', 1, ?)").bind(group.boardId, now),
+      env.DB.prepare("INSERT INTO board_members (board_id, account_id, joined_at) VALUES (?, ?, ?)").bind(group.boardId, phone.accountId, now),
+    ]);
+    // One wrap for the whole account, written by one device.
+    await api.putBoardKeys(
+      [{ boardId: group.boardId, keyVersion: 1, wrappedKey: toBase64(wrapKeyForMember(group.key, phone.accountBox.publicKey)) }],
+      { deviceId: phone.deviceId, signSecretKey: phone.identity.signSecretKey },
+    );
+
+    const tablet = await signInWithPassphrase(api, PASSPHRASE);
+    expect(tablet.accountBox.publicKey).toEqual(phone.accountBox.publicKey);
+    expect(tablet.boardKeys.find((k) => k.boardId === group.boardId)?.key).toEqual(group.key);
+  });
+
   it("signs in with the recovery phrase and replaces the passphrase", async () => {
     await expectSetupError(
       signInWithRecoveryPhrase(api, { recoveryPhrase: "0000-0000", newPassphrase: "new long phrase", kdf: FAST_KDF }),
@@ -105,7 +125,8 @@ describe("device setup, sign-in and sync", () => {
       kdf: FAST_KDF,
     });
     expect(restored.accountId).toBe(phone.accountId);
-    expect(restored.boardKeys.map((k) => k.boardId)).toEqual([phone.personalBoardId]);
+    // The phrase restores shared boards too, not just the personal one.
+    expect(restored.boardKeys.map((k) => k.boardId).sort()).toEqual([phone.personalBoardId, group.boardId].sort());
 
     const d = diaryOf(restored);
     await d.sync();

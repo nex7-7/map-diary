@@ -91,10 +91,23 @@ export function parseRecoveryPhrase(text: string): Uint8Array {
   return seed;
 }
 
+/**
+ * An account's X25519 keypair at one version. Board keys are wrapped to it (once per
+ * person, not per device), and each of the person's devices holds the secret half.
+ * Revoking a device moves the account to the next version.
+ */
+export interface AccountBoxKeys {
+  version: number;
+  publicKey: Uint8Array;
+  secretKey: Uint8Array;
+}
+
 /** Everything an account is made of, derived from its recovery seed. */
 export interface RecoveredAccount {
   accountId: string;
   accountKeys: AccountKeys;
+  /** The account's box keypair at a given version. */
+  accountBoxKeys: (version: number) => AccountBoxKeys;
   personalBoardId: string;
   /** The personal board key at a given version (rotation moves to the next version). */
   personalBoardKey: (version: number) => BoardKey;
@@ -104,6 +117,13 @@ export interface RecoveredAccount {
 const CTX_ACCOUNT_KEY = "mdacckey";
 const CTX_IDS = "mdids___";
 const CTX_PERSONAL = "mdperson";
+const CTX_ACCOUNT_BOX = "mdaccbox";
+
+function checkVersion(version: number, what: string): void {
+  if (!Number.isSafeInteger(version) || version < 1) {
+    throw new CryptoError("invalid_input", `${what} version must be a positive integer`);
+  }
+}
 
 export function deriveAccount(seed: Uint8Array): RecoveredAccount {
   const sodium = getSodium();
@@ -123,11 +143,16 @@ export function deriveAccount(seed: Uint8Array): RecoveredAccount {
   return {
     accountId,
     accountKeys: { signPublicKey: pair.publicKey, signSecretKey: pair.privateKey },
+    accountBoxKeys: (version: number): AccountBoxKeys => {
+      checkVersion(version, "Account key");
+      const boxSeed = sodium.crypto_kdf_derive_from_key(sodium.crypto_box_SEEDBYTES, version, CTX_ACCOUNT_BOX, master);
+      const box = sodium.crypto_box_seed_keypair(boxSeed);
+      sodium.memzero(boxSeed);
+      return { version, publicKey: box.publicKey, secretKey: box.privateKey };
+    },
     personalBoardId,
     personalBoardKey: (version: number): BoardKey => {
-      if (!Number.isSafeInteger(version) || version < 1) {
-        throw new CryptoError("invalid_input", "Board key version must be a positive integer");
-      }
+      checkVersion(version, "Board key");
       return {
         boardId: personalBoardId,
         version,

@@ -56,7 +56,11 @@ export function wrapKeyForMember(key: Uint8Array, memberBoxPublicKey: Uint8Array
   return getSodium().crypto_box_seal(key, memberBoxPublicKey);
 }
 
-export function unwrapKeyFromMember(wrapped: Uint8Array, identity: IdentityKeys): Uint8Array {
+/** Opens a key wrapped by `wrapKeyForMember`, with a device's or an account's box keypair. */
+export function unwrapKeyFromMember(
+  wrapped: Uint8Array,
+  identity: Pick<IdentityKeys, "boxPublicKey" | "boxSecretKey">,
+): Uint8Array {
   try {
     return getSodium().crypto_box_seal_open(wrapped, identity.boxPublicKey, identity.boxSecretKey);
   } catch {

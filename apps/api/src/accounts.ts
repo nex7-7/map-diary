@@ -36,8 +36,7 @@ function parseDevice(value: unknown): NewDevice | null {
   if (!isObject(value)) return null;
   const { id, kind, signPublicKey, boxPublicKey, authorization } = value;
   if (!isId(id) || !DEVICE_KINDS.includes(kind as DeviceKind)) return null;
-  if (!isB64(signPublicKey, PUBLIC_KEY_B64) || signPublicKey.length !== PUBLIC_KEY_B64) return null;
-  if (!isB64(boxPublicKey, PUBLIC_KEY_B64) || boxPublicKey.length !== PUBLIC_KEY_B64) return null;
+  if (!isPublicKey(signPublicKey) || !isPublicKey(boxPublicKey)) return null;
   if (!isB64(authorization, 100)) return null;
   return {
     id,
@@ -53,6 +52,10 @@ function parseBoardKey(value: unknown): NewBoardKey | null {
   const { boardId, keyVersion, wrappedKey } = value;
   if (!isId(boardId) || !isPositiveInt(keyVersion) || !isB64(wrappedKey, MAX_WRAPPED_KEY_B64)) return null;
   return { boardId, keyVersion, wrappedKey: fromBase64(wrappedKey) };
+}
+
+function isPublicKey(value: unknown): value is string {
+  return isB64(value, PUBLIC_KEY_B64) && value.length === PUBLIC_KEY_B64;
 }
 
 function parseBoardKeys(value: unknown): NewBoardKey[] | null {
@@ -94,14 +97,16 @@ function insertDevice(db: D1Database, accountId: string, d: NewDevice, now: numb
     .bind(d.id, accountId, d.kind, d.signPublicKey, d.boxPublicKey, now);
 }
 
-function insertBoardKey(db: D1Database, deviceId: string, k: NewBoardKey, now: number): D1PreparedStatement {
+/** A board key sealed to the account's box key, at the account's current box key version. */
+function insertBoardKey(db: D1Database, accountId: string, k: NewBoardKey, now: number): D1PreparedStatement {
   return db
     .prepare(
-      `INSERT INTO board_keys (board_id, key_version, device_id, wrapped_key, created_at)
-       VALUES (?, ?, ?, ?, ?)
-       ON CONFLICT (board_id, key_version, device_id) DO UPDATE SET wrapped_key = excluded.wrapped_key`,
+      `INSERT INTO board_keys (board_id, key_version, account_id, account_key_version, wrapped_key, created_at)
+       SELECT ?, ?, id, box_key_version, ?, ? FROM accounts WHERE id = ?
+       ON CONFLICT (board_id, key_version, account_id) DO UPDATE SET
+         account_key_version = excluded.account_key_version, wrapped_key = excluded.wrapped_key`,
     )
-    .bind(k.boardId, k.keyVersion, deviceId, k.wrappedKey, now);
+    .bind(k.boardId, k.keyVersion, k.wrappedKey, now, accountId);
 }
 
 /** Board keys may only be stored for boards the account is in, at the board's current version. */
@@ -123,7 +128,7 @@ export const accounts = new Hono<SignedEnv>();
 
 /**
  * First-run setup: creates the account (as admin), its first device, the personal board
- * with its key wrapped to that device, and the passphrase key backup. Open only while no
+ * with its key wrapped to the account's box key, and the passphrase key backup. Open only while no
  * account exists; later accounts arrive through invites.
  */
 accounts.post("/accounts", readBody, async (c) => {
@@ -131,14 +136,14 @@ accounts.post("/accounts", readBody, async (c) => {
   if (!isObject(body) || !isObject(body.account) || !isObject(body.personalBoard)) {
     return fail(c, 400, "bad_request");
   }
-  const { id: accountId, signPublicKey } = body.account;
+  const { id: accountId, signPublicKey, boxPublicKey } = body.account;
   const device = parseDevice(body.device);
   const { id: boardId, wrappedKey } = body.personalBoard;
   const backup = parseKeyBackupBody(body.keyBackup);
   if (
     !isId(accountId) ||
-    !isB64(signPublicKey, PUBLIC_KEY_B64) ||
-    signPublicKey.length !== PUBLIC_KEY_B64 ||
+    !isPublicKey(signPublicKey) ||
+    !isPublicKey(boxPublicKey) ||
     !device ||
     !isId(boardId) ||
     !isB64(wrappedKey, MAX_WRAPPED_KEY_B64) ||
@@ -160,16 +165,16 @@ accounts.post("/accounts", readBody, async (c) => {
       // Guarded again here so two racing first-run requests cannot both win.
       db
         .prepare(
-          `INSERT INTO accounts (id, is_admin, sign_public_key, created_at)
-           SELECT ?, 1, ?, ? WHERE NOT EXISTS (SELECT 1 FROM accounts)`,
+          `INSERT INTO accounts (id, is_admin, sign_public_key, box_public_key, box_key_version, created_at)
+           SELECT ?, 1, ?, ?, 1, ? WHERE NOT EXISTS (SELECT 1 FROM accounts)`,
         )
-        .bind(accountId, accountKey, now),
+        .bind(accountId, accountKey, fromBase64(boxPublicKey), now),
       insertDevice(db, accountId, device, now),
       db
         .prepare("INSERT INTO boards (id, kind, owner_account_id, key_version, created_at) VALUES (?, 'personal', ?, 1, ?)")
         .bind(boardId, accountId, now),
       db.prepare("INSERT INTO board_members (board_id, account_id, joined_at) VALUES (?, ?, ?)").bind(boardId, accountId, now),
-      insertBoardKey(db, device.id, { boardId, keyVersion: 1, wrappedKey: fromBase64(wrappedKey) }, now),
+      insertBoardKey(db, accountId, { boardId, keyVersion: 1, wrappedKey: fromBase64(wrappedKey) }, now),
       upsertKeyBackup(db, accountId, backup, now),
     ]);
   } catch {
@@ -180,16 +185,16 @@ accounts.post("/accounts", readBody, async (c) => {
 });
 
 /**
- * Signs a new device in. The device has already opened the passphrase backup, so it holds
- * the account key (to authorise itself) and the board keys (re-wrapped to its own key).
+ * Signs a new device in. The device has already opened the passphrase backup or the
+ * recovery phrase, so it holds the account key to authorise itself. Board keys are wrapped
+ * to the account, so the device needs nothing else stored.
  */
 accounts.post("/devices", readBody, async (c) => {
   const { body, rawBody } = c.var;
   if (!isObject(body)) return fail(c, 400, "bad_request");
   const { accountId } = body;
   const device = parseDevice(body.device);
-  const boardKeys = parseBoardKeys(body.boardKeys ?? []);
-  if (!isId(accountId) || !device || !boardKeys) return fail(c, 400, "bad_request");
+  if (!isId(accountId) || !device) return fail(c, 400, "bad_request");
   if (!signedByNewDevice(c.req.raw, rawBody, device)) return fail(c, 401, "unauthenticated");
 
   const account = await c.env.DB.prepare(
@@ -201,12 +206,9 @@ accounts.post("/devices", readBody, async (c) => {
   if (!deviceAuthorized(accountId, device, bytes(account.sign_public_key))) {
     return fail(c, 403, "forbidden");
   }
-  if (!(await boardKeysAllowed(c.env.DB, accountId, boardKeys))) return fail(c, 403, "board_not_allowed");
 
-  const now = Date.now();
-  const db = c.env.DB;
   try {
-    await db.batch([insertDevice(db, accountId, device, now), ...boardKeys.map((k) => insertBoardKey(db, device.id, k, now))]);
+    await insertDevice(c.env.DB, accountId, device, Date.now()).run();
   } catch {
     return fail(c, 409, "conflict");
   }
@@ -215,11 +217,12 @@ accounts.post("/devices", readBody, async (c) => {
 
 export const me = new Hono<AuthedEnv>();
 
-/** Everything a device needs after unlocking: its boards, its wrapped keys and the account's devices. */
+/** Everything a device needs after unlocking: the account's box key, boards, wrapped keys and devices. */
 me.get("/me", readBody, requireDevice, async (c) => {
   const { id: deviceId, accountId, isAdmin } = c.var.device;
   const db = c.env.DB;
-  const [boards, keys, devices] = await db.batch([
+  const [account, boards, keys, devices] = await db.batch([
+    db.prepare("SELECT box_public_key, box_key_version FROM accounts WHERE id = ?").bind(accountId),
     db
       .prepare(
         `SELECT b.id, b.kind, b.key_version FROM boards b
@@ -227,7 +230,9 @@ me.get("/me", readBody, requireDevice, async (c) => {
           WHERE m.account_id = ? ORDER BY b.created_at`,
       )
       .bind(accountId),
-    db.prepare("SELECT board_id, key_version, wrapped_key FROM board_keys WHERE device_id = ?").bind(deviceId),
+    db
+      .prepare("SELECT board_id, key_version, account_key_version, wrapped_key FROM board_keys WHERE account_id = ?")
+      .bind(accountId),
     db
       .prepare(
         `SELECT id, kind, sign_public_key, box_public_key, created_at, last_seen_at, revoked_at
@@ -237,7 +242,8 @@ me.get("/me", readBody, requireDevice, async (c) => {
   ]);
 
   type BoardRow = { id: string; kind: string; key_version: number };
-  type KeyRow = { board_id: string; key_version: number; wrapped_key: unknown };
+  type AccountRow = { box_public_key: unknown; box_key_version: number };
+  type KeyRow = { board_id: string; key_version: number; account_key_version: number; wrapped_key: unknown };
   type DeviceRow = {
     id: string;
     kind: string;
@@ -249,9 +255,15 @@ me.get("/me", readBody, requireDevice, async (c) => {
   };
   const keyRows = (keys?.results ?? []) as KeyRow[];
   const b64 = (v: unknown) => toBase64(bytes(v));
+  const acc = (account?.results?.[0] ?? null) as AccountRow | null;
 
   return c.json({
-    account: { id: accountId, isAdmin },
+    account: {
+      id: accountId,
+      isAdmin,
+      boxPublicKey: acc && acc.box_public_key !== null ? b64(acc.box_public_key) : null,
+      boxKeyVersion: acc?.box_key_version ?? 1,
+    },
     deviceId,
     boards: ((boards?.results ?? []) as BoardRow[]).map((b) => ({
       id: b.id,
@@ -259,7 +271,7 @@ me.get("/me", readBody, requireDevice, async (c) => {
       keyVersion: b.key_version,
       keys: keyRows
         .filter((k) => k.board_id === b.id)
-        .map((k) => ({ keyVersion: k.key_version, wrappedKey: b64(k.wrapped_key) })),
+        .map((k) => ({ keyVersion: k.key_version, accountKeyVersion: k.account_key_version, wrappedKey: b64(k.wrapped_key) })),
     })),
     devices: ((devices?.results ?? []) as DeviceRow[]).map((d) => ({
       id: d.id,
@@ -273,14 +285,14 @@ me.get("/me", readBody, requireDevice, async (c) => {
   });
 });
 
-/** Stores board keys wrapped to this device, for example after re-wrapping from the backup. */
+/** Stores board keys wrapped to this device's account box key. */
 me.put("/board-keys", readBody, requireDevice, async (c) => {
   const body = c.var.body;
   const keys = parseBoardKeys(isObject(body) ? body.boardKeys : undefined);
   if (!keys || keys.length === 0) return fail(c, 400, "bad_request");
-  const { id: deviceId, accountId } = c.var.device;
+  const { accountId } = c.var.device;
   if (!(await boardKeysAllowed(c.env.DB, accountId, keys))) return fail(c, 403, "board_not_allowed");
   const now = Date.now();
-  await c.env.DB.batch(keys.map((k) => insertBoardKey(c.env.DB, deviceId, k, now)));
+  await c.env.DB.batch(keys.map((k) => insertBoardKey(c.env.DB, accountId, k, now)));
   return c.json({ stored: keys.length });
 });

@@ -1,5 +1,5 @@
 import type { Envelope, EnvelopeType, JsonValue } from "@map-diary/crypto";
-import type { DeviceState } from "./device";
+import { isCurrentDeviceState, type DeviceState } from "./device";
 
 /** A decrypted item as the device keeps it: the envelope's metadata plus its payload. */
 export interface DiaryItem {
@@ -71,7 +71,7 @@ export class MemoryStorage implements DiaryStorage {
   private cursor = 0;
 
   async loadDevice() {
-    return this.device;
+    return isCurrentDeviceState(this.device) ? this.device : undefined;
   }
 
   async saveDevice(device: DeviceState) {

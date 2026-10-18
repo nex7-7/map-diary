@@ -1,19 +1,34 @@
 import { fromBase64, toBase64, type BoardKey, type IdentityKeys } from "@map-diary/crypto";
 
+/** An account box keypair as a device stores it. */
+export interface StoredAccountBoxKeys {
+  version: number;
+  publicKey: Uint8Array;
+  secretKey: Uint8Array;
+}
+
 /**
- * What a signed-in device keeps on itself. The account key is not here: it lives only in
- * the passphrase backup and is needed again only to authorise another device.
+ * What a signed-in device keeps on itself. The account signing key is not here: it lives
+ * only in the passphrase backup and is needed again only to authorise another device. The
+ * account box key is here, because every board key is wrapped to it.
  */
 export interface DeviceState {
-  v: 1;
+  v: 2;
   accountId: string;
   deviceId: string;
   kind: "web";
   identity: IdentityKeys;
+  /** The account's box keypair, current version; board keys are wrapped to its public half. */
+  accountBox: StoredAccountBoxKeys;
   personalBoardId: string;
   /** Every board key version this device holds. */
   boardKeys: BoardKey[];
   createdAt: number;
+}
+
+/** A stored device from an older format (before board keys were wrapped per account) is not usable. */
+export function isCurrentDeviceState(value: unknown): value is DeviceState {
+  return typeof value === "object" && value !== null && (value as { v?: unknown }).v === 2;
 }
 
 /** The newest key this device holds for a board, used for new writes. */
@@ -30,24 +45,21 @@ export function boardKeyLookup(device: DeviceState): (boardId: string, version: 
 }
 
 /**
- * The secret inside the passphrase backup. The recovery seed derives the account key and the
- * personal board key; `boardKeys` also carries keys that cannot be derived (master and group
- * keys, from Phase 4).
+ * The secret inside the passphrase backup. The recovery seed derives everything else: the
+ * account keys, and through the account box key every board key stored on the server.
  */
 export interface KeyBundle {
-  v: 1;
+  v: 2;
   recoverySeed: Uint8Array;
   accountId: string;
   personalBoardId: string;
-  boardKeys: BoardKey[];
 }
 
 interface KeyBundleJson {
-  v: 1;
+  v: 2;
   recoverySeed: string;
   accountId: string;
   personalBoardId: string;
-  boardKeys: { boardId: string; version: number; key: string }[];
 }
 
 const encoder = new TextEncoder();
@@ -55,11 +67,10 @@ const decoder = new TextDecoder("utf-8", { fatal: true, ignoreBOM: false });
 
 export function encodeKeyBundle(bundle: KeyBundle): Uint8Array {
   const json: KeyBundleJson = {
-    v: 1,
+    v: 2,
     recoverySeed: toBase64(bundle.recoverySeed),
     accountId: bundle.accountId,
     personalBoardId: bundle.personalBoardId,
-    boardKeys: bundle.boardKeys.map((k) => ({ boardId: k.boardId, version: k.version, key: toBase64(k.key) })),
   };
   return encoder.encode(JSON.stringify(json));
 }
@@ -68,7 +79,7 @@ function isString(v: unknown): v is string {
   return typeof v === "string" && v.length > 0;
 }
 
-/** Parses a decrypted bundle; throws on anything that is not exactly a v1 bundle. */
+/** Parses a decrypted bundle; throws on anything that is not exactly a v2 bundle. */
 export function decodeKeyBundle(bytes: Uint8Array): KeyBundle {
   const bad = () => new Error("Key backup holds an unrecognised bundle");
   let raw: unknown;
@@ -78,16 +89,7 @@ export function decodeKeyBundle(bytes: Uint8Array): KeyBundle {
     throw bad();
   }
   if (typeof raw !== "object" || raw === null) throw bad();
-  const { v, recoverySeed, accountId, personalBoardId, boardKeys } = raw as Record<string, unknown>;
-  if (v !== 1 || !isString(recoverySeed) || !isString(accountId) || !isString(personalBoardId)) throw bad();
-  if (!Array.isArray(boardKeys)) throw bad();
-  const keys: BoardKey[] = boardKeys.map((k: unknown) => {
-    if (typeof k !== "object" || k === null) throw bad();
-    const { boardId, version, key } = k as Record<string, unknown>;
-    if (!isString(boardId) || typeof version !== "number" || !Number.isSafeInteger(version) || version < 1 || !isString(key)) {
-      throw bad();
-    }
-    return { boardId, version, key: fromBase64(key) };
-  });
-  return { v: 1, recoverySeed: fromBase64(recoverySeed), accountId, personalBoardId, boardKeys: keys };
+  const { v, recoverySeed, accountId, personalBoardId } = raw as Record<string, unknown>;
+  if (v !== 2 || !isString(recoverySeed) || !isString(accountId) || !isString(personalBoardId)) throw bad();
+  return { v: 2, recoverySeed: fromBase64(recoverySeed), accountId, personalBoardId };
 }
