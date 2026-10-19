@@ -226,6 +226,11 @@
   padding: 0;
 }
 
+.roundButton[aria-pressed="true"] {
+  border-color: var(--ink);
+  box-shadow: inset 0 0 0 1px var(--ink);
+}
+
 .iconButton {
   display: inline-grid;
   place-items: center;
@@ -398,6 +403,30 @@ textarea.input {
   height: 56px;
   font-size: 22px;
   font-family: var(--serif);
+}
+
+.avatar.small {
+  width: 22px;
+  height: 22px;
+  border: 0;
+  font-size: 10px;
+}
+
+.avatar.small.emoji {
+  font-size: 12px;
+}
+
+img.avatar {
+  object-fit: cover;
+  background: var(--line);
+}
+
+.avatar.emoji {
+  font-size: 18px;
+}
+
+.avatar.big.emoji {
+  font-size: 30px;
 }
 
 .tone0 {

@@ -130,7 +130,7 @@ function GroupCard({
           </div>
           <span className={s.faces}>
             {members.slice(0, 5).map((m) => (
-              <Avatar key={m.accountId} id={m.accountId} name={m.name} />
+              <Avatar key={m.accountId} id={m.accountId} name={m.name} avatar={m.avatar} />
             ))}
           </span>
         </div>
@@ -143,7 +143,7 @@ function GroupCard({
               const you = m.accountId === me;
               return (
                 <li key={m.accountId} className={s.row} style={{ padding: "10px 0" }}>
-                  <Avatar id={m.accountId} name={m.name} />
+                  <Avatar id={m.accountId} name={m.name} avatar={m.avatar} />
                   <span className={s.rowText}>
                     <span className={s.plainName}>{m.name}</span>
                   </span>

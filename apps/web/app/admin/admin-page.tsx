@@ -17,7 +17,7 @@ import {
   type MemberView,
   type NewAppInvite,
 } from "@/lib/device";
-import { displayNames } from "@/lib/places/items-source";
+import { profilesOf } from "@/lib/places/items-source";
 import { Badge, Button, CloseButton, CopyCode, Icon, Sheet } from "@/lib/ui";
 
 /** `/admin`: app invites and members. The Worker refuses everyone but the admin. */
@@ -40,7 +40,8 @@ function Admin({ diary }: { diary: Diary }) {
   const [notes, setNotes] = useState<Record<string, string>>({});
   const [removing, setRemoving] = useState<{ member: MemberView; name: string } | null>(null);
   const items = useDiaryItems(diary);
-  const names = useMemo(() => displayNames(items), [items]);
+  const profiles = useMemo(() => profilesOf(items), [items]);
+  const names = useMemo(() => new Map([...profiles].map(([id, p]) => [id, p.name])), [profiles]);
 
   const load = useCallback(() => {
     setNotes(inviteNotes());
@@ -87,7 +88,7 @@ function Admin({ diary }: { diary: Diary }) {
             const name = nameOf(m);
             return (
               <li key={m.id} className={s.row} style={{ padding: "10px 0" }}>
-                <Avatar id={m.id} name={name} />
+                <Avatar id={m.id} name={name} avatar={profiles.get(m.id)?.avatar} />
                 <span className={s.rowText}>
                   <span className={s.rowTitle}>
                     <span className={s.plainName}>{name}</span>

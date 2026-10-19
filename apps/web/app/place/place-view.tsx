@@ -7,7 +7,8 @@ import { FactsEditor } from "@/app/_entries/facts-editor";
 import { BoardPicker, boardChoices, FollowBoards, StatusToggle, TagPicker } from "@/app/_entries/fields";
 import { useItems } from "@/app/_entries/use-items";
 import styles from "@/app/_entries/entries.module.css";
-import { BoardBadge, buttonClass, Icon, StatusDot } from "@/lib/ui";
+import { Avatar } from "@/app/_account/parts";
+import { BoardBadge, buttonClass, Icon } from "@/lib/ui";
 import { PlaceMap } from "./place-map";
 import p from "./place.module.css";
 import type { Diary } from "@/lib/device";
@@ -331,7 +332,7 @@ function Others<O extends Opinion>({ snapshot, me, opinions, render }: { snapsho
     <ul className={p.others}>
       {opinions.map((o) => (
         <li key={o.id}>
-          <StatusDot kind={o.kind === "status" ? "friend" : "pending"} small />
+          <Author snapshot={snapshot} id={o.authorId} />
           <span>
             <strong>{personName(snapshot, me, o)}</strong> {render(o)}
           </span>
@@ -381,6 +382,7 @@ function CommentRow({ comment, snapshot, mine, onEdit, onDelete }: CommentRowPro
         <>
           <p className={`quote ${p.commentText}`}>“{comment.text}”</p>
           <div className={p.byline}>
+            <Author snapshot={snapshot} id={comment.authorId} />
             {comment.viaClaude && (
               <span className={p.claude}>
                 <Icon name="sparkles" size="s" />
@@ -410,6 +412,11 @@ function CommentRow({ comment, snapshot, mine, onEdit, onDelete }: CommentRowPro
       )}
     </li>
   );
+}
+
+function Author({ snapshot, id }: { snapshot: DiarySnapshot; id: string }) {
+  const person = snapshot.people.find((x) => x.id === id);
+  return <Avatar small id={id} name={person?.name ?? "?"} avatar={person?.avatar} />;
 }
 
 function Badges({ snapshot, ids }: { snapshot: DiarySnapshot; ids: string[] }) {

@@ -1,3 +1,4 @@
+import type { AvatarPayload } from "./payloads";
 /**
  * What the map and list see: decrypted places and opinions, already limited to
  * what this device may read. Envelopes, keys and sync live elsewhere; a
@@ -24,6 +25,7 @@ export interface Board {
 export interface Person {
   id: string;
   name: string;
+  avatar?: AvatarPayload;
 }
 
 export interface LngLat {

@@ -4,6 +4,7 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 import { DiaryShell } from "@/app/_shell/diary-shell";
 import { DeviceGate, type Diary } from "@/lib/device";
+import type { AvatarPayload } from "@/lib/places/payloads";
 import { Icon, type IconName, type NavKey } from "@/lib/ui";
 import s from "./account.module.css";
 
@@ -65,14 +66,22 @@ export function IconTile({ name, tone, large = false }: { name: IconName; tone?:
   );
 }
 
-/** A round initial in one of four soft colours, picked from the id so a person keeps theirs. */
-export function Avatar({ name, id, big = false }: { name: string; id: string; big?: boolean }) {
+/**
+ * A person's picture: their photo, their emoji on its colour, or their initial on one of four
+ * soft colours picked from the id so a person keeps theirs.
+ */
+export function Avatar({ name, id, avatar, big = false, small = false }: { name: string; id: string; avatar?: AvatarPayload | undefined; big?: boolean; small?: boolean }) {
   let h = 0;
   for (const c of id) h = (h * 31 + c.charCodeAt(0)) >>> 0;
+  const tone = avatar?.kind === "emoji" ? avatar.tone : h % 4;
+  const cls = [s.avatar, s[`tone${tone}`], big && s.big, small && s.small, avatar?.kind === "emoji" && s.emoji].filter(Boolean).join(" ");
+  if (avatar?.kind === "photo") {
+    return <img className={[s.avatar, big && s.big, small && s.small].filter(Boolean).join(" ")} src={avatar.dataUrl} alt="" aria-hidden />;
+  }
   const initial = [...name.trim()][0]?.toUpperCase() ?? "?";
   return (
-    <span className={[s.avatar, s[`tone${h % 4}`], big && s.big].filter(Boolean).join(" ")} aria-hidden>
-      {initial}
+    <span className={cls} aria-hidden>
+      {avatar?.kind === "emoji" ? avatar.emoji : initial}
     </span>
   );
 }

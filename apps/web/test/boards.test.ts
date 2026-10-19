@@ -40,7 +40,9 @@ const items = [
   friendTag,
   myTag,
   item("profile", FRIEND, ["board-master"], { name: "  Riya‮ " }),
-  item("profile", FRIEND, ["board-master"], { name: "Riya" }),
+  item("profile", FRIEND, ["board-master"], { name: "Riya", avatar: { kind: "emoji", emoji: "🌊", tone: 1 } }),
+  // Someone else's picture as SVG: dropped, the name kept.
+  item("profile", OUTSIDER, ["board-master"], { name: "Sam", avatar: { kind: "photo", dataUrl: "data:image/svg+xml;base64,PHN2Zz4=" } }),
   item("status", FRIEND, ["board-master"], { status: "visited" }, kyani.id),
   item("comment", FRIEND, ["board-duo"], { text: "Ask for the berry soda" }, kyani.id),
   item("status", OUTSIDER, ["board-master"], { status: "want" }, kyani.id),
@@ -54,11 +56,11 @@ const snap = snapshotFromItems(items, ME, PERSONAL, boards);
 const place = snap.places.find((p) => p.id === kyani.id)!;
 
 describe("board rules", () => {
-  it("names people from their latest profile and numbers the rest", () => {
+  it("names people and their pictures from their latest profile", () => {
     expect(snap.people).toEqual([
       { id: ME, name: "Me" },
-      { id: FRIEND, name: "Riya" },
-      { id: OUTSIDER, name: "Friend 1" },
+      { id: FRIEND, name: "Riya", avatar: { kind: "emoji", emoji: "🌊", tone: 1 } },
+      { id: OUTSIDER, name: "Sam" },
     ]);
   });
 
