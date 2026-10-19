@@ -3,7 +3,7 @@
 import QRCode from "qrcode";
 import { useCallback, useEffect, useState, type FormEvent, type ReactNode } from "react";
 import { PASSPHRASE_MIN_LENGTH, PairingError, type OpenPairing, type PairingCheck } from "@map-diary/sync";
-import { AccountPage, CloseButton, CopyCode, IconTile, MoreMenu, Segmented, Sheet, accountStyles as s, day, seen } from "@/app/_account/parts";
+import { AccountPage, IconTile, accountStyles as s, day, seen } from "@/app/_account/parts";
 import { claudeErrorMessage, errorMessage, pairingErrorMessage, revokeErrorMessage } from "@/app/(device)/messages";
 import {
   addDevice,
@@ -18,7 +18,7 @@ import {
 } from "@/lib/device";
 import { DEVICE_NAME_MAX } from "@/lib/places/payloads";
 import { useGroups } from "@/lib/groups";
-import { Badge, BoardBadge, Button, Icon, type IconName } from "@/lib/ui";
+import { Badge, BoardBadge, Button, CloseButton, CopyCode, Icon, type IconName, MoreMenu, Segmented, Sheet } from "@/lib/ui";
 
 const POLL_MS = 2000;
 

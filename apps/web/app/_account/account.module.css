@@ -330,59 +330,6 @@ textarea.input {
   color: var(--visited);
 }
 
-/* Two or three choices in one pill, like Passphrase / Recovery phrase. */
-.seg {
-  display: flex;
-  background: var(--surface-2);
-  border-radius: 10px;
-  padding: 3px;
-  gap: 2px;
-}
-
-.seg button {
-  flex: 1;
-  padding: 8px 10px;
-  border: 0;
-  border-radius: 8px;
-  background: none;
-  font: inherit;
-  font-size: 13px;
-  font-weight: 500;
-  color: var(--ink-2);
-  cursor: pointer;
-}
-
-.seg button[aria-pressed="true"] {
-  background: var(--surface);
-  color: var(--ink);
-  box-shadow: 0 1px 2px var(--shadow);
-}
-
-/* A secret or code shown whole, ready to copy. */
-.code {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  background: var(--ink);
-  color: var(--on-ink);
-  border-radius: 12px;
-  padding: 12px 14px;
-  font-weight: 500;
-  font-size: 13px;
-  font-family: ui-monospace, "SF Mono", Menlo, monospace;
-  word-break: break-all;
-  border: 0;
-  width: 100%;
-  text-align: left;
-  cursor: pointer;
-}
-
-.code > span {
-  flex: 1;
-  min-width: 0;
-  user-select: all;
-}
-
 /* A short code read across from one screen to another. */
 .bigCode {
   margin: 0;
@@ -491,122 +438,6 @@ textarea.input {
   flex: none;
 }
 
-/* Bottom sheet on phones, centred dialog on desktop. */
-.sheet {
-  border: 0;
-  padding: 0;
-  margin: auto auto 0;
-  width: 100%;
-  max-width: 100%;
-  max-height: calc(100dvh - 56px);
-  border-radius: 24px 24px 0 0;
-  background: var(--surface);
-  color: var(--ink);
-  box-shadow: 0 -4px 24px var(--shadow);
-  overflow-y: auto;
-  overscroll-behavior: contain;
-}
-
-.sheet::backdrop {
-  background: var(--scrim);
-}
-
-.sheetBody {
-  display: grid;
-  gap: 18px;
-  padding: 10px 20px max(24px, env(safe-area-inset-bottom));
-}
-
-.grab {
-  justify-self: center;
-  width: 36px;
-  height: 4px;
-  border-radius: 2px;
-  background: var(--line);
-}
-
-.sheetTop {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-}
-
-@media (min-width: 900px) {
-  .sheet {
-    margin: auto;
-    width: 560px;
-    max-height: calc(100dvh - 80px);
-    border-radius: 20px;
-  }
-
-  .sheetBody {
-    padding-bottom: 24px;
-  }
-
-  .grab {
-    display: none;
-  }
-}
-
-@media (prefers-reduced-motion: no-preference) {
-  .sheet[open] {
-    animation: up 0.22s ease-out;
-  }
-}
-
-@keyframes up {
-  from {
-    transform: translateY(24px);
-    opacity: 0.6;
-  }
-}
-
-/* ⋯ menu */
-.menuWrap {
-  position: relative;
-  flex: none;
-}
-
-.menu {
-  position: absolute;
-  right: 0;
-  top: calc(100% + 6px);
-  z-index: 15;
-  width: 190px;
-  display: grid;
-  gap: 2px;
-  padding: 6px;
-  background: var(--surface);
-  border: 1px solid var(--line);
-  border-radius: 14px;
-  box-shadow: 0 10px 30px var(--shadow);
-}
-
-.menu button {
-  display: flex;
-  gap: 10px;
-  align-items: center;
-  padding: 10px;
-  border: 0;
-  border-radius: 10px;
-  background: none;
-  font: inherit;
-  font-weight: 500;
-  color: var(--ink);
-  text-align: left;
-  cursor: pointer;
-}
-
-.menu button:hover,
-.menu button:focus-visible {
-  background: var(--paper);
-}
-
-.menu button.dangerText {
-  color: var(--danger);
-}
-
 /* Signing in, joining and setting up: one column, centred on desktop. */
 .flow {
   max-width: 480px;
@@ -634,4 +465,12 @@ textarea.input {
   display: block;
   height: 100%;
   background: var(--visited);
+}
+
+/* The first line of a sheet: an icon or title, and its close button. */
+.sheetTop {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
 }

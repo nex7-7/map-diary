@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
-import { AccountPage, Avatar, CloseButton, CopyCode, IconTile, Sheet, accountStyles as s, day, seen } from "@/app/_account/parts";
+import { AccountPage, Avatar, IconTile, accountStyles as s, day, seen } from "@/app/_account/parts";
 import { inviteErrorMessage } from "@/app/(device)/messages";
 import {
   cancelInvite,
@@ -18,7 +18,7 @@ import {
   type NewAppInvite,
 } from "@/lib/device";
 import { displayNames } from "@/lib/places/items-source";
-import { Badge, Button, Icon } from "@/lib/ui";
+import { Badge, Button, CloseButton, CopyCode, Icon, Sheet } from "@/lib/ui";
 
 /** `/admin`: app invites and members. The Worker refuses everyone but the admin. */
 export function AdminPage() {

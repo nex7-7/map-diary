@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, type FormEvent } from "react";
-import { AccountPage, Avatar, CloseButton, CopyCode, IconTile, Sheet, accountStyles as s, day } from "@/app/_account/parts";
+import { AccountPage, Avatar, IconTile, accountStyles as s, day } from "@/app/_account/parts";
 import type { Diary } from "@/lib/device";
 import {
   GROUP_NAME_MAX,
@@ -15,7 +15,7 @@ import {
   useGroups,
   type Group,
 } from "@/lib/groups";
-import { Button, Icon, buttonClass } from "@/lib/ui";
+import { Button, buttonClass, CloseButton, CopyCode, Icon, Sheet } from "@/lib/ui";
 import { groupErrorMessage } from "./messages";
 
 /** `/groups`: the groups this account is in, their members, invites, and leaving. */
