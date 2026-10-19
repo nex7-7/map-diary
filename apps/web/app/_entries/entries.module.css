@@ -1,12 +1,6 @@
 /* Shared by the Add sheet, the place page and the tags page. */
 
 .page {
-  --line: color-mix(in srgb, var(--fg) 14%, transparent);
-  --surface: color-mix(in srgb, var(--bg) 92%, var(--fg));
-  --accent: #228be6;
-  --visited: #2b8a3e;
-  --want: #e8590c;
-  --danger: #c92a2a;
   display: flex;
   flex-direction: column;
   gap: 20px;
