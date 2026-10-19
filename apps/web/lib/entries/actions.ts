@@ -1,21 +1,33 @@
 import type { EnvelopeType, JsonValue } from "@map-diary/crypto";
 import type { StoredItem } from "../places/items-source";
-import { readPayload, type CommentPayload, type PlacePayload, type TagDefPayload } from "../places/payloads";
+import { cleanDisplayName, readPayload, type CommentPayload, type PlacePayload, type ProfilePayload, type TagDefPayload } from "../places/payloads";
 import type { Status } from "../places/types";
 import { normaliseLink } from "./parse-input";
 
 /**
- * Writes for the Add sheet and the place page, over the device's diary. Everything goes to
- * the Personal board for now (the diary picks the board); boards arrive with sharing.
+ * Writes for the Add sheet and the place page, over the device's diary. A new item goes to
+ * the boards given, or the Personal board; an edit keeps the item's boards unless new ones
+ * are given. Callers pick boards with `lib/places/boards` so nothing is posted wider than allowed.
  */
+
+export interface WriteRequest {
+  type: EnvelopeType;
+  placeId: string | null;
+  payload: JsonValue;
+  id?: string;
+  /** Board ids to post to. */
+  boards?: string[];
+}
 
 /** The parts of the device's `Diary` these writes need. */
 export interface DiaryWriter {
   readonly device: { readonly accountId: string };
   listItems(): Promise<StoredItem[]>;
-  write(input: { type: EnvelopeType; placeId: string | null; payload: JsonValue; id?: string }): Promise<{ id: string }>;
+  write(input: WriteRequest): Promise<{ id: string }>;
   remove(id: string): Promise<void>;
 }
+
+const on = (boards: readonly string[] | undefined) => (boards && boards.length > 0 ? { boards: [...boards] } : {});
 
 export interface NewPlace {
   /** A dropped pin is a private place and never enters the shared catalogue. */
@@ -79,10 +91,17 @@ export async function setStatus(w: DiaryWriter, placeId: string, status: Status)
   for (const extra of mine) if (extra !== latest) await w.remove(extra.id);
 }
 
-export async function applyTag(w: DiaryWriter, placeId: string, tagId: string): Promise<void> {
+/**
+ * Applies a tag to a place. With `boards`, an existing application of the tag moves to them;
+ * the caller checks the tag's definition is visible there (`tagFit`).
+ */
+export async function applyTag(w: DiaryWriter, placeId: string, tagId: string, boards?: string[]): Promise<void> {
   const items = await requireStatus(w, placeId);
-  const already = own(w, items, "tag", placeId).some((i) => readPayload("tag", i.payload)?.tagId === tagId);
-  if (!already) await w.write({ type: "tag", placeId, payload: { tagId } });
+  const already = own(w, items, "tag", placeId).find((i) => readPayload("tag", i.payload)?.tagId === tagId);
+  if (!already) await w.write({ type: "tag", placeId, payload: { tagId }, ...on(boards) });
+  else if (boards && !sameBoards(already.boardIds, boards)) {
+    await w.write({ type: "tag", placeId, payload: { tagId }, id: already.id, ...on(boards) });
+  }
 }
 
 /** Removes every tag opinion of this person applying `tagId` to the place. */
@@ -92,11 +111,20 @@ export async function unapplyTag(w: DiaryWriter, placeId: string, tagId: string)
   }
 }
 
-/** Defines a tag. Returns its id. */
-export async function defineTag(w: DiaryWriter, def: TagDefPayload): Promise<string> {
+/** Defines a tag, visible on `boards` (Personal by default). Returns its id. */
+export async function defineTag(w: DiaryWriter, def: TagDefPayload, boards?: string[]): Promise<string> {
   const clean = cleanTag(def);
   if (!clean.name) throw new EntryError("A tag needs a name");
-  return (await w.write({ type: "tag_def", placeId: null, payload: json(clean) })).id;
+  return (await w.write({ type: "tag_def", placeId: null, payload: json(clean), ...on(boards) })).id;
+}
+
+/** Makes one of this person's tag definitions visible on more boards, keeping where it already is. */
+export async function widenTag(w: DiaryWriter, tagId: string, add: readonly string[]): Promise<void> {
+  const def = (await w.listItems()).find((i) => i.id === tagId && i.type === "tag_def");
+  if (!def || def.authorId !== w.device.accountId) throw new EntryError("Only the person who made a tag can change where it shows");
+  const boards = [...new Set([...def.boardIds, ...add])];
+  if (sameBoards(def.boardIds, boards)) return;
+  await w.write({ type: "tag_def", placeId: null, payload: def.payload, id: def.id, boards });
 }
 
 export async function editTag(w: DiaryWriter, id: string, def: TagDefPayload): Promise<void> {
@@ -105,11 +133,11 @@ export async function editTag(w: DiaryWriter, id: string, def: TagDefPayload): P
   await w.write({ type: "tag_def", placeId: null, payload: json(clean), id });
 }
 
-export async function addComment(w: DiaryWriter, placeId: string, text: string): Promise<void> {
+export async function addComment(w: DiaryWriter, placeId: string, text: string, boards?: string[]): Promise<void> {
   const payload: CommentPayload = { text: text.trim() };
   if (!payload.text) throw new EntryError("A comment needs some text");
   await requireStatus(w, placeId);
-  await w.write({ type: "comment", placeId, payload: json(payload) });
+  await w.write({ type: "comment", placeId, payload: json(payload), ...on(boards) });
 }
 
 export async function editComment(w: DiaryWriter, id: string, placeId: string, text: string): Promise<void> {
@@ -140,6 +168,22 @@ export async function deletePlace(w: DiaryWriter, placeId: string): Promise<void
   }
   await w.remove(placeId);
 }
+
+/**
+ * Sets how this person appears to everyone: one profile item on the master board, edited in
+ * place. Returns the name as saved.
+ */
+export async function setDisplayName(w: DiaryWriter, name: string, masterBoardId: string): Promise<string> {
+  const payload: ProfilePayload = { name: cleanDisplayName(name) };
+  if (!payload.name) throw new EntryError("A name needs at least one letter");
+  const mine = (await w.listItems()).filter((i) => i.type === "profile" && i.authorId === w.device.accountId);
+  const latest = mine.reduce<StoredItem | undefined>((a, b) => (!a || b.updatedAt > a.updatedAt ? b : a), undefined);
+  await w.write({ type: "profile", placeId: null, payload: json(payload), boards: [masterBoardId], ...(latest ? { id: latest.id } : {}) });
+  for (const extra of mine) if (extra !== latest) await w.remove(extra.id);
+  return payload.name;
+}
+
+const sameBoards = (a: readonly string[], b: readonly string[]) => a.length === b.length && a.every((id) => b.includes(id));
 
 function cleanTag(def: TagDefPayload): TagDefPayload {
   return { name: def.name.trim().slice(0, 40), emoji: def.emoji.trim().slice(0, 16), description: def.description.trim().slice(0, 280) };

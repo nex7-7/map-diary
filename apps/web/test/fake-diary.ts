@@ -1,8 +1,7 @@
-import type { EnvelopeType, JsonValue } from "@map-diary/crypto";
-import type { DiaryWriter } from "../lib/entries/actions";
+import type { DiaryWriter, WriteRequest } from "../lib/entries/actions";
 import { snapshotFromItems, type StoredItem } from "../lib/places/items-source";
 
-/** An in-memory stand-in for the device diary: every item goes to the Personal board. */
+/** An in-memory stand-in for the device diary: new items go to the Personal board unless boards are given. */
 export class FakeDiary implements DiaryWriter {
   readonly device = { accountId: "acct-me", personalBoardId: "board-personal" };
   items = new Map<string, StoredItem>();
@@ -10,7 +9,7 @@ export class FakeDiary implements DiaryWriter {
   async listItems() {
     return [...this.items.values()];
   }
-  async write(input: { type: EnvelopeType; placeId: string | null; payload: JsonValue; id?: string }) {
+  async write(input: WriteRequest) {
     const id = input.id ?? `i-${++this.n}`;
     const prior = this.items.get(id);
     const now = 1_760_000_000_000 + ++this.n;
@@ -21,7 +20,7 @@ export class FakeDiary implements DiaryWriter {
       placeId: input.placeId,
       createdAt: prior?.createdAt ?? now,
       updatedAt: now,
-      boardIds: [this.device.personalBoardId],
+      boardIds: input.boards ?? prior?.boardIds ?? [this.device.personalBoardId],
       payload: input.payload,
     };
     this.items.set(id, item);

@@ -12,6 +12,8 @@ export const ENVELOPE_TYPES = [
   "tag_def",
   "tag",
   "comment",
+  /** A person's display name, posted to the master board. */
+  "profile",
 ] as const;
 
 export type EnvelopeType = (typeof ENVELOPE_TYPES)[number];

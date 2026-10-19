@@ -24,9 +24,13 @@ describe("filterPlaces", () => {
     expect(sgnp).toMatchObject({ status: "visited", mine: false });
   });
 
-  it("filters by board using only status opinions on that board", () => {
+  it("lists a group's places from its members' statuses on the group or master board", () => {
     const duo = ids(filter({ boards: ["group:duo"] }));
-    expect(duo.sort()).toEqual(["p-board-games", "p-prithvi", "p-swati"]);
+    // Swati, Prithvi and the board game café are on the duo board; the rest are my Public statuses.
+    expect(duo.sort()).toEqual(["p-aaswad", "p-board-games", "p-britannia", "p-chowpatty", "p-kyani", "p-prithvi", "p-swati"]);
+    // Aarav's Public visit to the national park is not on the duo board: he is not a member.
+    expect(duo).not.toContain("p-sgnp");
+    expect(ids(filter({ boards: ["group:college"] }))).toContain("p-sgnp");
   });
 
   it("uses the status that passes the board filter", () => {
@@ -39,8 +43,9 @@ describe("filterPlaces", () => {
     expect(ids(filter({ statuses: ["visited"], authorIds: [me.id], categories: ["beach"] }))).toEqual(["p-chowpatty"]);
     expect(ids(filter({ cuisines: ["Irani"] }))).toEqual(["p-kyani"]);
     expect(ids(filter({ tagIds: ["t-spicy"] })).sort()).toEqual(["p-aaswad", "p-bademiya"]);
-    // A tag on another board does not count when a board is chosen.
-    expect(ids(filter({ tagIds: ["t-spicy"], boards: ["group:college"] }))).toEqual([]);
+    // A tag counts on a board only where it is shown: Kabir's and my Public tags show on the college board.
+    expect(ids(filter({ tagIds: ["t-spicy"], boards: ["group:college"] })).sort()).toEqual(["p-aaswad", "p-bademiya"]);
+    expect(ids(filter({ tagIds: ["t-spicy"], boards: ["personal"] }))).toEqual([]);
   });
 
   it("filters by signature-dish price, dropping unpriced places", () => {

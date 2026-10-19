@@ -7,8 +7,11 @@ import {
   deletePlace,
   EntryError,
   findDuplicate,
+  defineTag,
+  setDisplayName,
   setStatus,
   unapplyTag,
+  widenTag,
   type DiaryWriter,
 } from "../lib/entries/actions";
 import { buildFacts, customCategory, type FactsForm } from "../lib/entries/facts";
@@ -200,5 +203,52 @@ describe("opinions", () => {
     const id = await addPlace(d, { kind: "place", facts: facts(), status: "want", tagIds: [], newTags: [], comment: "Hi" });
     await deletePlace(d, id);
     expect(d.items.size).toBe(0);
+  });
+});
+
+describe("opinions on someone else's place", () => {
+  const friendsPlace = (d: FakeDiary) => {
+    const place: StoredItem = {
+      id: "p-friend", type: "place", authorId: "acct-friend", placeId: null, createdAt: 1, updatedAt: 1,
+      boardIds: ["board-master"], payload: facts() as unknown as JsonValue,
+    };
+    d.items.set(place.id, place);
+    return place;
+  };
+
+  it("posts tags and comments to the boards chosen, and moves an applied tag", async () => {
+    const d = new FakeDiary();
+    const place = friendsPlace(d);
+    await setStatus(d, place.id, "want");
+    await addComment(d, place.id, "Going Saturday", ["board-master", "board-duo"]);
+    const tagId = await defineTag(d, { name: "Spicy", emoji: "", description: "" }, ["board-duo"]);
+    await applyTag(d, place.id, tagId, ["board-duo"]);
+    await applyTag(d, place.id, tagId, ["board-personal"]);
+
+    const all = [...d.items.values()];
+    expect(all.find((i) => i.type === "comment")?.boardIds).toEqual(["board-master", "board-duo"]);
+    expect(all.filter((i) => i.type === "tag").map((i) => i.boardIds)).toEqual([["board-personal"]]);
+    // The friend's place is untouched.
+    expect(d.items.get(place.id)?.authorId).toBe("acct-friend");
+  });
+
+  it("widens only the person's own tag definitions", async () => {
+    const d = new FakeDiary();
+    const mine = await defineTag(d, { name: "Spicy", emoji: "", description: "" });
+    await widenTag(d, mine, ["board-duo"]);
+    expect(d.items.get(mine)?.boardIds).toEqual(["board-personal", "board-duo"]);
+
+    d.items.set("t-friend", { ...d.items.get(mine)!, id: "t-friend", authorId: "acct-friend" });
+    await expect(widenTag(d, "t-friend", ["board-master"])).rejects.toBeInstanceOf(EntryError);
+  });
+
+  it("keeps one display name on the master board", async () => {
+    const d = new FakeDiary();
+    await expect(setDisplayName(d, "  \u200b ", "board-master")).rejects.toBeInstanceOf(EntryError);
+    await setDisplayName(d, "Snehil", "board-master");
+    expect(await setDisplayName(d, "  Snehil S.  ", "board-master")).toBe("Snehil S.");
+    const profiles = [...d.items.values()].filter((i) => i.type === "profile");
+    expect(profiles).toHaveLength(1);
+    expect(profiles[0]).toMatchObject({ boardIds: ["board-master"], payload: { name: "Snehil S." } });
   });
 });

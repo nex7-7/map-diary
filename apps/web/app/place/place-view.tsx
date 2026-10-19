@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { FactsEditor } from "@/app/_entries/facts-editor";
 import { BoardNote, StatusToggle, TagPicker } from "@/app/_entries/fields";
+import { OpinionBoards } from "./opinion-boards";
 import { useItems } from "@/app/_entries/use-items";
 import styles from "@/app/_entries/entries.module.css";
 import type { Diary } from "@/lib/device";
@@ -14,11 +15,14 @@ import {
   defineTag,
   deletePlace,
   editComment,
+  EntryError,
   removeOpinion,
   setStatus,
   unapplyTag,
   updateFacts,
+  widenTag,
 } from "@/lib/entries/actions";
+import { boardName, opinionBoards, tagFit } from "@/lib/places/boards";
 import { categoryStyle } from "@/lib/places/categories";
 import { readPayload } from "@/lib/places/payloads";
 import type { CommentOpinion, DiarySnapshot, Opinion, Status, StatusOpinion, TagOpinion } from "@/lib/places/types";
@@ -29,10 +33,13 @@ import type { CommentOpinion, DiarySnapshot, Opinion, Status, StatusOpinion, Tag
  */
 export function PlaceView({ diary, placeId }: { diary: Diary; placeId: string }) {
   const router = useRouter();
-  const { loaded, items, snapshot } = useItems(diary);
+  const { loaded, items, snapshot, canChooseBoards } = useItems(diary);
   const [editing, setEditing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
+  // New opinions default to the Personal board.
+  const [chosenBoards, setChosenBoards] = useState<string[]>([diary.device.personalBoardId]);
 
   const me = diary.device.accountId;
   const place = snapshot.places.find((p) => p.id === placeId);
@@ -55,7 +62,29 @@ export function PlaceView({ diary, placeId }: { diary: Diary; placeId: string })
   /** Runs a write and shows a refusal instead of throwing. */
   const run = (write: () => Promise<unknown>) => {
     setError(null);
+    setNotice(null);
     write().catch((err: unknown) => setError(err instanceof Error ? err.message : "Could not save"));
+  };
+
+  // Only boards whose readers can all see this place, and only once the diary can post to them.
+  const boardOptions = canChooseBoards ? opinionBoards(snapshot, place) : [];
+  const postTo = chosenBoards.filter((id) => boardOptions.some((b) => b.id === id));
+  const boardsForNew = canChooseBoards && postTo.length > 0 ? postTo : undefined;
+
+  /** Applies a tag where its definition is visible, offering to widen the owner's own definition. */
+  const tag = async (tagId: string) => {
+    const def = snapshot.tags.find((t) => t.id === tagId);
+    if (!def || !boardsForNew) return applyTag(diary, place.id, tagId);
+    const fit = tagFit(def, boardsForNew, snapshot);
+    if (fit.outside.length === 0) return applyTag(diary, place.id, tagId, boardsForNew);
+    const where = fit.outside.map((id) => boardName(snapshot, id)).join(", ");
+    if (fit.canWiden && confirm(`“${def.name}” isn't visible on ${where}, so the tag can't go there yet. Show the tag on ${where} too?`)) {
+      await widenTag(diary, def.id, fit.outside);
+      return applyTag(diary, place.id, tagId, boardsForNew);
+    }
+    if (fit.fits.length === 0) throw new EntryError(`“${def.name}” isn't visible on ${where}, so it can't be applied there.`);
+    await applyTag(diary, place.id, tagId, fit.fits);
+    setNotice(`Tagged on ${fit.fits.map((id) => boardName(snapshot, id)).join(", ")} only: “${def.name}” isn't visible on ${where}.`);
   };
 
   const style = categoryStyle(place.category);
@@ -119,6 +148,11 @@ export function PlaceView({ diary, placeId }: { diary: Diary; placeId: string })
           {error}
         </p>
       )}
+      {notice && (
+        <p className={styles.note} role="status">
+          {notice}
+        </p>
+      )}
 
       <section className={styles.section}>
         <h2>Your status</h2>
@@ -127,14 +161,17 @@ export function PlaceView({ diary, placeId }: { diary: Diary; placeId: string })
         <Others snapshot={snapshot} me={me} opinions={of("status").filter((o) => o.authorId !== me)} render={(o: StatusOpinion) => (o.status === "visited" ? "visited" : "wants to go")} />
       </section>
 
+      {canChooseBoards ? <OpinionBoards options={boardOptions} value={postTo} onChange={setChosenBoards} /> : <BoardNote />}
+
       <section className={styles.section}>
         <h2>Tags</h2>
         <TagPicker
           tags={snapshot.tags}
           selected={myTagIds}
           disabled={myStatus === null}
-          onToggle={(tagId) => run(() => (myTagIds.has(tagId) ? unapplyTag(diary, place.id, tagId) : applyTag(diary, place.id, tagId)))}
-          onCreate={(def) => run(async () => applyTag(diary, place.id, await defineTag(diary, def)))}
+          onToggle={(tagId) => run(() => (myTagIds.has(tagId) ? unapplyTag(diary, place.id, tagId) : tag(tagId)))}
+          // A new tag is defined where it is applied.
+          onCreate={(def) => run(async () => applyTag(diary, place.id, await defineTag(diary, def, boardsForNew), boardsForNew))}
         />
         <Others
           snapshot={snapshot}
@@ -169,7 +206,7 @@ export function PlaceView({ diary, placeId }: { diary: Diary; placeId: string })
             e.preventDefault();
             const text = draft;
             run(async () => {
-              await addComment(diary, place.id, text);
+              await addComment(diary, place.id, text, boardsForNew);
               setDraft("");
             });
           }}
@@ -188,7 +225,6 @@ export function PlaceView({ diary, placeId }: { diary: Diary; placeId: string })
         </form>
       </section>
 
-      <BoardNote />
 
       {isAuthor && (
         <section className={styles.section}>
@@ -219,10 +255,6 @@ export function PlaceView({ diary, placeId }: { diary: Diary; placeId: string })
 
 function personName(snapshot: DiarySnapshot, me: string, id: string): string {
   return id === me ? "You" : (snapshot.people.find((p) => p.id === id)?.name ?? "Someone");
-}
-
-function boardName(snapshot: DiarySnapshot, id: string): string {
-  return snapshot.boards.find((b) => b.id === id)?.name ?? "Board";
 }
 
 function Others<O extends Opinion>({ snapshot, me, opinions, render }: { snapshot: DiarySnapshot; me: string; opinions: O[]; render: (o: O) => string }) {

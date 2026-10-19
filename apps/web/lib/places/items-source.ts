@@ -1,4 +1,5 @@
 import type { EnvelopeType, JsonValue } from "@map-diary/crypto";
+import { applyBoardRules } from "./boards";
 import { readPayload } from "./payloads";
 import type { Board, DiarySnapshot, DiarySource, Opinion, Person, PlaceView, Status, StatusOpinion, TagDefinition } from "./types";
 
@@ -16,23 +17,54 @@ export interface StoredItem {
 }
 
 /** The parts of the device's `Diary` this source needs. */
-export interface ItemStore {
-  readonly device: { readonly accountId: string; readonly personalBoardId: string };
+export interface ItemStore extends BoardDirectory {
+  readonly device: DeviceBoards;
   listItems(): Promise<StoredItem[]>;
   write(input: { type: EnvelopeType; placeId: string | null; payload: JsonValue; id?: string }): Promise<unknown>;
   subscribe(listener: () => void): () => void;
 }
 
+export interface DeviceBoards {
+  readonly accountId: string;
+  readonly personalBoardId: string;
+  /** The board keys the device holds; the boards it can read. */
+  readonly boardKeys?: readonly { readonly boardId: string }[];
+}
+
+/**
+ * Where the device learns each board's kind, name and members. `listBoards` arrives with the
+ * master board and groups in `@map-diary/sync`; until then the boards come from the device's keys.
+ */
+export interface BoardDirectory {
+  listBoards?(): Promise<Board[]>;
+}
+
+/** The boards this device can read. The Personal board is always there, with only its owner. */
+export async function boardsOf(store: BoardDirectory & { readonly device: DeviceBoards }): Promise<Board[]> {
+  const { accountId, personalBoardId, boardKeys = [] } = store.device;
+  const personal: Board = { id: personalBoardId, kind: "personal", name: "Personal", memberIds: [accountId] };
+  const listed = store.listBoards
+    ? await store.listBoards()
+    : [...new Set(boardKeys.map((k) => k.boardId))].map(
+        (id): Board => ({ id, kind: "group", name: "Shared board", memberIds: null }),
+      );
+  return [personal, ...listed.filter((b) => b.id !== personalBoardId)];
+}
+
 /** A `DiarySource` over the device's decrypted items. */
 export function createItemsSource(store: ItemStore): DiarySource {
-  const { accountId, personalBoardId } = store.device;
-  const load = async () => snapshotFromItems(await store.listItems(), accountId, personalBoardId);
+  const load = async () => {
+    const { accountId, personalBoardId } = store.device;
+    const [items, boards] = await Promise.all([store.listItems(), boardsOf(store)]);
+    return snapshotFromItems(items, accountId, personalBoardId, boards);
+  };
 
   return {
     load,
     subscribe: (listener) => store.subscribe(listener),
     setStatus: async (placeId: string, status: Status) => {
       const items = await store.listItems();
+      const { accountId } = store.device;
       const own = latestStatus(items.filter((i) => i.type === "status" && i.placeId === placeId && i.authorId === accountId));
       // The store posts new items to the Personal board; an edit keeps the item's id.
       await store.write({ type: "status", placeId, payload: { status }, ...(own ? { id: own.id } : {}) });
@@ -41,21 +73,43 @@ export function createItemsSource(store: ItemStore): DiarySource {
   };
 }
 
-export function snapshotFromItems(items: readonly StoredItem[], accountId: string, personalBoardId: string): DiarySnapshot {
+/**
+ * Builds the map's view of the device's items. `boards` are the boards this device can read
+ * (see `boardsOf`); items are shown only where the board rules allow.
+ */
+export function snapshotFromItems(
+  items: readonly StoredItem[],
+  accountId: string,
+  personalBoardId: string,
+  boards: readonly Board[] = [{ id: personalBoardId, kind: "personal", name: "Personal", memberIds: [accountId] }],
+): DiarySnapshot {
   const iso = (ms: number) => new Date(ms).toISOString();
   const places = new Map<string, PlaceView>();
   const tags: TagDefinition[] = [];
   const opinions: { placeId: string; opinion: Opinion }[] = [];
   const authors = new Set<string>([accountId]);
-  const boardIds = new Set<string>([personalBoardId]);
+  const profiles = new Map<string, { name: string; updatedAt: number }>();
 
   for (const item of items) {
-    const base = { id: item.id, authorId: item.authorId, boards: item.boardIds, createdAt: iso(item.createdAt), updatedAt: iso(item.updatedAt) };
+    const base = {
+      id: item.id,
+      authorId: item.authorId,
+      boards: item.boardIds,
+      shownOn: [],
+      createdAt: iso(item.createdAt),
+      updatedAt: iso(item.updatedAt),
+    };
     switch (item.type) {
       case "place":
       case "private_place": {
         const p = readPayload(item.type, item.payload);
-        if (p) places.set(item.id, { ...p, id: item.id, isPrivate: item.type === "private_place", opinions: [] });
+        if (p) places.set(item.id, { ...p, id: item.id, isPrivate: item.type === "private_place", boards: item.boardIds, opinions: [] });
+        break;
+      }
+      case "profile": {
+        const p = readPayload("profile", item.payload);
+        const prior = profiles.get(item.authorId);
+        if (p && (!prior || item.updatedAt > prior.updatedAt)) profiles.set(item.authorId, { name: p.name, updatedAt: item.updatedAt });
         break;
       }
       case "tag_def": {
@@ -85,8 +139,6 @@ export function snapshotFromItems(items: readonly StoredItem[], accountId: strin
     const place = places.get(placeId);
     if (!place) continue;
     place.opinions.push(opinion);
-    authors.add(opinion.authorId);
-    opinion.boards.forEach((b) => boardIds.add(b));
   }
   // One status per person per place: keep the latest if a sync race left two.
   for (const place of places.values()) {
@@ -99,14 +151,22 @@ export function snapshotFromItems(items: readonly StoredItem[], accountId: strin
     place.opinions = place.opinions.filter((o) => o.kind !== "status" || latest.get(o.authorId) === o);
   }
 
-  const me: Person = { id: accountId, name: "Me" };
-  const others = [...authors].filter((id) => id !== accountId).map((id, i): Person => ({ id, name: `Friend ${i + 1}` }));
-  // Only the Personal board exists until sharing lands; name any other board generically.
-  const boards = [...boardIds].map(
-    (id): Board => (id === personalBoardId ? { id, kind: "personal", name: "Personal" } : { id, kind: "group", name: "Shared board" }),
-  );
-
-  return { me, people: [me, ...others], boards, tags, places: [...places.values()] };
+  const snapshot = applyBoardRules({
+    me: { id: accountId, name: "Me" },
+    people: [],
+    boards: [...boards],
+    tags,
+    places: [...places.values()],
+  });
+  // People are the authors of what this device can see, named by their profiles.
+  for (const p of snapshot.places) for (const o of p.opinions) authors.add(o.authorId);
+  let unnamed = 0;
+  const people = [...authors].map((id): Person => {
+    const name = profiles.get(id)?.name;
+    if (id === accountId) return { id, name: name ?? "Me" };
+    return { id, name: name ?? `Friend ${++unnamed}` };
+  });
+  return { ...snapshot, me: people[0]!, people };
 }
 
 function latestStatus(items: readonly StoredItem[]): StoredItem | undefined {

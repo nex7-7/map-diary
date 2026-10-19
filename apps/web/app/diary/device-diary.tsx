@@ -32,6 +32,10 @@ function SignedIn({ diary }: { diary: Diary }) {
             <span className="inbox-label">Inbox</span>
             {needsMe > 0 ? <span className="inbox-count">{needsMe}</span> : waiting > 0 ? <span className="inbox-count quiet">{waiting}</span> : null}
           </Link>
+          <Link href="/profile" className="inbox-link" aria-label="Your name">
+            <span aria-hidden>👤</span>
+            <span className="inbox-label">Name</span>
+          </Link>
           <Link href="/devices" className="inbox-link" aria-label="Devices">
             <span aria-hidden>📱</span>
             <span className="inbox-label">Devices</span>
