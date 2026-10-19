@@ -7,7 +7,7 @@ Hono API Worker on `map.snehilsinha.com/api/*`. The web app Worker (`map-diary-w
 | Worker | `map-diary-api` (route `map.snehilsinha.com/api/*`, workers.dev off; the web app owns the hostname as a Custom Domain) | |
 | D1 | `map-diary` (`4362f68c-cca6-412f-a8fa-455e4d0db8d1`, APAC) | `DB` |
 | R2 | `map-diary-tiles`, object `mumbai.pmtiles` | `TILES` |
-| Cron | `17 * * * *`, expires stale resolver jobs and device pairings | |
+| Cron | `17 * * * *`, expires stale resolver jobs, device pairings and unused app invites | |
 | Secret | `RESOLVER_TOKEN`, the resolver's bearer token (see docs/resolver.md) | `RESOLVER_TOKEN` |
 
 ## Routes
@@ -17,9 +17,15 @@ Signed routes need the `X-Device-Id`, `X-Timestamp` and `X-Signature` headers fr
 | Route | Auth | Does |
 | --- | --- | --- |
 | `GET /api/health` | none | Health and applied migration count |
-| `POST /api/accounts` | the new device | First-run setup: admin account with its box public key, first device, personal board and its key, key backup. Open only while no account exists |
+| `POST /api/accounts` | the new device | Creates an account with its box public key, first device, personal board and its key, and optional key backup. Without an invite: first-run admin setup, open only while no account exists, backup required. With `invite`: uses up an unused, unexpired app invite and joins the master board with every master key version (`masterKeys`, re-wrapped to the new account) |
 | `POST /api/devices` | the new device, authorised by the account key | Signs a new device in |
-| `GET /api/me` | device | The account and its box public key, its boards with their keys wrapped to the account, and its devices |
+| `GET /api/me` | device | The account (box public key, whether a passphrase backup exists), its boards with their keys wrapped to the account, and its devices |
+| `POST /api/app-invites` | admin device | Files a one-time, seven-day app invite under an id derived from the invite code, with every master key version wrapped to a keypair derived from the code (at most 10 open) |
+| `GET /api/app-invites` | admin device | Open invites |
+| `DELETE /api/app-invites/:id` | admin device | Cancels an unused invite |
+| `GET /api/app-invites/:id/status` | none, needs the id from the code | Open, used or expired; while open, the master board id and the invite's wrapped master keys |
+| `GET /api/members` | admin device | Every account with its invite id, active device count and last use; no names |
+| `POST /api/members/:id/remove` | admin device | Removes someone from the app: marks the account removed and revokes all its devices (master key rotation on removal is still to come) |
 | `PUT /api/board-keys` | device | Stores board keys wrapped to the account's box key |
 | `POST /api/boards/master` | the admin's device | Creates the master board once, with its first key wrapped to the admin's account |
 | `GET /api/boards/:id/members` | device of a member | The board's members and their current account box public keys, for wrapping a rotated key |

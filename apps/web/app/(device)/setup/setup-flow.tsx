@@ -11,7 +11,13 @@ import { InstallWarning } from "../install-warning";
 
 type Step = { name: "choose" } | { name: "phrase"; setup: PreparedSetup };
 
-export function SetupFlow() {
+/**
+ * Makes the account's keys and shows the recovery phrase. Without `inviteCode` this is the
+ * admin's first-run setup and a passphrase is required; with one, a friend joins and the
+ * passphrase is optional (they can set one later from the Devices screen).
+ */
+export function SetupFlow({ inviteCode }: { inviteCode?: string }) {
+  const invited = inviteCode !== undefined;
   const session = useSession();
   const router = useRouter();
   const [step, setStep] = useState<Step>({ name: "choose" });
@@ -41,7 +47,14 @@ export function SetupFlow() {
     setBusy(true);
     setError(null);
     try {
-      setStep({ name: "phrase", setup: await prepareSetup({ passphrase, kind: currentDeviceKind() }) });
+      setStep({
+        name: "phrase",
+        setup: await prepareSetup({
+          ...(passphrase ? { passphrase } : {}),
+          ...(invited ? { inviteCode } : {}),
+          kind: currentDeviceKind(),
+        }),
+      });
       // Nothing else needs the passphrase; drop it from the form.
       setPassphrase("");
       setConfirm("");
@@ -68,8 +81,9 @@ export function SetupFlow() {
     return (
       <div className={styles.card}>
         <p>
-          This is your <strong>recovery phrase</strong>. If you ever forget your passphrase, it is the only way back
-          into your diary. Write it down on paper and keep it somewhere safe. It will not be shown again.
+          This is your <strong>recovery phrase</strong>. If you lose this device
+          {invited ? " (or forget your passphrase, if you set one)" : " or forget your passphrase"}, it is the only way
+          back into your diary. Write it down on paper and keep it somewhere safe. It will not be shown again.
         </p>
         <div className={styles.phrase} aria-label="Recovery phrase">
           {step.setup.recoveryPhrase.split("-").map((group, i) => (
@@ -91,17 +105,24 @@ export function SetupFlow() {
   return (
     <form className={styles.card} onSubmit={(e) => void choose(e)}>
       <InstallWarning />
-      <p>
-        Choose a passphrase. You&apos;ll use it to sign in on your other devices. Everything is encrypted on this
-        device, so nobody, including the server, can reset it for you.
-      </p>
+      {invited ? (
+        <p>
+          You can choose a passphrase for signing in on a new phone without this one, or skip it and set one later.
+          Everything is encrypted on this device, so nobody, including the server, can reset it for you.
+        </p>
+      ) : (
+        <p>
+          Choose a passphrase. You&apos;ll use it to sign in on your other devices. Everything is encrypted on this
+          device, so nobody, including the server, can reset it for you.
+        </p>
+      )}
       <label className={styles.field}>
-        <span>Passphrase</span>
+        <span>{invited ? "Passphrase (optional)" : "Passphrase"}</span>
         <input
           type="password"
           autoComplete="new-password"
           minLength={PASSPHRASE_MIN_LENGTH}
-          required
+          required={!invited || confirm.length > 0}
           value={passphrase}
           onChange={(e) => setPassphrase(e.target.value)}
         />
@@ -112,18 +133,23 @@ export function SetupFlow() {
         <input
           type="password"
           autoComplete="new-password"
-          required
+          required={!invited || passphrase.length > 0}
           value={confirm}
           onChange={(e) => setConfirm(e.target.value)}
         />
       </label>
       {error && <p className={styles.error}>{error}</p>}
       <button className={styles.button} type="submit" disabled={busy}>
-        {busy ? "Making your keys…" : "Continue"}
+        {busy ? "Making your keys…" : invited && !passphrase ? "Continue without a passphrase" : "Continue"}
       </button>
       <Link className="muted" href="/sign-in">
         Already set up on another device? Sign in
       </Link>
+      {!invited && (
+        <Link className="muted" href="/invite">
+          Got an invite code? Enter it here
+        </Link>
+      )}
     </form>
   );
 }

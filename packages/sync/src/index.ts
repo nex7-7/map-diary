@@ -3,6 +3,11 @@ export {
   ApiError,
   NetworkError,
   type ApiOptions,
+  type AppInviteState,
+  type AppInviteStatus,
+  type AppInviteView,
+  type MemberView,
+  type VersionKey,
   type BoardMember,
   type BoardSummary,
   type WrappedBoardKey,
@@ -15,10 +20,12 @@ export {
   SetupError,
   checkPassphrase,
   prepareSetup,
+  setPassphrase,
   signInWithPassphrase,
   signInWithRecoveryPhrase,
   type PreparedSetup,
   type RecoveryOptions,
+  type SetPassphraseOptions,
   type SetupErrorCode,
   type SetupOptions,
 } from "./account";
@@ -45,6 +52,19 @@ export {
   type PairingCheck,
   type PairingErrorCode,
 } from "./pairing";
+export {
+  INVITE_PATH,
+  InviteError,
+  cancelAppInvite,
+  checkAppInvite,
+  createAppInvite,
+  listAppInvites,
+  listMembers,
+  removeMember,
+  type InviteCheck,
+  type InviteErrorCode,
+  type NewAppInvite,
+} from "./invites";
 export { RevokeError, revokeDevice, type AccountSecret, type RevokeErrorCode } from "./revoke";
 export type { DeviceKind } from "@map-diary/crypto";
 export { MemoryStorage, type DiaryItem, type DiaryStorage } from "./storage";

@@ -159,8 +159,8 @@ export function SignInFlow() {
       <button className={styles.button} type="submit" disabled={busy}>
         {busy ? "Signing in…" : "Sign in"}
       </button>
-      <Link className="muted" href="/setup">
-        First time here? Set up the diary
+      <Link className="muted" href="/invite">
+        First time here? Join with an invite code
       </Link>
     </form>
   );

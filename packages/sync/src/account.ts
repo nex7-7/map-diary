@@ -21,6 +21,9 @@ import {
   type RecoveredAccount,
   type IdentityKeys,
   type KdfParams,
+  appInviteBoxKeys,
+  appInviteId,
+  normaliseInviteCode,
 } from "@map-diary/crypto";
 import { ApiError, NetworkError, type Api, type DeviceBody, type KeyBackupBody, type Signer } from "./api";
 import { ensureMasterBoard } from "./boards";
@@ -35,6 +38,10 @@ export type SetupErrorCode =
   | "unknown_recovery_phrase"
   | "registration_closed"
   | "passphrase_in_use"
+  | "bad_invite"
+  | "invite_invalid"
+  | "invite_stale"
+  | "wrong_account"
   | "offline"
   | "server";
 
@@ -55,6 +62,8 @@ function asSetupError(err: unknown, notFound: SetupErrorCode = "server"): SetupE
   if (err instanceof ApiError) {
     if (err.code === "registration_closed") return new SetupError("registration_closed");
     if (err.code === "lookup_taken") return new SetupError("passphrase_in_use");
+    if (err.code === "invite_invalid") return new SetupError("invite_invalid");
+    if (err.code === "invite_stale") return new SetupError("invite_stale");
     if (err.status === 404 || err.status === 403) return new SetupError(notFound);
   }
   return new SetupError("server");
@@ -97,7 +106,13 @@ function backupBody(bundle: KeyBundle, passphrase: string, kdf: KdfParams): KeyB
 }
 
 export interface SetupOptions {
-  passphrase: string;
+  /**
+   * Seals the key backup for signing in on other devices. Required for the first (admin)
+   * account; invited friends may leave it out and set one later with the recovery phrase.
+   */
+  passphrase?: string;
+  /** The app invite code, typed or from the link; every account after the first needs one. */
+  inviteCode?: string;
   /** What this device is; defaults to `web`. */
   kind?: DeviceKind;
   /** Argon2id cost; only tests lower it. */
@@ -113,13 +128,21 @@ export interface PreparedSetup {
 }
 
 /**
- * First-run setup, part one: generates the recovery seed and every key, and seals the key
- * backup under the passphrase. Nothing is sent until `complete`, so the phrase can be shown
- * and confirmed first.
+ * Account setup, part one: generates the recovery seed and every key, and seals the key
+ * backup under the passphrase if one was chosen. Nothing is sent until `complete`, so the
+ * phrase can be shown and confirmed first.
  */
 export async function prepareSetup(options: SetupOptions): Promise<PreparedSetup> {
   await ready();
-  checkPassphrase(options.passphrase);
+  let invite: string | undefined;
+  let inviteCode: string | undefined;
+  if (options.inviteCode !== undefined) {
+    inviteCode = normaliseInviteCode(options.inviteCode) ?? undefined;
+    if (!inviteCode) throw new SetupError("bad_invite");
+    invite = appInviteId(inviteCode);
+  }
+  const passphrase = options.passphrase || undefined;
+  if (passphrase !== undefined || invite === undefined) checkPassphrase(passphrase ?? "");
   const kdf = options.kdf ?? defaultKdfParams();
   const { seed, phrase } = generateRecoveryPhrase();
   const account = deriveAccount(seed);
@@ -137,16 +160,22 @@ export async function prepareSetup(options: SetupOptions): Promise<PreparedSetup
     },
     device: deviceBody(account.accountId, deviceId, kind, identity, account.accountKeys),
     personalBoard: { id: personal.boardId, wrappedKey: toBase64(wrapKeyForMember(personal.key, accountBox.publicKey)) },
-    keyBackup: backupBody(
-      { v: 2, recoverySeed: seed, accountId: account.accountId, personalBoardId: personal.boardId },
-      options.passphrase,
-      kdf,
-    ),
+    ...(passphrase === undefined
+      ? {}
+      : {
+          keyBackup: backupBody(
+            { v: 2, recoverySeed: seed, accountId: account.accountId, personalBoardId: personal.boardId },
+            passphrase,
+            kdf,
+          ),
+        }),
+    ...(invite === undefined ? {} : { invite }),
   };
 
   return {
     recoveryPhrase: phrase,
     async complete(api) {
+      if (inviteCode !== undefined) return completeInvited(api, inviteCode);
       try {
         await api.createAccount(body, signerOf(deviceId, identity));
       } catch (err) {
@@ -170,6 +199,56 @@ export async function prepareSetup(options: SetupOptions): Promise<PreparedSetup
       return ensureMasterBoard(api, device).catch(() => device);
     },
   };
+
+  /**
+   * An invited friend's account: the invite carries every master key version wrapped to a
+   * keypair derived from the code; this device opens them and re-wraps them to the new
+   * account's box key, so the account joins the Public board with its whole history.
+   */
+  async function completeInvited(api: Api, code: string): Promise<DeviceState> {
+    let masterKeys: BoardKey[];
+    let masterBoardId: string;
+    try {
+      const status = await api.appInviteStatus(appInviteId(code));
+      if (status.state !== "open" || !status.masterBoardId || !status.masterKeys) throw new SetupError("invite_invalid");
+      masterBoardId = status.masterBoardId;
+      const inviteBox = appInviteBoxKeys(code);
+      masterKeys = status.masterKeys.map((k) => ({
+        boardId: masterBoardId,
+        version: k.keyVersion,
+        key: unwrapKeyFromMember(fromBase64(k.wrappedKey), inviteBox),
+      }));
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 404) throw new SetupError("invite_invalid");
+      throw asSetupError(err);
+    }
+    const wrapped = masterKeys.map((k) => ({
+      keyVersion: k.version,
+      wrappedKey: toBase64(wrapKeyForMember(k.key, accountBox.publicKey)),
+    }));
+    try {
+      await api.createAccount({ ...body, masterKeys: wrapped }, signerOf(deviceId, identity));
+    } catch (err) {
+      throw asSetupError(err);
+    }
+    const current = Math.max(...masterKeys.map((k) => k.version));
+    return {
+      v: 2,
+      accountId: account.accountId,
+      deviceId,
+      kind,
+      identity,
+      accountBox,
+      personalBoardId: personal.boardId,
+      boardKeys: [personal, ...masterKeys],
+      boards: [
+        { id: personal.boardId, kind: "personal", keyVersion: 1 },
+        { id: masterBoardId, kind: "master", keyVersion: current },
+      ],
+      isAdmin: false,
+      createdAt: Date.now(),
+    };
+  }
 }
 
 /**
@@ -281,4 +360,38 @@ export async function signInWithRecoveryPhrase(api: Api, options: RecoveryOption
     throw asSetupError(err);
   }
   return device;
+}
+
+export interface SetPassphraseOptions {
+  /** Proves the person is the account owner; the backup holds the seed it derives. */
+  recoveryPhrase: string;
+  newPassphrase: string;
+  kdf?: KdfParams;
+}
+
+/**
+ * Sets or replaces the passphrase backup from a signed-in device, for a friend who skipped it
+ * at setup or anyone changing it. The device does not keep the recovery seed, so the
+ * recovery phrase supplies it.
+ */
+export async function setPassphrase(api: Api, device: DeviceState, options: SetPassphraseOptions): Promise<void> {
+  await ready();
+  checkPassphrase(options.newPassphrase);
+  let seed: Uint8Array;
+  try {
+    seed = parseRecoveryPhrase(options.recoveryPhrase);
+  } catch {
+    throw new SetupError("invalid_recovery_phrase");
+  }
+  const account = deriveAccount(seed);
+  if (account.accountId !== device.accountId) throw new SetupError("wrong_account");
+  const bundle: KeyBundle = { v: 2, recoverySeed: seed, accountId: account.accountId, personalBoardId: account.personalBoardId };
+  try {
+    await api.putKeyBackup(
+      backupBody(bundle, options.newPassphrase, options.kdf ?? defaultKdfParams()),
+      signerOf(device.deviceId, device.identity),
+    );
+  } catch (err) {
+    throw asSetupError(err);
+  }
 }

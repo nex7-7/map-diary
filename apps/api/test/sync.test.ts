@@ -155,7 +155,7 @@ describe("first-run setup", () => {
   it("returns the account's boards and keys wrapped to the account from /me", async () => {
     const res = await call("/api/me", { device: laptop });
     expect(res.status).toBe(200);
-    expect(res.json.account).toEqual({ id: accountId, isAdmin: true, boxPublicKey: toBase64(accountBox.boxPublicKey), boxKeyVersion: 1 });
+    expect(res.json.account).toEqual({ id: accountId, isAdmin: true, hasPassphrase: true, boxPublicKey: toBase64(accountBox.boxPublicKey), boxKeyVersion: 1 });
     const [board] = res.json.boards;
     expect(board).toMatchObject({ id: personal.boardId, kind: "personal", keyVersion: 1 });
     expect(board.keys[0].accountKeyVersion).toBe(1);

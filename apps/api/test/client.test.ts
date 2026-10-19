@@ -16,9 +16,17 @@ import {
   Diary,
   MemoryStorage,
   PairingError,
+  InviteError,
   RevokeError,
   SetupError,
+  cancelAppInvite,
+  checkAppInvite,
+  createAppInvite,
   joinPairing,
+  listAppInvites,
+  listMembers,
+  removeMember,
+  setPassphrase,
   prepareSetup,
   masterBoardOf,
   revokeDevice,
@@ -55,6 +63,8 @@ describe("device setup, sign-in and sync", () => {
   let phone: DeviceState;
   let phrase: string;
   let group: BoardKey;
+  let friend: DeviceState;
+  let friendPhrase: string;
   let master: BoardInfo;
 
   it("sets up the account on the first device", async () => {
@@ -316,5 +326,116 @@ describe("device setup, sign-in and sync", () => {
 
     await phoneDiary.sync();
     expect((await phoneDiary.listItems()).map((i) => (i.payload as { text?: string }).text)).toContain("written before");
+  });
+
+  it("invites a friend with a one-time link, with no passphrase needed", async () => {
+    const invite = await createAppInvite(api, phone, "https://map.snehilsinha.com");
+    expect(invite.link).toBe(`https://map.snehilsinha.com/invite#${invite.code}`);
+    expect(invite.code).toMatch(/^(\w{5}-){3}\w{5}$/);
+    expect((await listAppInvites(api, phone)).map((i) => i.id)).toContain(invite.id);
+    expect(await checkAppInvite(api, invite.code.toLowerCase().replace(/-/g, " "))).toMatchObject({ state: "open" });
+    expect(await checkAppInvite(api, "nope")).toEqual({ state: "bad_code" });
+
+    // Without an invite, signup stays closed; a made-up invite is refused.
+    await expectSetupError(prepareSetup({ inviteCode: "nope" }), "bad_invite");
+    const fake = await prepareSetup({ inviteCode: "00000-00000-00000-00000" });
+    await expectSetupError(fake.complete(api), "invite_invalid");
+    // The admin's passphrase is taken.
+    const clash = await prepareSetup({ inviteCode: invite.code, passphrase: "bombay sandwich, extra cheese", kdf: FAST_KDF });
+    await expectSetupError(clash.complete(api), "passphrase_in_use");
+
+    const setup = await prepareSetup({ inviteCode: invite.code });
+    friend = await setup.complete(api);
+    friendPhrase = setup.recoveryPhrase;
+    expect(friend.accountId).not.toBe(phone.accountId);
+    const me = await api.me({ deviceId: friend.deviceId, signSecretKey: friend.identity.signSecretKey });
+    expect(me.account).toMatchObject({ isAdmin: false, hasPassphrase: false });
+
+    // The invite works once, and the server never sees a key it could open.
+    const row = await env.DB.prepare("SELECT master_keys FROM app_invites WHERE id = ?").bind(invite.id).first<{ master_keys: string }>();
+    expect(row!.master_keys).not.toContain(toBase64(friend.boardKeys.find((k) => k.boardId !== friend.personalBoardId)!.key));
+
+    expect(await checkAppInvite(api, invite.code)).toMatchObject({ state: "used" });
+    const again = await prepareSetup({ inviteCode: invite.code });
+    await expectSetupError(again.complete(api), "invite_invalid");
+    expect((await listAppInvites(api, phone)).map((i) => i.id)).not.toContain(invite.id);
+
+    // The invite carried the Public board, every key version of it, rotations included.
+    const masterNow = me.boards.find((b) => b.kind === "master")!;
+    expect(masterNow.keyVersion).toBeGreaterThan(1);
+    expect(friend.boardKeys.filter((k) => k.boardId === masterNow.id).map((k) => k.version).sort()).toEqual(
+      Array.from({ length: masterNow.keyVersion }, (_, i) => i + 1),
+    );
+
+    // The friend reads the admin's Public items and writes to their own diary.
+    const admin = diaryOf(phone);
+    const pub = await admin.write({ type: "comment", placeId: "place-9", payload: { text: "for everyone" }, boards: [masterNow.id] });
+    await admin.sync();
+    const d = diaryOf(friend);
+    await d.write({ type: "status", placeId: "place-9", payload: { status: "want" } });
+    await d.sync();
+    expect(d.getStatus()).toMatchObject({ phase: "idle", pending: 0, error: null });
+    expect((await d.getItem(pub.id))?.payload).toEqual({ text: "for everyone" });
+    expect(d.skipped).toEqual([]);
+
+    // Only the admin manages invites and members.
+    await expect(createAppInvite(api, friend, "https://map.snehilsinha.com")).rejects.toMatchObject({ code: "forbidden" });
+    await expect(listMembers(api, friend)).rejects.toBeInstanceOf(InviteError);
+    const members = await listMembers(api, phone);
+    expect(members.map((m) => [m.id, m.isAdmin, m.inviteId])).toEqual([
+      [phone.accountId, true, null],
+      [friend.accountId, false, invite.id],
+    ]);
+  });
+
+  it("lets a friend set a passphrase later with the recovery phrase", async () => {
+    const FRIEND_PASS = "vada pav near the station";
+    await expect(
+      setPassphrase(api, friend, { recoveryPhrase: phrase, newPassphrase: FRIEND_PASS, kdf: FAST_KDF }),
+    ).rejects.toMatchObject({ code: "wrong_account" });
+    await setPassphrase(api, friend, { recoveryPhrase: friendPhrase, newPassphrase: FRIEND_PASS, kdf: FAST_KDF });
+    const me = await api.me({ deviceId: friend.deviceId, signSecretKey: friend.identity.signSecretKey });
+    expect(me.account.hasPassphrase).toBe(true);
+    const laptop = await signInWithPassphrase(api, FRIEND_PASS);
+    expect(laptop.accountId).toBe(friend.accountId);
+  });
+
+  it("cancels an unused invite", async () => {
+    const invite = await createAppInvite(api, phone, "https://map.snehilsinha.com");
+    await cancelAppInvite(api, phone, invite.id);
+    expect(await checkAppInvite(api, invite.code)).toEqual({ state: "unknown" });
+    await expect(cancelAppInvite(api, phone, invite.id)).rejects.toMatchObject({ code: "not_found" });
+    const setup = await prepareSetup({ inviteCode: invite.code });
+    await expectSetupError(setup.complete(api), "invite_invalid");
+  });
+
+  it("refuses an invite made before the Public board's key changed", async () => {
+    const invite = await createAppInvite(api, phone, "https://map.snehilsinha.com");
+    const old = await signInWithPassphrase(api, "bombay sandwich, extra cheese");
+    phone = await revokeDevice(api, phone, old.deviceId, { recoveryPhrase: phrase });
+    const setup = await prepareSetup({ inviteCode: invite.code });
+    await expectSetupError(setup.complete(api), "invite_stale");
+    expect(await checkAppInvite(api, invite.code)).toMatchObject({ state: "open" });
+    await cancelAppInvite(api, phone, invite.id);
+  });
+
+  it("removes a friend from the app and refuses all their devices", async () => {
+    await expect(removeMember(api, phone, phone.accountId)).rejects.toMatchObject({ code: "server" });
+    await expect(removeMember(api, friend, phone.accountId)).rejects.toMatchObject({ code: "forbidden" });
+
+    await removeMember(api, phone, friend.accountId);
+    const d = diaryOf(friend);
+    await d.sync();
+    expect(d.getStatus().error).toBe("device_revoked");
+    await expectSetupError(signInWithPassphrase(api, "vada pav near the station"), "wrong_passphrase");
+    await expectSetupError(
+      signInWithRecoveryPhrase(api, { recoveryPhrase: friendPhrase, newPassphrase: "another long phrase", kdf: FAST_KDF }),
+      "unknown_recovery_phrase",
+    );
+
+    const members = await listMembers(api, phone);
+    expect(members.find((m) => m.id === friend.accountId)).toMatchObject({ devices: 0 });
+    expect(members.find((m) => m.id === friend.accountId)?.removedAt).not.toBeNull();
+    await expect(removeMember(api, phone, friend.accountId)).rejects.toMatchObject({ code: "not_found" });
   });
 });
