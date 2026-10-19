@@ -373,8 +373,13 @@ function ConnectClaude({ diary, onClose, onConnected }: { diary: Diary; onClose:
           <section className={s.sec}>
             <h3 className="overline">Paste these into Claude</h3>
             <p className="sub" style={{ margin: 0 }}>
-              In claude.ai, open Settings, then Connectors, and add a custom connector.
+              In claude.ai, open Settings, then Connectors, and add a new custom connector. Keep the Map diary
+              resolver connector as it is; this one is separate.
             </p>
+            <div className={s.field}>
+              <span className={s.label}>Name</span>
+              <CopyCode label="name" value="Map diary" />
+            </div>
             <div className={s.field}>
               <span className={s.label}>Server URL</span>
               <CopyCode label="server URL" value={`${window.location.origin}/api/claude/mcp`} />
