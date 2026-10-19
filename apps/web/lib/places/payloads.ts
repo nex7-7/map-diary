@@ -42,6 +42,11 @@ export interface ProfilePayload {
 
 export const DISPLAY_NAME_MAX = 40;
 
+/** A group's name, on the group's own board; the newest one from a member wins. */
+export interface GroupPayload {
+  name: string;
+}
+
 export interface PayloadByType {
   place: PlacePayload;
   private_place: PlacePayload;
@@ -50,6 +55,7 @@ export interface PayloadByType {
   tag: TagPayload;
   comment: CommentPayload;
   profile: ProfilePayload;
+  group: GroupPayload;
 }
 
 type JsonObject = { [key: string]: JsonValue };
@@ -110,6 +116,10 @@ const readers: { [T in EnvelopeType]: (p: JsonObject) => PayloadByType[T] | unde
   },
   profile: (p) => {
     const name = cleanDisplayName(str(p.name) ?? "");
+    return name ? { name } : undefined;
+  },
+  group: (p) => {
+    const name = str(p.name)?.trim();
     return name ? { name } : undefined;
   },
 };

@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import { readBody, requireAdmin, requireDevice, type AuthedEnv, type SignedEnv } from "./auth";
 import { masterBoard } from "./boards";
+import { leaveGroupStatements } from "./groups";
 import { fail, isB64, isId, isObject, isPositiveInt } from "./http";
 
 /** An app invite works once, for seven days. */
@@ -154,6 +155,20 @@ admin.post("/members/:id/remove", async (c) => {
   const now = Date.now();
   const db = c.env.DB;
   const removed = "EXISTS (SELECT 1 FROM accounts WHERE id = ? AND removed_at = ?)";
+  // They leave every group they are in, as if they had left themselves: their opinions leave
+  // its board and a remaining member's device moves the group to a new key.
+  const target = await db
+    .prepare("SELECT id FROM accounts WHERE id = ? AND removed_at IS NULL AND is_admin = 0")
+    .bind(id)
+    .first<{ id: string }>();
+  if (!target) return fail(c, 404, "not_found");
+  const { results: groups } = await db
+    .prepare(
+      `SELECT m.board_id, (SELECT COUNT(*) FROM board_members o WHERE o.board_id = m.board_id) AS members
+         FROM board_members m JOIN boards b ON b.id = m.board_id AND b.kind = 'group' WHERE m.account_id = ?`,
+    )
+    .bind(id)
+    .all<{ board_id: string; members: number }>();
   const results = await db.batch([
     db.prepare("UPDATE accounts SET removed_at = ? WHERE id = ? AND removed_at IS NULL AND is_admin = 0").bind(now, id),
     db
@@ -164,6 +179,7 @@ admin.post("/members/:id/remove", async (c) => {
         `DELETE FROM pairings WHERE created_by_device_id IN (SELECT id FROM devices WHERE account_id = ?) AND ${removed}`,
       )
       .bind(id, id, now),
+    ...groups.flatMap((g) => leaveGroupStatements(db, g.board_id, id, g.members - 1, now)),
   ]);
   if (results[0]?.meta.changes !== 1) return fail(c, 404, "not_found");
   return c.json({ removed: id });

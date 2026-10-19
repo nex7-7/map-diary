@@ -14,7 +14,8 @@ import {
 } from "@map-diary/crypto";
 import { ApiError, NetworkError, type Api, type Signer, type SyncResponse } from "./api";
 import { ensureMasterBoard, keysBehind, linkHashKeyOf, masterBoardOf, refreshKeyRing, writeKey } from "./boards";
-import { boardKeyLookup, mergeBoardKeys, openBoardKeys, type BoardInfo, type DeviceState } from "./device";
+import { boardKeyLookup, boardsFrom, mergeBoardKeys, openBoardKeys, type BoardInfo, type DeviceState } from "./device";
+import { rotateGroupKey } from "./groups";
 import type { DiaryItem, DiaryStorage } from "./storage";
 
 /** The API takes at most this many envelopes or deletions per call. */
@@ -100,6 +101,8 @@ export class Diary {
   /** False until this run has fetched the board key ring; set again when a pull sees it is behind. */
   private ringLoaded = false;
   private ringStale = false;
+  /** Set when this device gained a board, so the next round pulls everything again to fetch its past items. */
+  private rewind = false;
 
   private current: DeviceState;
 
@@ -198,6 +201,9 @@ export class Diary {
       ids = [master?.id ?? personal];
     } else {
       ids = [...new Set(requested && requested.length > 0 ? requested : [personal])];
+      // A board the account has left (a group) drops out of an edited item's boards.
+      const known = this.device.boards;
+      if (known) ids = ids.filter((id) => id === personal || known.some((b) => b.id === id));
       if (type === "private_place") ids = ids.filter((id) => id !== master?.id);
       if (ids.length === 0) ids = [personal];
     }
@@ -269,7 +275,19 @@ export class Diary {
    */
   private async maintainBoards(): Promise<void> {
     if (this.ringLoaded && !this.ringStale) return;
-    const fetched = await refreshKeyRing(this.api, this.current);
+    const before = this.current.boards;
+    let fetched = await refreshKeyRing(this.api, this.current);
+    if (before) {
+      const now = new Set((fetched.boards ?? []).map((b) => b.id));
+      const gone = new Set(before.filter((b) => !now.has(b.id)).map((b) => b.id));
+      if (gone.size > 0) {
+        // The refreshed ring still carries this device's old keys for those boards.
+        fetched = { ...fetched, boardKeys: fetched.boardKeys.filter((k) => !gone.has(k.boardId)) };
+        this.current = fetched;
+        await this.forgetBoards([...gone]);
+      }
+      if ((fetched.boards ?? []).some((b) => !before.some((p) => p.id === b.id))) this.rewind = true;
+    }
     // A refusal here must not stop the diary syncing; the next round tries again.
     const device = await ensureMasterBoard(this.api, fetched).catch((err: unknown) => {
       if (err instanceof NetworkError) throw err;
@@ -280,6 +298,70 @@ export class Diary {
     this.ringLoaded = true;
     this.ringStale = false;
     if (device.isAdmin) await this.movePlacesToMaster();
+    await this.rotateDueGroups();
+    this.emit();
+  }
+
+  /**
+   * A member left a group, and the leaver must not pick its next key, so a remaining member's
+   * device moves it to a new one. If another member's device got there first, this one picks
+   * up their key on the next refresh.
+   */
+  private async rotateDueGroups(): Promise<void> {
+    for (const b of this.current.boards ?? []) {
+      if (b.kind !== "group" || !b.rotationDue) continue;
+      try {
+        const key = await rotateGroupKey(this.api, this.current, b.id);
+        await this.adoptBoardKeys([key]);
+      } catch (err) {
+        if (err instanceof NetworkError) throw err;
+      }
+      this.ringStale = true;
+      this.again = true;
+    }
+  }
+
+  /**
+   * Adds board keys this device just made or received (a new group, an accepted invite, a
+   * rotation it did), and saves them. A board not seen before is pulled again from the start.
+   */
+  async adoptBoardKeys(keys: readonly BoardKey[], kind: BoardInfo["kind"] = "group"): Promise<void> {
+    const boards = [...(this.current.boards ?? [])];
+    for (const k of keys) {
+      const i = boards.findIndex((b) => b.id === k.boardId);
+      if (i < 0) {
+        boards.push({ id: k.boardId, kind, keyVersion: k.version });
+        this.rewind = true;
+      } else if (boards[i]!.keyVersion < k.version) {
+        boards[i] = { ...boards[i]!, keyVersion: k.version, rotationDue: false };
+      }
+    }
+    const device: DeviceState = { ...this.current, boards, boardKeys: mergeBoardKeys(this.current.boardKeys, keys) };
+    await this.storage.saveDevice(device);
+    this.current = device;
+    this.ringStale = true;
+    this.emit();
+  }
+
+  /**
+   * Forgets boards the account is no longer in (it left or was removed from a group): their
+   * keys, and every item this device could see only through them.
+   */
+  async forgetBoards(boardIds: readonly string[]): Promise<void> {
+    const gone = new Set(boardIds);
+    if (gone.size === 0) return;
+    const device: DeviceState = {
+      ...this.current,
+      boardKeys: this.current.boardKeys.filter((k) => !gone.has(k.boardId)),
+      ...(this.current.boards ? { boards: this.current.boards.filter((b) => !gone.has(b.id)) } : {}),
+    };
+    await this.storage.saveDevice(device);
+    this.current = device;
+    const held = new Set(device.boardKeys.map((k) => k.boardId));
+    const unreadable = (await this.storage.listItems())
+      .filter((i) => i.authorId !== device.accountId && !i.boardIds.some((b) => held.has(b)))
+      .map((i) => i.id);
+    if (unreadable.length > 0) await this.storage.applyPull({ items: [], deleted: unreadable });
     this.emit();
   }
 
@@ -373,6 +455,11 @@ export class Diary {
       await this.pull();
       if (this.stale.length > 0) this.ringStale = true;
       await this.maintainBoards();
+      if (this.rewind) {
+        this.rewind = false;
+        await this.storage.applyPull({ items: [], deleted: [], cursor: 0 });
+        this.again = true;
+      }
       if (this.stale.length > 0) await this.resealStale();
       this.setStatus({ phase: "idle", lastSyncedAt: Date.now(), error: null, pending: await this.countPending() });
     } catch (err) {
@@ -441,8 +528,9 @@ export class Diary {
       const page = await this.api.pull(cursor, this.signer);
       // Another device moved the account to new keys: collect them before opening anything.
       if (page.boxKeyVersion > this.current.accountBox.version) await this.collectAccountKey();
-      // Someone rotated a board key or added the account to a board: fetch the keys first.
-      if (keysBehind(this.current, page.boards ?? [])) {
+      // Someone rotated a board key, added the account to a board or took it off one, a group's
+      // members changed, or a group waits for a new key: fetch the ring first.
+      if (keysBehind(this.current, page.boards ?? []) || this.boardsChanged(page.boards)) {
         this.ringStale = true;
         await this.maintainBoards();
       }
@@ -452,6 +540,12 @@ export class Diary {
       if (!page.more || page.cursor <= cursor) break;
       cursor = page.cursor;
     }
+  }
+
+  private boardsChanged(listed: SyncResponse["boards"] | undefined): boolean {
+    if (!listed) return false;
+    const key = (bs: readonly BoardInfo[]) => JSON.stringify([...bs].sort((a, b) => (a.id < b.id ? -1 : 1)));
+    return key(boardsFrom(listed)) !== key(this.current.boards ?? []);
   }
 
   /**

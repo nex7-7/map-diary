@@ -104,6 +104,7 @@ export function snapshotFromItems(
   const opinions: { placeId: string; opinion: Opinion }[] = [];
   const authors = new Set<string>([accountId]);
   const profiles = displayNames(items);
+  const groups = groupNames(items);
 
   for (const item of items) {
     const base = {
@@ -163,7 +164,8 @@ export function snapshotFromItems(
   const snapshot = applyBoardRules({
     me: { id: accountId, name: "Me" },
     people: [],
-    boards: [...boards],
+    // A group's board takes the name its members gave it.
+    boards: boards.map((b) => (b.kind === "group" && groups.has(b.id) ? { ...b, name: groups.get(b.id)!.name } : b)),
     tags,
     places: [...places.values()],
   });
@@ -188,6 +190,20 @@ export function displayNames(items: readonly StoredItem[]): Map<string, string> 
     if (p && (!prior || item.updatedAt > prior.updatedAt)) latest.set(item.authorId, { name: p.name, updatedAt: item.updatedAt });
   }
   return new Map([...latest].map(([id, v]) => [id, v.name]));
+}
+
+/** Each group's name by board id: the newest valid `group` item posted to that board. */
+export function groupNames<T extends StoredItem>(items: readonly T[]): Map<string, { name: string; item: T }> {
+  const names = new Map<string, { name: string; item: T }>();
+  for (const item of items) {
+    if (item.type !== "group") continue;
+    const name = readPayload("group", item.payload)?.name;
+    const groupId = item.boardIds[0];
+    if (!name || !groupId) continue;
+    const prior = names.get(groupId);
+    if (!prior || item.updatedAt > prior.item.updatedAt) names.set(groupId, { name, item });
+  }
+  return names;
 }
 
 function latestStatus(items: readonly StoredItem[]): StoredItem | undefined {

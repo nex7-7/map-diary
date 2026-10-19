@@ -90,3 +90,14 @@ export {
 } from "./pairing";
 export { generateInviteCode, normaliseInviteCode, appInviteId, appInviteBoxKeys } from "./invite";
 export { LINK_HASH_BYTES, linkHashKey, linkHash } from "./links";
+export {
+  generateGroupInviteSecret,
+  isGroupInviteSecret,
+  groupInviteId,
+  groupInviteToken,
+  groupInviteTokenHash,
+  sealGroupInvite,
+  openGroupInvite,
+  type GroupInvite,
+  type SealedInvite,
+} from "./group-invite";

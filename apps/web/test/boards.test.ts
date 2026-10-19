@@ -62,6 +62,17 @@ describe("board rules", () => {
     ]);
   });
 
+  it("names a group's board from the newest name its members posted", () => {
+    const named = snapshotFromItems(
+      [...items, item("group", FRIEND, ["board-duo"], { name: "Old name" }), item("group", ME, ["board-duo"], { name: "Bandra lot" })],
+      ME,
+      PERSONAL,
+      boards,
+    );
+    expect(named.boards.find((b) => b.id === "board-duo")?.name).toBe("Bandra lot");
+    expect(named.boards.find((b) => b.id === "board-master")?.name).toBe("Public");
+  });
+
   it("drops opinions posted to a board their author is not a member of", () => {
     const texts = place.opinions.flatMap((o) => (o.kind === "comment" ? [o.text] : []));
     expect(texts.sort()).toEqual(["Ask for the berry soda", "Both groups"]);

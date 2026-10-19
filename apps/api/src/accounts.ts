@@ -277,7 +277,7 @@ export const me = new Hono<AuthedEnv>();
 me.get("/me", readBody, requireDevice, async (c) => {
   const { id: deviceId, accountId, isAdmin } = c.var.device;
   const db = c.env.DB;
-  const [account, boards, keys, devices] = await db.batch([
+  const [account, boards, keys, devices, members] = await db.batch([
     db
       .prepare(
         `SELECT box_public_key, box_key_version,
@@ -287,7 +287,7 @@ me.get("/me", readBody, requireDevice, async (c) => {
       .bind(accountId),
     db
       .prepare(
-        `SELECT b.id, b.kind, b.key_version FROM boards b
+        `SELECT b.id, b.kind, b.key_version, b.rotation_due_at FROM boards b
            JOIN board_members m ON m.board_id = b.id
           WHERE m.account_id = ? ORDER BY b.created_at`,
       )
@@ -301,9 +301,18 @@ me.get("/me", readBody, requireDevice, async (c) => {
            FROM devices WHERE account_id = ? ORDER BY created_at`,
       )
       .bind(accountId),
+    // Same order as /sync, so a device does not see its groups change between the two.
+    db
+      .prepare(
+        `SELECT g.board_id, g.account_id FROM board_members g JOIN boards b ON b.id = g.board_id AND b.kind = 'group'
+          WHERE g.board_id IN (SELECT board_id FROM board_members WHERE account_id = ?)
+          ORDER BY g.joined_at, g.account_id`,
+      )
+      .bind(accountId),
   ]);
 
-  type BoardRow = { id: string; kind: string; key_version: number };
+  type BoardRow = { id: string; kind: string; key_version: number; rotation_due_at: number | null };
+  const groupMembers = (members?.results ?? []) as { board_id: string; account_id: string }[];
   type AccountRow = { box_public_key: unknown; box_key_version: number; has_backup: number };
   type KeyRow = { board_id: string; key_version: number; account_key_version: number; wrapped_key: unknown };
   type DeviceRow = {
@@ -332,6 +341,10 @@ me.get("/me", readBody, requireDevice, async (c) => {
       id: b.id,
       kind: b.kind,
       keyVersion: b.key_version,
+      rotationDue: b.rotation_due_at !== null,
+      ...(b.kind === "group"
+        ? { memberIds: groupMembers.filter((m) => m.board_id === b.id).map((m) => m.account_id) }
+        : {}),
       keys: keyRows
         .filter((k) => k.board_id === b.id)
         .map((k) => ({ keyVersion: k.key_version, accountKeyVersion: k.account_key_version, wrappedKey: b64(k.wrapped_key) })),

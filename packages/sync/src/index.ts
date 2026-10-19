@@ -11,6 +11,8 @@ export {
   type BoardMember,
   type BoardSummary,
   type WrappedBoardKey,
+  type GroupMember,
+  type GroupView,
   type ResolverJobResponse,
   type ResolverJobStatus,
   type Signer,
@@ -70,3 +72,21 @@ export type { DeviceKind } from "@map-diary/crypto";
 export { MemoryStorage, type DiaryItem, type DiaryStorage } from "./storage";
 export { IdbStorage, IDB_NAME } from "./idb";
 export { Diary, type DiaryOptions, type SkippedEnvelope, type SyncPhase, type SyncStatus, type WriteInput } from "./sync";
+export {
+  GROUP_NAME_MAX,
+  GroupError,
+  JOIN_PATH,
+  MAX_GROUP_MEMBERS,
+  acceptGroupInvite,
+  createGroup,
+  createGroupInvite,
+  inviteSecretFrom,
+  leaveGroup,
+  listGroups,
+  readGroupInvite,
+  removeGroupMember,
+  renameGroup,
+  rotateGroupKey,
+  type GroupErrorCode,
+  type OpenedInvite,
+} from "./groups";

@@ -1,5 +1,5 @@
 import { fromBase64, toBase64, unwrapKeyFromMember, type BoardKey, type DeviceKind, type IdentityKeys } from "@map-diary/crypto";
-import type { MeResponse } from "./api";
+import type { BoardSummary, MeResponse } from "./api";
 
 /** An account box keypair as a device stores it. */
 export interface StoredAccountBoxKeys {
@@ -41,13 +41,25 @@ export interface BoardInfo {
   id: string;
   kind: BoardKind;
   keyVersion: number;
+  /** A member left this group, so a remaining member's device moves it to a new key. */
+  rotationDue?: boolean;
+  /** A group's members, whose opinions its board shows. */
+  memberIds?: string[];
 }
 
 const BOARD_KINDS: readonly string[] = ["master", "group", "personal"];
 
 /** The boards in a `/me` or `/sync` response, skipping any kind this version does not know. */
-export function boardsFrom(list: readonly { id: string; kind: string; keyVersion: number }[]): BoardInfo[] {
-  return list.filter((b) => BOARD_KINDS.includes(b.kind)).map((b) => ({ id: b.id, kind: b.kind as BoardKind, keyVersion: b.keyVersion }));
+export function boardsFrom(list: readonly BoardSummary[]): BoardInfo[] {
+  return list
+    .filter((b) => BOARD_KINDS.includes(b.kind))
+    .map((b) => ({
+      id: b.id,
+      kind: b.kind as BoardKind,
+      keyVersion: b.keyVersion,
+      ...(b.rotationDue ? { rotationDue: true } : {}),
+      ...(b.memberIds ? { memberIds: [...b.memberIds] } : {}),
+    }));
 }
 
 /** A stored device from an older format (before board keys were wrapped per account) is not usable. */
