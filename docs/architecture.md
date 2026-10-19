@@ -244,7 +244,7 @@ The sideloaded Android app is the only place proximity alerts exist, and the ser
 
 Each phase ends with something I can use daily.
 
-Status as of 2026-10-19: Phases 1 to 4 are live, except rotating the master key when the admin removes a member (PR #23, open). Phase 5 is merged: the master board and app invites are live; groups (migration 0008) and friends' opinions are waiting to be deployed. Phase 6 is being planned.
+Status as of 2026-10-19: Phases 1 to 4 are live, and rotating the master key when the admin removes a member (PR #23) is merged. Phase 5 is merged: the master board and app invites are live; groups (migration 0008), friends' opinions and PR #23 are waiting to be deployed. Phase 6 is being planned.
 
 1. **Foundation:** Next.js + TypeScript project, API Worker on `map.snehilsinha.com`, D1 envelope schema, R2 with the Mumbai map file.
 2. **Solo diary:** keys and passphrase backup, envelope sync, Add sheet, map and list, dropped pins, Google Maps link parsing, categories, tags, comments, Visited. Personal board only.

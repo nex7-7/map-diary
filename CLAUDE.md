@@ -35,4 +35,4 @@ Places hold shared facts (written once; only admin edits). People attach opinion
 
 ## Current phase
 
-Phase 6 — Claude assistant: a `claude` device on the owner's account that holds only the master and Personal board keys (never account or group keys), Connect Claude on the Devices screen, its own MCP connector whose keys unlock only with the connector secret, read and write tools, revocation. Phases 1–4 are live (master key rotation on member removal is PR #23); Phase 5 is merged, with groups and friends' opinions waiting to be deployed.
+Phase 6 — Claude assistant: a `claude` device on the owner's account that holds only the master and Personal board keys (never account or group keys), Connect Claude on the Devices screen, its own MCP connector whose keys unlock only with the connector secret, read and write tools, revocation. Phases 1–5 are merged; groups, friends' opinions and master key rotation on member removal (PR #23) are waiting to be deployed.
