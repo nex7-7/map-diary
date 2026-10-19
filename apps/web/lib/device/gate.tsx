@@ -21,7 +21,7 @@ export function DeviceGate({ children }: { children: (diary: Diary) => ReactNode
         Set up the diary
       </Link>
       <Link className={styles.secondary} href="/sign-in">
-        Sign in with my passphrase
+        Sign in with another device or my passphrase
       </Link>
     </div>
   );

@@ -76,3 +76,15 @@ export {
   type ParsedResolution,
   type ReplyKeys,
 } from "./resolver";
+export {
+  generatePairingSecret,
+  normalisePairingSecret,
+  pairingId,
+  pairingJoinMac,
+  verifyPairingJoinMac,
+  pairingCode,
+  sealAccountTransfer,
+  openAccountTransfer,
+  type PairingJoin,
+  type AccountTransfer,
+} from "./pairing";

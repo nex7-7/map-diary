@@ -20,6 +20,16 @@ export {
   type SetupOptions,
 } from "./account";
 export { currentBoardKey, type DeviceState } from "./device";
+export {
+  LINK_PATH,
+  PairingError,
+  joinPairing,
+  startPairing,
+  type JoiningDevice,
+  type OpenPairing,
+  type PairingCheck,
+  type PairingErrorCode,
+} from "./pairing";
 export type { DeviceKind } from "@map-diary/crypto";
 export { MemoryStorage, type DiaryItem, type DiaryStorage } from "./storage";
 export { IdbStorage, IDB_NAME } from "./idb";

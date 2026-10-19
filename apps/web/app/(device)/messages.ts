@@ -1,4 +1,10 @@
-import { PASSPHRASE_MIN_LENGTH, SetupError, type SetupErrorCode } from "@map-diary/sync";
+import {
+  PASSPHRASE_MIN_LENGTH,
+  PairingError,
+  SetupError,
+  type PairingErrorCode,
+  type SetupErrorCode,
+} from "@map-diary/sync";
 
 const MESSAGES: Record<SetupErrorCode, string> = {
   passphrase_too_short: `Use at least ${PASSPHRASE_MIN_LENGTH} characters. A short sentence works well.`,
@@ -23,4 +29,16 @@ export function needsHomeScreenInstall(): boolean {
     window.matchMedia("(display-mode: standalone)").matches ||
     (navigator as Navigator & { standalone?: boolean }).standalone === true;
   return ios && !standalone;
+}
+
+const PAIRING_MESSAGES: Record<PairingErrorCode, string> = {
+  bad_code: "That code has a typo. It is ten letters and digits, like 7K3QM-9XT2B.",
+  expired: "That code has expired or was already used. Make a new one on your other device.",
+  tampered: "The device that answered didn't come from your code, so it wasn't added. Make a new code and try again.",
+  offline: "You're offline. Connect and try again.",
+  server: "Something went wrong on the server. Try again in a moment.",
+};
+
+export function pairingErrorMessage(err: unknown): string {
+  return err instanceof PairingError ? PAIRING_MESSAGES[err.code] : PAIRING_MESSAGES.server;
 }

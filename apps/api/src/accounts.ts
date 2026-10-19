@@ -11,14 +11,14 @@ import {
 import { bytes, fail, isB64, isId, isObject, isPositiveInt } from "./http";
 import { parseKeyBackupBody, upsertKeyBackup } from "./backup";
 
-const DEVICE_KINDS: readonly DeviceKind[] = ["web", "android", "claude"];
+export const DEVICE_KINDS: readonly DeviceKind[] = ["web", "android", "claude"];
 
 /** Ed25519 and X25519 public keys are both 32 bytes. */
 const PUBLIC_KEY_B64 = 43;
 /** crypto_box_seal of a 32-byte board key: 32 + 48 bytes. */
 const MAX_WRAPPED_KEY_B64 = 200;
 
-interface NewDevice {
+export interface NewDevice {
   id: string;
   kind: DeviceKind;
   signPublicKey: Uint8Array;
@@ -54,7 +54,7 @@ function parseBoardKey(value: unknown): NewBoardKey | null {
   return { boardId, keyVersion, wrappedKey: fromBase64(wrappedKey) };
 }
 
-function isPublicKey(value: unknown): value is string {
+export function isPublicKey(value: unknown): value is string {
   return isB64(value, PUBLIC_KEY_B64) && value.length === PUBLIC_KEY_B64;
 }
 
@@ -88,7 +88,7 @@ function deviceAuthorized(accountId: string, device: NewDevice, accountSignPubli
   );
 }
 
-function insertDevice(db: D1Database, accountId: string, d: NewDevice, now: number): D1PreparedStatement {
+export function insertDevice(db: D1Database, accountId: string, d: NewDevice, now: number): D1PreparedStatement {
   return db
     .prepare(
       `INSERT INTO devices (id, account_id, kind, sign_public_key, box_public_key, created_at)

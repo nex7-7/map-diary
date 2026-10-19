@@ -1,4 +1,4 @@
-import { signRequest, type DeviceKind, type Envelope, type KeyBackup } from "@map-diary/crypto";
+import { ready, signRequest, type DeviceKind, type Envelope, type KeyBackup } from "@map-diary/crypto";
 
 /** The device's request-signing identity. */
 export interface Signer {
@@ -52,6 +52,15 @@ export interface WrappedBoardKey {
 export interface KeyBackupBody {
   lookup: string;
   backup: KeyBackup;
+}
+
+export type PairingState = "waiting" | "joined" | "approved";
+
+export interface PairingView {
+  state: PairingState;
+  expiresAt: number;
+  device?: Omit<DeviceBody, "authorization">;
+  mac?: string;
 }
 
 export interface MeResponse {
@@ -117,6 +126,8 @@ export class Api {
     const headers: Record<string, string> = {};
     if (text) headers["Content-Type"] = "application/json";
     if (signer) {
+      // A page can sign its first request before anything else has loaded libsodium.
+      await ready();
       Object.assign(
         headers,
         signRequest(
@@ -181,6 +192,37 @@ export class Api {
 
   putBoardKeys(boardKeys: WrappedBoardKey[], signer: Signer) {
     return this.call<{ stored: number }>("PUT", "/api/board-keys", { boardKeys }, signer);
+  }
+
+  // Device pairing: the old device opens, reads and approves; the new device joins,
+  // polls and collects. See packages/crypto/src/pairing.ts.
+
+  openPairing(id: string, signer: Signer) {
+    return this.call<{ id: string; expiresAt: number }>("POST", "/api/pairings", { id }, signer);
+  }
+
+  readPairing(id: string, signer: Signer) {
+    return this.call<PairingView>("GET", `/api/pairings/${encodeURIComponent(id)}`, undefined, signer);
+  }
+
+  approvePairing(id: string, body: { authorization: string; sealedTransfer: string }, signer: Signer) {
+    return this.call<{ deviceId: string }>("POST", `/api/pairings/${encodeURIComponent(id)}/approve`, body, signer);
+  }
+
+  cancelPairing(id: string, signer: Signer) {
+    return this.call<undefined>("DELETE", `/api/pairings/${encodeURIComponent(id)}`, undefined, signer);
+  }
+
+  joinPairing(id: string, body: { device: Omit<DeviceBody, "authorization">; mac: string }) {
+    return this.call<{ state: "joined" }>("POST", `/api/pairings/${encodeURIComponent(id)}/join`, body, null);
+  }
+
+  pairingStatus(id: string) {
+    return this.call<{ state: PairingState }>("GET", `/api/pairings/${encodeURIComponent(id)}/status`, undefined, null);
+  }
+
+  collectPairing(id: string, signer: Signer) {
+    return this.call<{ sealedTransfer: string }>("GET", `/api/pairings/${encodeURIComponent(id)}/transfer`, undefined, signer);
   }
 
   pushEnvelopes(envelopes: Envelope[], signer: Signer) {

@@ -5,6 +5,7 @@ import { accounts, me } from "./accounts";
 import { backupFetch, backupWrite } from "./backup";
 import { envelopes } from "./envelopes";
 import { mcp } from "./mcp";
+import { pairingsOpen, pairingsSigned } from "./pairings";
 import { resolverJobs, resolverWork } from "./resolver";
 import { tiles } from "./tiles";
 
@@ -38,6 +39,8 @@ app.route("/", backupFetch);
 app.route("/", backupWrite);
 app.route("/", envelopes);
 app.route("/", mcp);
+app.route("/", pairingsOpen);
+app.route("/", pairingsSigned);
 app.route("/", resolverWork);
 app.route("/", resolverJobs);
 app.route("/", tiles);

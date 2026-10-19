@@ -8,13 +8,14 @@ import { adoptDevice, api, currentDeviceKind, useSession } from "@/lib/device";
 import styles from "@/lib/device/device.module.css";
 import { errorMessage } from "../messages";
 import { InstallWarning } from "../install-warning";
+import { JoinDevice } from "../join-device";
 
-type Mode = "passphrase" | "recovery";
+type Mode = "passphrase" | "recovery" | "device";
 
 export function SignInFlow() {
   const session = useSession();
   const router = useRouter();
-  const [mode, setMode] = useState<Mode>("passphrase");
+  const [mode, setMode] = useState<Mode>("device");
   const [passphrase, setPassphrase] = useState("");
   const [phrase, setPhrase] = useState("");
   const [newPassphrase, setNewPassphrase] = useState("");
@@ -59,28 +60,49 @@ export function SignInFlow() {
     setError(null);
   }
 
+  const tabs = (
+    <div className={styles.tabs} role="group" aria-label="Sign in with">
+      <button
+        type="button"
+        className={styles.button}
+        aria-pressed={mode === "device"}
+        onClick={() => switchTo("device")}
+      >
+        Another device
+      </button>
+      <button
+        type="button"
+        className={styles.button}
+        aria-pressed={mode === "passphrase"}
+        onClick={() => switchTo("passphrase")}
+      >
+        Passphrase
+      </button>
+      <button
+        type="button"
+        className={styles.button}
+        aria-pressed={mode === "recovery"}
+        onClick={() => switchTo("recovery")}
+      >
+        Recovery phrase
+      </button>
+    </div>
+  );
+
+  if (mode === "device") {
+    return (
+      <div className={styles.card}>
+        <InstallWarning />
+        {tabs}
+        <JoinDevice />
+      </div>
+    );
+  }
+
   return (
     <form className={styles.card} onSubmit={(e) => void submit(e)}>
       <InstallWarning />
-      <div className={styles.tabs} role="group" aria-label="Sign in with">
-        <button
-          type="button"
-          className={styles.button}
-          aria-pressed={mode === "passphrase"}
-          onClick={() => switchTo("passphrase")}
-        >
-          Passphrase
-        </button>
-        <button
-          type="button"
-          className={styles.button}
-          aria-pressed={mode === "recovery"}
-          onClick={() => switchTo("recovery")}
-        >
-          Recovery phrase
-        </button>
-      </div>
-
+      {tabs}
       {mode === "passphrase" ? (
         <label className={styles.field}>
           <span>Passphrase</span>
