@@ -206,6 +206,8 @@ export interface MemberKeyBody {
 export interface RevokeBody {
   boxPublicKey: string;
   boxKeyVersion: number;
+  /** The account key's signature on the new box key: proof the revoker has the recovery seed. */
+  boxKeySignature: string;
   boardKeys: WrappedBoardKey[];
   deviceKeys: { deviceId: string; sealedKey: string }[];
   /** Rotated shared-board keys for every other member of those boards. */
@@ -302,7 +304,8 @@ export class Api {
     return this.call<{ accountId: string; backup: KeyBackup }>("POST", "/api/key-backup/fetch", { lookup }, null);
   }
 
-  putKeyBackup(body: KeyBackupBody, signer: Signer) {
+  /** Replaces the backup; `accountSignature` is the account key's signature on it. */
+  putKeyBackup(body: KeyBackupBody & { accountSignature: string }, signer: Signer) {
     return this.call<{ ok: true }>("PUT", "/api/key-backup", body, signer);
   }
 

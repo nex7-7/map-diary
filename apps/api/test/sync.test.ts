@@ -11,6 +11,7 @@ import {
   randomId,
   ready,
   sealEnvelope,
+  signKeyBackup,
   signRequest,
   toBase64,
   fromBase64,
@@ -315,11 +316,20 @@ describe("second device sign-in", () => {
     expect(res.status).toBe(403);
   });
 
-  it("replaces the backup from a signed device", async () => {
+  it("replaces the backup from a signed device holding the account key", async () => {
     const backup = createKeyBackup(encoder.encode("bundle v2"), "new phrase", FAST_KDF);
     const newLookup = toBase64(new Uint8Array(32).fill(9));
-    expect((await call("/api/key-backup", { method: "PUT", body: { lookup: newLookup, backup } })).status).toBe(401);
-    const res = await call("/api/key-backup", { method: "PUT", body: { lookup: newLookup, backup }, device: phone });
+    const signed = { accountId, lookup: newLookup, salt: backup.salt, nonce: backup.nonce, ciphertext: backup.ciphertext };
+    const accountSignature = signKeyBackup(signed, account.signSecretKey);
+    expect((await call("/api/key-backup", { method: "PUT", body: { lookup: newLookup, backup, accountSignature } })).status).toBe(401);
+    // A device alone (no recovery seed, so no account key) cannot replace the backup.
+    const deviceOnly = signKeyBackup(signed, phone.keys.signSecretKey);
+    expect(
+      (await call("/api/key-backup", { method: "PUT", body: { lookup: newLookup, backup, accountSignature: deviceOnly }, device: phone }))
+        .status,
+    ).toBe(403);
+    expect((await call("/api/key-backup", { method: "PUT", body: { lookup: newLookup, backup }, device: phone })).status).toBe(400);
+    const res = await call("/api/key-backup", { method: "PUT", body: { lookup: newLookup, backup, accountSignature }, device: phone });
     expect(res.status).toBe(200);
     expect((await call("/api/key-backup/fetch", { body: { lookup: LOOKUP } })).status).toBe(404);
     const fetched = await call("/api/key-backup/fetch", { body: { lookup: newLookup } });

@@ -11,6 +11,7 @@ import {
   parseRecoveryPhrase,
   randomId,
   ready,
+  signKeyBackup,
   fromBase64,
   toBase64,
   unwrapKeyFromMember,
@@ -103,6 +104,17 @@ function backupBody(bundle: KeyBundle, passphrase: string, kdf: KdfParams): KeyB
     lookup: backupLookupId(passphrase),
     backup: createKeyBackup(encodeKeyBundle(bundle), passphrase, kdf),
   };
+}
+
+/** A replacement backup, signed with the account key so the Worker knows the seed is held. */
+function signedBackupBody(account: RecoveredAccount, bundle: KeyBundle, passphrase: string, kdf: KdfParams) {
+  const body = backupBody(bundle, passphrase, kdf);
+  const { salt, nonce, ciphertext } = body.backup;
+  const accountSignature = signKeyBackup(
+    { accountId: account.accountId, lookup: body.lookup, salt, nonce, ciphertext },
+    account.accountKeys.signSecretKey,
+  );
+  return { ...body, accountSignature };
 }
 
 export interface SetupOptions {
@@ -353,7 +365,7 @@ export async function signInWithRecoveryPhrase(api: Api, options: RecoveryOption
   const bundle: KeyBundle = { v: 2, recoverySeed: seed, accountId: account.accountId, personalBoardId: account.personalBoardId };
   try {
     await api.putKeyBackup(
-      backupBody(bundle, options.newPassphrase, options.kdf ?? defaultKdfParams()),
+      signedBackupBody(account, bundle, options.newPassphrase, options.kdf ?? defaultKdfParams()),
       signerOf(device.deviceId, device.identity),
     );
   } catch (err) {
@@ -388,7 +400,7 @@ export async function setPassphrase(api: Api, device: DeviceState, options: SetP
   const bundle: KeyBundle = { v: 2, recoverySeed: seed, accountId: account.accountId, personalBoardId: account.personalBoardId };
   try {
     await api.putKeyBackup(
-      backupBody(bundle, options.newPassphrase, options.kdf ?? defaultKdfParams()),
+      signedBackupBody(account, bundle, options.newPassphrase, options.kdf ?? defaultKdfParams()),
       signerOf(device.deviceId, device.identity),
     );
   } catch (err) {

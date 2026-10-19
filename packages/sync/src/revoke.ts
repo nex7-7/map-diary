@@ -8,6 +8,7 @@ import {
   ready,
   generateBoardKey,
   sealAccountTransfer,
+  signAccountBoxKey,
   toBase64,
   unwrapKeyFromMember,
   wrapKeyForMember,
@@ -161,7 +162,17 @@ export async function revokeDevice(
   try {
     await api.revokeDevice(
       targetDeviceId,
-      { boxPublicKey: toBase64(newBox.publicKey), boxKeyVersion: version, boardKeys: wrapped, deviceKeys, memberKeys },
+      {
+        boxPublicKey: toBase64(newBox.publicKey),
+        boxKeyVersion: version,
+        boxKeySignature: signAccountBoxKey(
+          { accountId: account.accountId, version, boxPublicKey: newBox.publicKey },
+          account.accountKeys.signSecretKey,
+        ),
+        boardKeys: wrapped,
+        deviceKeys,
+        memberKeys,
+      },
       signer,
     );
   } catch (err) {

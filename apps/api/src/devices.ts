@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { fromBase64, toBase64 } from "@map-diary/crypto";
+import { fromBase64, toBase64, verifyAccountBoxKey } from "@map-diary/crypto";
 import { readBody, requireDevice, type AuthedEnv } from "./auth";
 import { isPublicKey, parseBoardKeys, type NewBoardKey } from "./accounts";
 import { bytes, fail, isB64, isId, isObject, isPositiveInt } from "./http";
@@ -70,15 +70,26 @@ export const devices = new Hono<AuthedEnv>();
  * board, later groups) moves to a fresh random key too, wrapped to the caller's new account key
  * and to every other member's current one. The revoked device gets none of this, so the server
  * refuses it at once and nothing written from now on is readable with its keys.
+ *
+ * The new box key comes with the account key's signature. Devices never hold the account key
+ * (it is derived from the recovery seed), so only someone with the seed can revoke: a stolen
+ * device cannot move the account to a box key of its own and lock the owner out.
  */
 devices.post("/devices/:id/revoke", readBody, requireDevice, async (c) => {
   const body = c.var.body;
   if (!isObject(body)) return fail(c, 400, "bad_request");
-  const { boxPublicKey, boxKeyVersion } = body;
+  const { boxPublicKey, boxKeyVersion, boxKeySignature } = body;
   const boardKeys = parseBoardKeys(body.boardKeys, MAX_BOARD_KEYS);
   const deviceKeys = parseDeviceKeys(body.deviceKeys);
   const memberKeys = parseMemberKeys(body.memberKeys);
-  if (!isPublicKey(boxPublicKey) || !isPositiveInt(boxKeyVersion) || !boardKeys || !deviceKeys || !memberKeys) {
+  if (
+    !isPublicKey(boxPublicKey) ||
+    !isPositiveInt(boxKeyVersion) ||
+    !isB64(boxKeySignature, 100) ||
+    !boardKeys ||
+    !deviceKeys ||
+    !memberKeys
+  ) {
     return fail(c, 400, "bad_request");
   }
 
@@ -88,7 +99,7 @@ devices.post("/devices/:id/revoke", readBody, requireDevice, async (c) => {
   const db = c.env.DB;
 
   const [accountRes, devicesRes, boardsRes, keysRes, membersRes] = await db.batch([
-    db.prepare("SELECT box_key_version FROM accounts WHERE id = ?").bind(accountId),
+    db.prepare("SELECT box_key_version, sign_public_key FROM accounts WHERE id = ?").bind(accountId),
     db.prepare("SELECT id, kind FROM devices WHERE account_id = ? AND revoked_at IS NULL").bind(accountId),
     db
       .prepare(
@@ -107,7 +118,7 @@ devices.post("/devices/:id/revoke", readBody, requireDevice, async (c) => {
       )
       .bind(accountId, accountId),
   ]);
-  const account = (accountRes?.results?.[0] ?? null) as { box_key_version: number } | null;
+  const account = (accountRes?.results?.[0] ?? null) as { box_key_version: number; sign_public_key: unknown } | null;
   const activeRows = (devicesRes?.results ?? []) as { id: string; kind: string }[];
   const active = activeRows.map((d) => d.id);
   const boards = (boardsRes?.results ?? []) as { id: string; kind: string; key_version: number }[];
@@ -117,6 +128,14 @@ devices.post("/devices/:id/revoke", readBody, requireDevice, async (c) => {
 
   // The account moves exactly one version on; anything else is a stale view of it.
   if (boxKeyVersion !== account.box_key_version + 1) return fail(c, 409, "stale");
+  const signedBySeed =
+    account.sign_public_key !== null &&
+    verifyAccountBoxKey(
+      { accountId, version: boxKeyVersion, boxPublicKey: fromBase64(boxPublicKey) },
+      boxKeySignature,
+      bytes(account.sign_public_key),
+    );
+  if (!signedBySeed) return fail(c, 403, "bad_account_signature");
 
   // Every remaining device gets the new key, so none is left unable to read. A Claude device
   // never holds the account key; one of these devices wraps it the new master and Personal
