@@ -64,7 +64,7 @@ pnpm --filter @map-diary/api test               # Vitest in workerd, migrations 
 pnpm --filter @map-diary/api smoke              # wrangler dev + real requests; catches workerd-only failures
 pnpm --filter @map-diary/api dev                # wrangler dev
 pnpm --filter @map-diary/api db:migrate:remote  # apply new migrations in migrations/
-pnpm --filter @map-diary/api deploy
+pnpm --filter @map-diary/api run deploy
 ```
 
 Schema changes go in a new numbered file under `migrations/`, never ad-hoc SQL. Run `pnpm cf-typegen` after changing `wrangler.jsonc`.
