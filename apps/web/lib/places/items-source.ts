@@ -42,18 +42,21 @@ export interface DeviceBoards {
  */
 export interface BoardDirectory {
   listBoards?(): Promise<Board[]>;
+  /** The diary's board ring, if it exposes one (same shape as `DeviceBoards.boards`). */
+  readonly boards?: DeviceBoards["boards"];
 }
 
 const BOARD_NAMES: Record<BoardKind, string> = { personal: "Personal", master: "Public", group: "Group" };
 
 /** True once the diary can post to boards other than Personal. */
 export function canChooseBoards(store: BoardDirectory & { readonly device: DeviceBoards }): boolean {
-  return typeof store.listBoards === "function" || store.device.boards !== undefined;
+  return typeof store.listBoards === "function" || (store.boards ?? store.device.boards) !== undefined;
 }
 
 /** The boards this device can read. The Personal board is always there, with only its owner. */
 export async function boardsOf(store: BoardDirectory & { readonly device: DeviceBoards }): Promise<Board[]> {
-  const { accountId, personalBoardId, boardKeys = [], boards } = store.device;
+  const { accountId, personalBoardId, boardKeys = [] } = store.device;
+  const boards = store.boards ?? store.device.boards;
   const personal: Board = { id: personalBoardId, kind: "personal", name: "Personal", memberIds: [accountId] };
   const listed: Board[] = store.listBoards
     ? await store.listBoards()
