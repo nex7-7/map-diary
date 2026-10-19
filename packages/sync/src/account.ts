@@ -21,6 +21,8 @@ import {
   type RecoveredAccount,
   type IdentityKeys,
   type KdfParams,
+  appInviteId,
+  normaliseInviteCode,
 } from "@map-diary/crypto";
 import { ApiError, NetworkError, type Api, type DeviceBody, type KeyBackupBody, type Signer } from "./api";
 import { decodeKeyBundle, encodeKeyBundle, type DeviceState, type KeyBundle, type StoredAccountBoxKeys } from "./device";
@@ -34,6 +36,9 @@ export type SetupErrorCode =
   | "unknown_recovery_phrase"
   | "registration_closed"
   | "passphrase_in_use"
+  | "bad_invite"
+  | "invite_invalid"
+  | "wrong_account"
   | "offline"
   | "server";
 
@@ -54,6 +59,7 @@ function asSetupError(err: unknown, notFound: SetupErrorCode = "server"): SetupE
   if (err instanceof ApiError) {
     if (err.code === "registration_closed") return new SetupError("registration_closed");
     if (err.code === "lookup_taken") return new SetupError("passphrase_in_use");
+    if (err.code === "invite_invalid") return new SetupError("invite_invalid");
     if (err.status === 404 || err.status === 403) return new SetupError(notFound);
   }
   return new SetupError("server");
@@ -96,7 +102,13 @@ function backupBody(bundle: KeyBundle, passphrase: string, kdf: KdfParams): KeyB
 }
 
 export interface SetupOptions {
-  passphrase: string;
+  /**
+   * Seals the key backup for signing in on other devices. Required for the first (admin)
+   * account; invited friends may leave it out and set one later with the recovery phrase.
+   */
+  passphrase?: string;
+  /** The app invite code, typed or from the link; every account after the first needs one. */
+  inviteCode?: string;
   /** What this device is; defaults to `web`. */
   kind?: DeviceKind;
   /** Argon2id cost; only tests lower it. */
@@ -112,13 +124,20 @@ export interface PreparedSetup {
 }
 
 /**
- * First-run setup, part one: generates the recovery seed and every key, and seals the key
- * backup under the passphrase. Nothing is sent until `complete`, so the phrase can be shown
- * and confirmed first.
+ * Account setup, part one: generates the recovery seed and every key, and seals the key
+ * backup under the passphrase if one was chosen. Nothing is sent until `complete`, so the
+ * phrase can be shown and confirmed first.
  */
 export async function prepareSetup(options: SetupOptions): Promise<PreparedSetup> {
   await ready();
-  checkPassphrase(options.passphrase);
+  let invite: string | undefined;
+  if (options.inviteCode !== undefined) {
+    const code = normaliseInviteCode(options.inviteCode);
+    if (!code) throw new SetupError("bad_invite");
+    invite = appInviteId(code);
+  }
+  const passphrase = options.passphrase || undefined;
+  if (passphrase !== undefined || invite === undefined) checkPassphrase(passphrase ?? "");
   const kdf = options.kdf ?? defaultKdfParams();
   const { seed, phrase } = generateRecoveryPhrase();
   const account = deriveAccount(seed);
@@ -136,11 +155,16 @@ export async function prepareSetup(options: SetupOptions): Promise<PreparedSetup
     },
     device: deviceBody(account.accountId, deviceId, kind, identity, account.accountKeys),
     personalBoard: { id: personal.boardId, wrappedKey: toBase64(wrapKeyForMember(personal.key, accountBox.publicKey)) },
-    keyBackup: backupBody(
-      { v: 2, recoverySeed: seed, accountId: account.accountId, personalBoardId: personal.boardId },
-      options.passphrase,
-      kdf,
-    ),
+    ...(passphrase === undefined
+      ? {}
+      : {
+          keyBackup: backupBody(
+            { v: 2, recoverySeed: seed, accountId: account.accountId, personalBoardId: personal.boardId },
+            passphrase,
+            kdf,
+          ),
+        }),
+    ...(invite === undefined ? {} : { invite }),
   };
 
   return {
@@ -272,4 +296,38 @@ export async function signInWithRecoveryPhrase(api: Api, options: RecoveryOption
     throw asSetupError(err);
   }
   return device;
+}
+
+export interface SetPassphraseOptions {
+  /** Proves the person is the account owner; the backup holds the seed it derives. */
+  recoveryPhrase: string;
+  newPassphrase: string;
+  kdf?: KdfParams;
+}
+
+/**
+ * Sets or replaces the passphrase backup from a signed-in device, for a friend who skipped it
+ * at setup or anyone changing it. The device does not keep the recovery seed, so the
+ * recovery phrase supplies it.
+ */
+export async function setPassphrase(api: Api, device: DeviceState, options: SetPassphraseOptions): Promise<void> {
+  await ready();
+  checkPassphrase(options.newPassphrase);
+  let seed: Uint8Array;
+  try {
+    seed = parseRecoveryPhrase(options.recoveryPhrase);
+  } catch {
+    throw new SetupError("invalid_recovery_phrase");
+  }
+  const account = deriveAccount(seed);
+  if (account.accountId !== device.accountId) throw new SetupError("wrong_account");
+  const bundle: KeyBundle = { v: 2, recoverySeed: seed, accountId: account.accountId, personalBoardId: account.personalBoardId };
+  try {
+    await api.putKeyBackup(
+      backupBody(bundle, options.newPassphrase, options.kdf ?? defaultKdfParams()),
+      signerOf(device.deviceId, device.identity),
+    );
+  } catch (err) {
+    throw asSetupError(err);
+  }
 }

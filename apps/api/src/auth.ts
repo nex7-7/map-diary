@@ -92,6 +92,12 @@ export const readBody = createMiddleware<SignedEnv>(async (c, next) => {
   await next();
 });
 
+/** Refuses a signed request from anyone but the admin. Runs after requireDevice. */
+export const requireAdmin = createMiddleware<AuthedEnv>(async (c, next) => {
+  if (!c.var.device.isAdmin) return fail(c, 403, "forbidden");
+  await next();
+});
+
 /**
  * Requires a request signed by a registered, unrevoked device of an active account.
  * There are no sessions or passwords: every request carries its own signature.
@@ -102,9 +108,9 @@ export const requireDevice = createMiddleware<AuthedEnv>(async (c, next) => {
   if (!headers) return fail(c, 401, "unauthenticated");
 
   const row = await c.env.DB.prepare(
-    `SELECT d.account_id, d.sign_public_key, d.last_seen_at, d.revoked_at, a.is_admin
+    `SELECT d.account_id, d.sign_public_key, d.last_seen_at, d.revoked_at, a.is_admin, a.removed_at
        FROM devices d JOIN accounts a ON a.id = d.account_id
-      WHERE d.id = ? AND a.removed_at IS NULL`,
+      WHERE d.id = ?`,
   )
     .bind(headers.deviceId)
     .first<{
@@ -113,14 +119,16 @@ export const requireDevice = createMiddleware<AuthedEnv>(async (c, next) => {
       last_seen_at: number | null;
       revoked_at: number | null;
       is_admin: number;
+      removed_at: number | null;
     }>();
   if (!row) return fail(c, 401, "unauthenticated");
 
   if (!requestIsSignedBy(c.req.raw, headers, c.var.rawBody, bytes(row.sign_public_key))) {
     return fail(c, 401, "unauthenticated");
   }
-  // Only the holder of the device key learns it was revoked, so it can forget its keys.
-  if (row.revoked_at !== null) return fail(c, 401, "device_revoked");
+  // Only the holder of the device key learns it was revoked (or its person removed from the
+  // app), so it can forget its keys.
+  if (row.revoked_at !== null || row.removed_at !== null) return fail(c, 401, "device_revoked");
 
   c.set("device", { id: headers.deviceId, accountId: row.account_id, isAdmin: row.is_admin === 1 });
 

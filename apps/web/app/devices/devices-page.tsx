@@ -5,8 +5,18 @@ import QRCode from "qrcode";
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { PairingError, type OpenPairing, type PairingCheck } from "@map-diary/sync";
 import entries from "@/app/_entries/entries.module.css";
-import { pairingErrorMessage, revokeErrorMessage } from "@/app/(device)/messages";
-import { DeviceGate, addDevice, listDevices, removeDevice, type Diary, type ListedDevice } from "@/lib/device";
+import { PASSPHRASE_MIN_LENGTH } from "@map-diary/sync";
+import { errorMessage, pairingErrorMessage, revokeErrorMessage } from "@/app/(device)/messages";
+import {
+  DeviceGate,
+  addDevice,
+  choosePassphrase,
+  listDevices,
+  removeDevice,
+  type AccountOverview,
+  type Diary,
+  type ListedDevice,
+} from "@/lib/device";
 import styles from "@/lib/device/device.module.css";
 
 const POLL_MS = 2000;
@@ -27,19 +37,20 @@ export function DevicesPage() {
 }
 
 function Devices({ diary }: { diary: Diary }) {
-  const [devices, setDevices] = useState<ListedDevice[] | null>(null);
+  const [overview, setOverview] = useState<AccountOverview | null>(null);
+  const devices = overview?.devices ?? (overview === null ? null : []);
   const [loadFailed, setLoadFailed] = useState(false);
   const [adding, setAdding] = useState(false);
   const [removing, setRemoving] = useState<string | null>(null);
 
   const load = useCallback(() => {
     listDevices(diary).then(
-      (list) => {
-        setDevices(list);
+      (o) => {
+        setOverview(o);
         setLoadFailed(false);
       },
       () => {
-        setDevices((d) => d ?? []);
+        setOverview((o) => o ?? { devices: [], isAdmin: false, hasPassphrase: true });
         setLoadFailed(true);
       },
     );
@@ -96,7 +107,113 @@ function Devices({ diary }: { diary: Diary }) {
           Add a device
         </button>
       )}
+      {overview && !loadFailed && <Passphrase diary={diary} hasPassphrase={overview.hasPassphrase} onDone={load} />}
+      {overview?.isAdmin && (
+        <Link className="muted" href="/admin">
+          Invites and members
+        </Link>
+      )}
     </div>
+  );
+}
+
+/**
+ * Sets or changes the passphrase used to sign in without another device. The recovery phrase
+ * proves it is you, because this device does not keep the seed the backup is made from.
+ */
+function Passphrase({ diary, hasPassphrase, onDone }: { diary: Diary; hasPassphrase: boolean; onDone: () => void }) {
+  const [open, setOpen] = useState(false);
+  const [phrase, setPhrase] = useState("");
+  const [passphrase, setPassphrase] = useState("");
+  const [confirm, setConfirm] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [saved, setSaved] = useState(false);
+
+  function close() {
+    setOpen(false);
+    setPhrase("");
+    setPassphrase("");
+    setConfirm("");
+    setError(null);
+  }
+
+  async function submit(e: FormEvent) {
+    e.preventDefault();
+    if (passphrase !== confirm) {
+      setError("The two passphrases don't match.");
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    try {
+      await choosePassphrase(diary, phrase, passphrase);
+      close();
+      setSaved(true);
+      onDone();
+    } catch (err) {
+      setError(errorMessage(err));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (!open) {
+    return (
+      <>
+        {saved && <p>Passphrase saved. You can use it to sign in on a new device.</p>}
+        {!hasPassphrase && !saved && (
+          <p className="muted">
+            You haven&apos;t set a passphrase. Without one, a new device can only sign in with this one nearby or with
+            your recovery phrase.
+          </p>
+        )}
+        <button className={styles.secondary} type="button" onClick={() => setOpen(true)}>
+          {hasPassphrase || saved ? "Change passphrase" : "Set a passphrase"}
+        </button>
+      </>
+    );
+  }
+
+  return (
+    <form onSubmit={(e) => void submit(e)} style={{ display: "grid", gap: 12 }}>
+      <label className={styles.field}>
+        <span>Your recovery phrase</span>
+        <textarea
+          rows={2}
+          autoCapitalize="characters"
+          autoComplete="off"
+          autoCorrect="off"
+          spellCheck={false}
+          required
+          value={phrase}
+          onChange={(e) => setPhrase(e.target.value)}
+        />
+      </label>
+      <label className={styles.field}>
+        <span>New passphrase</span>
+        <input
+          type="password"
+          autoComplete="new-password"
+          minLength={PASSPHRASE_MIN_LENGTH}
+          required
+          value={passphrase}
+          onChange={(e) => setPassphrase(e.target.value)}
+        />
+        <span className="muted">At least {PASSPHRASE_MIN_LENGTH} characters. A short sentence works well.</span>
+      </label>
+      <label className={styles.field}>
+        <span>Type it again</span>
+        <input type="password" autoComplete="new-password" required value={confirm} onChange={(e) => setConfirm(e.target.value)} />
+      </label>
+      {error && <p className={styles.error}>{error}</p>}
+      <button className={styles.button} type="submit" disabled={busy}>
+        {busy ? "Saving…" : "Save passphrase"}
+      </button>
+      <button className={styles.secondary} type="button" disabled={busy} onClick={close}>
+        Cancel
+      </button>
+    </form>
   );
 }
 

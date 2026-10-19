@@ -88,3 +88,4 @@ export {
   type PairingJoin,
   type AccountTransfer,
 } from "./pairing";
+export { generateInviteCode, normaliseInviteCode, appInviteId, appInviteKey } from "./invite";

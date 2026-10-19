@@ -1,8 +1,10 @@
 import {
+  InviteError,
   PASSPHRASE_MIN_LENGTH,
   PairingError,
   RevokeError,
   SetupError,
+  type InviteErrorCode,
   type PairingErrorCode,
   type RevokeErrorCode,
   type SetupErrorCode,
@@ -13,8 +15,11 @@ const MESSAGES: Record<SetupErrorCode, string> = {
   wrong_passphrase: "That passphrase didn't match. Check it and try again.",
   invalid_recovery_phrase: "That recovery phrase has a typo. Check each group of four.",
   unknown_recovery_phrase: "No account uses that recovery phrase.",
-  registration_closed: "This diary is already set up. Sign in with your passphrase instead.",
+  registration_closed: "This diary is already set up. You need an invite link from Snehil to join, or sign in if you already have.",
   passphrase_in_use: "Choose a different passphrase.",
+  bad_invite: "That invite code has a typo. It is twenty letters and digits, like 7K3QM-9XT2B-QW4RT-ZP0HK.",
+  invite_invalid: "That invite has expired or was already used. Ask for a new one.",
+  wrong_account: "That recovery phrase belongs to a different account.",
   offline: "You're offline. Connect and try again.",
   server: "Something went wrong on the server. Try again in a moment.",
 };
@@ -56,4 +61,16 @@ const REVOKE_MESSAGES: Record<RevokeErrorCode, string> = {
 
 export function revokeErrorMessage(err: unknown): string {
   return err instanceof RevokeError ? REVOKE_MESSAGES[err.code] : REVOKE_MESSAGES.server;
+}
+
+const INVITE_MESSAGES: Record<InviteErrorCode, string> = {
+  too_many: "There are already ten open invites. Cancel one first.",
+  not_found: "That's already gone. Reload to see the latest.",
+  forbidden: "Only the admin can do that.",
+  offline: "You're offline. Connect and try again.",
+  server: "Something went wrong on the server. Try again in a moment.",
+};
+
+export function inviteErrorMessage(err: unknown): string {
+  return err instanceof InviteError ? INVITE_MESSAGES[err.code] : INVITE_MESSAGES.server;
 }

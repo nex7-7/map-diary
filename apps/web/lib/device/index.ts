@@ -4,5 +4,17 @@ export { useSession, useDiaryItems, useSyncStatus, type SessionState } from "./h
 export { getSession, adoptDevice, forgetDevice, api } from "./session";
 export { DeviceGate } from "./gate";
 export { currentDeviceKind } from "./kind";
-export { addDevice, listDevices, removeDevice, type ListedDevice } from "./devices";
+export { addDevice, choosePassphrase, listDevices, removeDevice, type AccountOverview, type ListedDevice } from "./devices";
+export {
+  cancelInvite,
+  inviteFriend,
+  inviteNotes,
+  members,
+  openInvites,
+  removeFromApp,
+  saveInviteNote,
+  type AppInviteView,
+  type MemberView,
+  type NewAppInvite,
+} from "./admin";
 export type { Diary, DiaryItem, SyncStatus, WriteInput } from "@map-diary/sync";
