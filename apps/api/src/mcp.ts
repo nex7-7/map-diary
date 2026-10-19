@@ -1,9 +1,9 @@
 import { Hono, type Context } from "hono";
 import { MAX_CANDIDATES, MUMBAI_BOUNDS, RESOLVER_CATEGORIES, type ResolutionProblem } from "@map-diary/crypto";
 import { readBody, type SignedEnv } from "./auth";
-import { fail, type JsonObject } from "./http";
+import type { JsonObject } from "./http";
 import { answerRpc, toolText } from "./mcp-rpc";
-import { requireResolver, submitResolution, takePendingJobs, tokensMatch } from "./resolver";
+import { requireResolver, submitResolution, takePendingJobs } from "./resolver";
 
 /**
  * The resolver as an MCP server, so a Claude scheduled task can work the queue through
@@ -12,8 +12,8 @@ import { requireResolver, submitResolution, takePendingJobs, tokensMatch } from 
  * one JSON-RPC message (or a batch) and gets a plain JSON reply; there are no sessions
  * and no server-sent streams (see mcp-rpc.ts). See docs/mcp-resolver.md.
  *
- * Auth is RESOLVER_TOKEN, either as a Bearer header (`/api/mcp`) or in the path
- * (`/api/mcp/<token>`), because claude.ai custom connectors take a URL but no headers.
+ * Auth is RESOLVER_TOKEN as a Bearer header on `/api/mcp`, never in the URL, so it stays
+ * out of request logs.
  * The tools only ever see a pasted link or name, never anyone's opinions or keys.
  */
 
@@ -158,12 +158,5 @@ export const mcp = new Hono<SignedEnv>();
 
 mcp.post("/mcp", requireResolver, readBody, handle);
 
-mcp.post("/mcp/:token", readBody, async (c) => {
-  const expected = c.env.RESOLVER_TOKEN;
-  if (!expected) return fail(c, 503, "resolver_not_configured");
-  if (!tokensMatch(c.req.param("token"), expected)) return fail(c, 401, "unauthenticated");
-  return handle(c);
-});
-
 // No server-sent streams or sessions: say so, as the spec asks.
-mcp.on(["GET", "DELETE"], ["/mcp", "/mcp/:token"], (c) => c.body(null, 405, { Allow: "POST" }));
+mcp.on(["GET", "DELETE"], "/mcp", (c) => c.body(null, 405, { Allow: "POST" }));

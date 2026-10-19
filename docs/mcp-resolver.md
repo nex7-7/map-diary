@@ -14,8 +14,7 @@ a plain JSON reply. `GET` and `DELETE` answer `405`.
 
 | URL | Auth |
 | --- | --- |
-| `https://map.snehilsinha.com/api/mcp` | `Authorization: Bearer <RESOLVER_TOKEN>` (use this; claude.ai connectors can send request headers) |
-| `https://map.snehilsinha.com/api/mcp/<RESOLVER_TOKEN>` | token in the path, only for clients that cannot send headers |
+| `https://map.snehilsinha.com/api/mcp` | `Authorization: Bearer <RESOLVER_TOKEN>` (the token is never accepted in the URL) |
 
 | Tool | Input | Output |
 | --- | --- | --- |
@@ -24,9 +23,9 @@ a plain JSON reply. `GET` and `DELETE` answer `405`.
 
 `ResolvedPlace` is the format in [resolver.md](resolver.md#result-format).
 
-Prefer the header: a token in the path is visible to anything that logs full URLs,
-including this Worker's own Cloudflare logs. Only the resolver queue sits behind it, so the worst case is someone
-answering or failing pending jobs. If it leaks, set a new token and update the connector.
+The token goes only in a header, so it stays out of anything that logs full URLs. Only the
+resolver queue sits behind it, so the worst case is someone answering or failing pending
+jobs. If it leaks, set a new token and update the connector.
 
 ## Setup (Snehil)
 
@@ -90,6 +89,6 @@ connector. Use no other connector, and do not save anything about these places t
 
 ```sh
 TOKEN=...  # the RESOLVER_TOKEN
-curl -s https://map.snehilsinha.com/api/mcp/$TOKEN -H 'Content-Type: application/json' \
+curl -s https://map.snehilsinha.com/api/mcp -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
   -d '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"get_pending_jobs","arguments":{}}}'
 ```
