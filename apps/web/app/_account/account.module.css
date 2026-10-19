@@ -1,0 +1,638 @@
+/* Account screens: You, Devices, Groups, Admin, and signing in. Tokens come from app/globals.css. */
+
+.page {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: max(12px, env(safe-area-inset-top)) 20px 40px;
+  display: grid;
+  gap: 24px;
+  align-content: start;
+}
+
+.page.wide {
+  max-width: 1000px;
+}
+
+@media (min-width: 900px) {
+  .page {
+    padding: 40px 40px 80px;
+    gap: 28px;
+  }
+}
+
+.back {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  justify-self: start;
+  margin-bottom: -14px;
+  color: var(--ink-2);
+  font-size: 13px;
+  text-decoration: none;
+}
+
+/* The desktop sidebar already says where you are. */
+@media (min-width: 900px) {
+  .back {
+    display: none;
+  }
+}
+
+.head {
+  display: grid;
+  gap: 4px;
+}
+
+.head .sub {
+  max-width: 60ch;
+}
+
+@media (min-width: 900px) {
+  .head :global(.display) {
+    font-size: 40px;
+  }
+}
+
+.sec {
+  display: grid;
+  gap: 10px;
+  align-content: start;
+}
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  padding: 16px;
+  display: grid;
+  gap: 12px;
+  align-content: start;
+  min-width: 0;
+}
+
+.card.flush {
+  padding: 0;
+  gap: 0;
+}
+
+.card.ready {
+  border: 1.5px solid var(--visited);
+}
+
+/* A card that is one big button, like "Add a device". */
+.action {
+  composes: card;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  text-decoration: none;
+}
+
+.action:hover {
+  border-color: var(--ink-3);
+}
+
+.actions2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.grid2 {
+  display: grid;
+  gap: 16px;
+  align-items: start;
+}
+
+@media (min-width: 900px) {
+  .grid2 {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+.stackCol {
+  display: grid;
+  gap: 16px;
+  align-content: start;
+  min-width: 0;
+}
+
+/* List rows: devices, members, keys. */
+.list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.row {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--line);
+  min-width: 0;
+}
+
+.list > .row:last-child,
+.card .row:last-child {
+  border-bottom: 0;
+}
+
+.card.flush .row {
+  padding: 14px 16px;
+}
+
+.rowText {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.rowTitle {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.name {
+  font-family: var(--serif);
+  font-weight: 600;
+  font-size: 18px;
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+}
+
+.plainName {
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
+
+.linkRow {
+  composes: row;
+  font: inherit;
+  color: inherit;
+  text-decoration: none;
+  width: 100%;
+}
+
+.linkRow:hover .name {
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
+}
+
+.iconTile {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  background: var(--surface-2);
+  color: var(--ink);
+}
+
+.iconTile.claude {
+  background: var(--claude-soft);
+  color: var(--claude);
+}
+
+.iconTile.danger {
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+
+.iconTile.large {
+  width: 44px;
+  height: 44px;
+}
+
+.roundButton {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: 1px solid var(--line);
+  background: none;
+  color: var(--ink-2);
+  cursor: pointer;
+  padding: 0;
+}
+
+.iconButton {
+  display: inline-grid;
+  place-items: center;
+  padding: 4px;
+  margin: -4px;
+  border: 0;
+  background: none;
+  color: var(--ink-3);
+  cursor: pointer;
+  border-radius: 6px;
+}
+
+.iconButton:hover {
+  color: var(--ink);
+}
+
+.buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.dangerText {
+  color: var(--danger);
+}
+
+/* Forms */
+.field {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.label {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--ink-2);
+}
+
+.input {
+  width: 100%;
+  min-width: 0;
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 12px 14px;
+  font: inherit;
+  font-size: 16px; /* 16px keeps iOS Safari from zooming in */
+  color: var(--ink);
+}
+
+.input:focus {
+  outline: none;
+  border-color: var(--ink);
+  box-shadow: inset 0 0 0 0.5px var(--ink);
+}
+
+.input::placeholder {
+  color: var(--ink-3);
+}
+
+.onSurface {
+  background: var(--surface);
+}
+
+textarea.input {
+  resize: none;
+}
+
+.phraseInput {
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.inline {
+  display: flex;
+  gap: 8px;
+  align-items: stretch;
+}
+
+.inline .input {
+  flex: 1;
+}
+
+.hint {
+  margin: 0;
+  font-size: 13px;
+  color: var(--ink-3);
+}
+
+.error {
+  margin: 0;
+  font-size: 13px;
+  color: var(--danger);
+}
+
+.okText {
+  margin: 0;
+  font-size: 13px;
+  color: var(--visited);
+}
+
+/* Two or three choices in one pill, like Passphrase / Recovery phrase. */
+.seg {
+  display: flex;
+  background: var(--surface-2);
+  border-radius: 10px;
+  padding: 3px;
+  gap: 2px;
+}
+
+.seg button {
+  flex: 1;
+  padding: 8px 10px;
+  border: 0;
+  border-radius: 8px;
+  background: none;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--ink-2);
+  cursor: pointer;
+}
+
+.seg button[aria-pressed="true"] {
+  background: var(--surface);
+  color: var(--ink);
+  box-shadow: 0 1px 2px var(--shadow);
+}
+
+/* A secret or code shown whole, ready to copy. */
+.code {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--ink);
+  color: var(--on-ink);
+  border-radius: 12px;
+  padding: 12px 14px;
+  font-weight: 500;
+  font-size: 13px;
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  word-break: break-all;
+  border: 0;
+  width: 100%;
+  text-align: left;
+  cursor: pointer;
+}
+
+.code > span {
+  flex: 1;
+  min-width: 0;
+  user-select: all;
+}
+
+/* A short code read across from one screen to another. */
+.bigCode {
+  margin: 0;
+  padding: 14px;
+  border: 1px dashed var(--line);
+  border-radius: 12px;
+  background: var(--paper);
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 26px;
+  letter-spacing: 0.12em;
+  text-align: center;
+  user-select: all;
+  overflow-wrap: anywhere;
+}
+
+.phrase {
+  composes: bigCode;
+  font-size: 19px;
+  letter-spacing: 0.08em;
+  line-height: 1.6;
+}
+
+.note {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  background: var(--claude-soft);
+  border-radius: 12px;
+  padding: 12px;
+  font-size: 13px;
+  margin: 0;
+}
+
+.note.warn {
+  background: var(--want-soft);
+}
+
+.note > :global(svg) {
+  margin-top: 1px;
+}
+
+.qr {
+  justify-self: center;
+  width: 220px;
+  height: 220px;
+  border-radius: 12px;
+  background: #fff;
+  padding: 8px;
+}
+
+/* People */
+.avatar {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  border: 2px solid var(--surface);
+  font-weight: 600;
+  font-size: 13px;
+}
+
+.avatar.big {
+  width: 56px;
+  height: 56px;
+  font-size: 22px;
+  font-family: var(--serif);
+}
+
+.tone0 {
+  background: var(--group-soft);
+  color: var(--group);
+}
+
+.tone1 {
+  background: var(--sea-soft);
+  color: var(--sea);
+}
+
+.tone2 {
+  background: var(--want-soft);
+  color: var(--want);
+}
+
+.tone3 {
+  background: var(--visited-soft);
+  color: var(--visited);
+}
+
+.faces {
+  display: flex;
+}
+
+.faces .avatar + .avatar {
+  margin-left: -8px;
+}
+
+.check {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.check > :first-child {
+  flex: none;
+}
+
+/* Bottom sheet on phones, centred dialog on desktop. */
+.sheet {
+  border: 0;
+  padding: 0;
+  margin: auto auto 0;
+  width: 100%;
+  max-width: 100%;
+  max-height: calc(100dvh - 56px);
+  border-radius: 24px 24px 0 0;
+  background: var(--surface);
+  color: var(--ink);
+  box-shadow: 0 -4px 24px var(--shadow);
+}
+
+.sheet::backdrop {
+  background: var(--scrim);
+}
+
+.sheetBody {
+  display: grid;
+  gap: 18px;
+  padding: 10px 20px max(24px, env(safe-area-inset-bottom));
+}
+
+.grab {
+  justify-self: center;
+  width: 36px;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--line);
+}
+
+.sheetTop {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.sheetTop > :first-child {
+  flex: 1;
+  min-width: 0;
+}
+
+@media (min-width: 900px) {
+  .sheet {
+    margin: auto;
+    width: 560px;
+    max-height: calc(100dvh - 80px);
+    border-radius: 20px;
+  }
+
+  .sheetBody {
+    padding-bottom: 24px;
+  }
+
+  .grab {
+    display: none;
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .sheet[open] {
+    animation: up 0.22s ease-out;
+  }
+}
+
+@keyframes up {
+  from {
+    transform: translateY(24px);
+    opacity: 0.6;
+  }
+}
+
+/* ⋯ menu */
+.menuWrap {
+  position: relative;
+  flex: none;
+}
+
+.menu {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 6px);
+  z-index: 15;
+  width: 190px;
+  display: grid;
+  gap: 2px;
+  padding: 6px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  box-shadow: 0 10px 30px var(--shadow);
+}
+
+.menu button {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  padding: 10px;
+  border: 0;
+  border-radius: 10px;
+  background: none;
+  font: inherit;
+  font-weight: 500;
+  color: var(--ink);
+  text-align: left;
+  cursor: pointer;
+}
+
+.menu button:hover,
+.menu button:focus-visible {
+  background: var(--paper);
+}
+
+.menu button.dangerText {
+  color: var(--danger);
+}
+
+/* Signing in, joining and setting up: one column, centred on desktop. */
+.flow {
+  max-width: 480px;
+  margin: 0 auto;
+  padding: max(16px, env(safe-area-inset-top)) 20px 40px;
+  display: grid;
+  gap: 20px;
+  align-content: start;
+}
+
+@media (min-width: 900px) {
+  .flow {
+    padding-top: 64px;
+  }
+}
+
+.meter {
+  height: 6px;
+  border-radius: 3px;
+  background: var(--surface-2);
+  overflow: hidden;
+}
+
+.meter > span {
+  display: block;
+  height: 100%;
+  background: var(--visited);
+}

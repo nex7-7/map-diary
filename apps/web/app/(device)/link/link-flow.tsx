@@ -39,7 +39,7 @@ export function LinkFlow() {
     return (
       <div className={styles.card}>
         <p>
-          Open the diary from your Home Screen, tap Sign in, choose Another device, and type this code there:
+          Open the diary from your Home Screen, tap <strong>Add this phone from another device</strong>, and type this code there:
         </p>
         <p className={styles.code}>{code}</p>
       </div>

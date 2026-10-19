@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { PASSPHRASE_MIN_LENGTH, signInWithPassphrase, signInWithRecoveryPhrase } from "@map-diary/sync";
 import { adoptDevice, api, currentDeviceKind, useSession } from "@/lib/device";
 import styles from "@/lib/device/device.module.css";
@@ -22,6 +22,11 @@ export function SignInFlow() {
   const [confirm, setConfirm] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // The welcome screen links here with ?with=passphrase for people with no other device at hand.
+  useEffect(() => {
+    if (new URLSearchParams(window.location.search).get("with") === "passphrase") setMode("passphrase");
+  }, []);
 
   if (session.state === "ready") {
     return (
@@ -160,7 +165,7 @@ export function SignInFlow() {
         {busy ? "Signing in…" : "Sign in"}
       </button>
       <Link className="muted" href="/invite">
-        First time here? Join with an invite code
+        First time here? Join with an invite
       </Link>
     </form>
   );

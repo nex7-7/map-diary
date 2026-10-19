@@ -1,11 +1,9 @@
 "use client";
 
-import Link from "next/link";
-import { useCallback, useEffect, useState, type FormEvent } from "react";
-import entries from "@/app/_entries/entries.module.css";
+import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
+import { AccountPage, Avatar, CloseButton, CopyCode, IconTile, Sheet, accountStyles as s, day, seen } from "@/app/_account/parts";
 import { inviteErrorMessage } from "@/app/(device)/messages";
 import {
-  DeviceGate,
   cancelInvite,
   inviteFriend,
   inviteNotes,
@@ -13,25 +11,21 @@ import {
   openInvites,
   removeFromApp,
   saveInviteNote,
+  useDiaryItems,
   type AppInviteView,
   type Diary,
   type MemberView,
   type NewAppInvite,
 } from "@/lib/device";
-import styles from "@/lib/device/device.module.css";
+import { displayNames } from "@/lib/places/items-source";
+import { Badge, Button, Icon } from "@/lib/ui";
 
-const day = (ms: number) => new Date(ms).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
-
-/** `/admin`: app invites and members. Hidden; the Worker refuses everyone but the admin. */
+/** `/admin`: app invites and members. The Worker refuses everyone but the admin. */
 export function AdminPage() {
   return (
-    <main>
-      <Link href="/devices" className={entries.back}>
-        ← Devices
-      </Link>
-      <h1 style={{ margin: "12px 0 16px" }}>Invites and members</h1>
-      <DeviceGate>{(diary) => <Admin diary={diary} />}</DeviceGate>
-    </main>
+    <AccountPage current="admin" title="Admin" sub="You can change shared facts and membership. You still can’t read other people’s boards." wide>
+      {(diary) => <Admin diary={diary} />}
+    </AccountPage>
   );
 }
 
@@ -44,6 +38,9 @@ function Admin({ diary }: { diary: Diary }) {
   const [data, setData] = useState<AdminData | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notes, setNotes] = useState<Record<string, string>>({});
+  const [removing, setRemoving] = useState<{ member: MemberView; name: string } | null>(null);
+  const items = useDiaryItems(diary);
+  const names = useMemo(() => displayNames(items), [items]);
 
   const load = useCallback(() => {
     setNotes(inviteNotes());
@@ -57,37 +54,81 @@ function Admin({ diary }: { diary: Diary }) {
   }, [diary]);
   useEffect(load, [load]);
 
-  if (error && !data) return <p className={styles.error}>{error}</p>;
-  if (!data) return <p className="muted">Loading…</p>;
+  if (error && !data) return <p className={s.error}>{error}</p>;
+  if (!data) return <p className="sub">Loading…</p>;
+
+  const me = diary.device.accountId;
+  // The name they chose on the app, else who the invite was for, else when they joined.
+  const nameOf = (m: MemberView) =>
+    m.id === me ? (names.get(m.id) ?? "You") : (names.get(m.id) ?? (m.inviteId ? notes[m.inviteId] : undefined) ?? `Joined ${day(m.createdAt)}`);
+  const active = data.members.filter((m) => m.removedAt === null);
+  const removed = data.members.filter((m) => m.removedAt !== null);
 
   return (
-    <div style={{ display: "grid", gap: 16 }}>
-      <Invite diary={diary} onMade={load} />
-      {data.invites.length > 0 && (
-        <section className={styles.card}>
-          <h2 style={{ margin: 0 }}>Open invites</h2>
-          <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "grid", gap: 12 }}>
-            {data.invites.map((i) => (
-              <li key={i.id}>
-                <strong>{notes[i.id] ?? "Invite"}</strong>
-                <br />
-                <span className="muted">
-                  Made {day(i.createdAt)} · expires {day(i.expiresAt)}
+    <div className={s.grid2}>
+      <div className={s.stackCol}>
+        <Invite diary={diary} onMade={load} />
+        {data.invites.length > 0 && (
+          <section className={s.card}>
+            <h2 className="heading-s">Open invites</h2>
+            <ul className={s.list}>
+              {data.invites.map((i) => (
+                <OpenInvite key={i.id} diary={diary} invite={i} note={notes[i.id]} onDone={load} />
+              ))}
+            </ul>
+          </section>
+        )}
+      </div>
+      <section className={s.card}>
+        <h2 className="heading-s">Members · {active.length}</h2>
+        <ul className={s.list}>
+          {active.map((m) => {
+            const you = m.id === me;
+            const name = nameOf(m);
+            return (
+              <li key={m.id} className={s.row} style={{ padding: "10px 0" }}>
+                <Avatar id={m.id} name={name} />
+                <span className={s.rowText}>
+                  <span className={s.rowTitle}>
+                    <span className={s.plainName}>{name}</span>
+                    {m.isAdmin && <Badge tone="ok">Admin</Badge>}
+                  </span>
+                  <span className="sub">
+                    {you ? "You · " : `Joined ${day(m.createdAt)} · `}
+                    {m.devices} {m.devices === 1 ? "device" : "devices"} · {seen(m.lastSeenAt)}
+                  </span>
                 </span>
-                <CancelInvite diary={diary} id={i.id} onDone={load} />
+                {!you && !m.isAdmin && (
+                  <Button variant="ghost" size="m" className={s.dangerText} onClick={() => setRemoving({ member: m, name })}>
+                    Remove
+                  </Button>
+                )}
               </li>
-            ))}
-          </ul>
-        </section>
-      )}
-      <section className={styles.card}>
-        <h2 style={{ margin: 0 }}>Members</h2>
-        <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "grid", gap: 12 }}>
-          {data.members.map((m) => (
-            <Member key={m.id} diary={diary} member={m} note={m.inviteId ? notes[m.inviteId] : undefined} onDone={load} />
-          ))}
+            );
+          })}
         </ul>
+        {removed.length > 0 && (
+          <p className={s.hint}>
+            Removed: {removed.map((m) => `${nameOf(m)} (${day(m.removedAt!)})`).join(", ")}
+          </p>
+        )}
+        <p className={s.hint}>Removing someone gives everyone a new Public key. You still can’t read their Personal board or groups you’re not in.</p>
       </section>
+
+      <Sheet open={removing !== null} onClose={() => setRemoving(null)} label="Remove a member">
+        {removing && (
+          <RemoveMember
+            diary={diary}
+            member={removing.member}
+            name={removing.name}
+            onCancel={() => setRemoving(null)}
+            onDone={() => {
+              setRemoving(null);
+              load();
+            }}
+          />
+        )}
+      </Sheet>
     </div>
   );
 }
@@ -95,7 +136,7 @@ function Admin({ diary }: { diary: Diary }) {
 /** Makes a one-time invite and shows its link and code to send. */
 function Invite({ diary, onMade }: { diary: Diary; onMade: () => void }) {
   const [note, setNote] = useState("");
-  const [made, setMade] = useState<NewAppInvite | null>(null);
+  const [made, setMade] = useState<(NewAppInvite & { note: string }) | null>(null);
   const [busy, setBusy] = useState(false);
   const [copied, setCopied] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -107,8 +148,9 @@ function Invite({ diary, onMade }: { diary: Diary; onMade: () => void }) {
     try {
       const invite = await inviteFriend(diary);
       saveInviteNote(invite.id, note.trim());
-      setMade(invite);
+      setMade({ ...invite, note: note.trim() });
       setNote("");
+      setCopied(false);
       onMade();
     } catch (err) {
       setError(inviteErrorMessage(err));
@@ -139,49 +181,67 @@ function Invite({ diary, onMade }: { diary: Diary; onMade: () => void }) {
     }
   }
 
-  if (made) {
-    return (
-      <section className={styles.card}>
-        <h2 style={{ margin: 0 }}>Invite ready</h2>
-        <p>Send this link. It works once, until {day(made.expiresAt)}. On an iPhone they type the code in the installed app.</p>
-        <p style={{ wordBreak: "break-all", margin: 0 }}>{made.link}</p>
-        <p className={styles.code}>{made.code}</p>
-        <p className="muted">The code is shown only now. If you lose it, cancel this invite and make another.</p>
-        {error && <p className={styles.error}>{error}</p>}
-        <button className={styles.button} type="button" onClick={() => void share()}>
-          {copied ? "Copied" : "Share or copy"}
-        </button>
-        <button className={styles.secondary} type="button" onClick={() => setMade(null)}>
-          Done
-        </button>
-      </section>
-    );
-  }
-
   return (
-    <form className={styles.card} onSubmit={(e) => void make(e)}>
-      <h2 style={{ margin: 0 }}>Invite a friend</h2>
-      <label className={styles.field}>
-        <span>Who is it for? (optional)</span>
-        <input value={note} maxLength={60} onChange={(e) => setNote(e.target.value)} />
-        <span className="muted">Kept only on this device, so you can tell members apart.</span>
-      </label>
-      {error && <p className={styles.error}>{error}</p>}
-      <button className={styles.button} type="submit" disabled={busy}>
-        {busy ? "Making…" : "Make an invite link"}
-      </button>
-    </form>
+    <>
+      {made && (
+        <section className={`${s.card} ${s.ready}`}>
+          <div className={s.buttons}>
+            <Badge tone="ok">
+              <Icon name="check" size="s" />
+              Invite ready
+            </Badge>
+            <span className="sub">
+              {made.note ? `for ${made.note} · ` : ""}until {day(made.expiresAt)}
+            </span>
+          </div>
+          <CopyCode label="invite link" value={made.link} />
+          <div className={s.field}>
+            <span className={s.label}>Code for an iPhone</span>
+            <p className={s.bigCode} style={{ fontSize: 20 }}>
+              {made.code}
+            </p>
+          </div>
+          <p className="sub" style={{ margin: 0 }}>
+            The code is shown only now. If you lose it, cancel this invite and make another.
+          </p>
+          {error && <p className={s.error}>{error}</p>}
+          <div className={s.buttons}>
+            <Button size="m" onClick={() => void share()}>
+              <Icon name="share" size="s" />
+              {copied ? "Copied" : "Share or copy"}
+            </Button>
+            <Button variant="ghost" size="m" onClick={() => setMade(null)}>
+              Done
+            </Button>
+          </div>
+        </section>
+      )}
+      <form className={s.card} onSubmit={(e) => void make(e)}>
+        <h2 className="heading-s">Invite a friend</h2>
+        <label className={s.field}>
+          <span className={s.label}>Who is it for? (optional)</span>
+          <input className={s.input} value={note} maxLength={60} placeholder="Meera" onChange={(e) => setNote(e.target.value)} />
+          <span className={s.hint}>Kept only on this device, so you can tell members apart.</span>
+        </label>
+        {!made && error && <p className={s.error}>{error}</p>}
+        <div>
+          <Button type="submit" size="m" disabled={busy}>
+            {busy ? "Making…" : "Make an invite link"}
+          </Button>
+        </div>
+      </form>
+    </>
   );
 }
 
-function CancelInvite({ diary, id, onDone }: { diary: Diary; id: string; onDone: () => void }) {
+function OpenInvite({ diary, invite, note, onDone }: { diary: Diary; invite: AppInviteView; note: string | undefined; onDone: () => void }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   async function cancel() {
     setBusy(true);
     try {
-      await cancelInvite(diary, id);
-      saveInviteNote(id, "");
+      await cancelInvite(diary, invite.id);
+      saveInviteNote(invite.id, "");
       onDone();
     } catch (err) {
       setError(inviteErrorMessage(err));
@@ -189,67 +249,55 @@ function CancelInvite({ diary, id, onDone }: { diary: Diary; id: string; onDone:
     }
   }
   return (
-    <>
-      {error && <p className={styles.error}>{error}</p>}
-      <button className={styles.secondary} type="button" disabled={busy} onClick={() => void cancel()}>
+    <li className={s.row} style={{ padding: "10px 0" }}>
+      <span className={s.rowText}>
+        <span className={s.plainName}>{note ? `For ${note}` : "Invite"}</span>
+        <span className="sub">
+          Made {day(invite.createdAt)} · expires {day(invite.expiresAt)}
+        </span>
+        {error && <span className={s.error}>{error}</span>}
+      </span>
+      <Button variant="ghost" size="m" disabled={busy} onClick={() => void cancel()}>
         {busy ? "Cancelling…" : "Cancel invite"}
-      </button>
-    </>
+      </Button>
+    </li>
   );
 }
 
-function Member({ diary, member, note, onDone }: { diary: Diary; member: MemberView; note: string | undefined; onDone: () => void }) {
-  const [confirming, setConfirming] = useState(false);
+function RemoveMember({ diary, member, name, onCancel, onDone }: { diary: Diary; member: MemberView; name: string; onCancel: () => void; onDone: () => void }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const you = member.id === diary.device.accountId;
-  const name = you ? "You" : (note ?? `Member since ${day(member.createdAt)}`);
 
   async function remove() {
     setBusy(true);
     setError(null);
     try {
       await removeFromApp(diary, member.id);
-      setConfirming(false);
       onDone();
     } catch (err) {
       setError(inviteErrorMessage(err));
-    } finally {
       setBusy(false);
     }
   }
 
   return (
-    <li>
-      <strong>{name}</strong>
-      {member.isAdmin && " (admin)"}
-      <br />
-      <span className="muted">
-        {member.removedAt !== null
-          ? `Removed ${day(member.removedAt)}`
-          : `Joined ${day(member.createdAt)} · ${member.devices} ${member.devices === 1 ? "device" : "devices"}` +
-            (member.lastSeenAt !== null ? ` · last used ${day(member.lastSeenAt)}` : "")}
-      </span>
-      {error && <p className={styles.error}>{error}</p>}
-      {!you && member.removedAt === null && !member.isAdmin &&
-        (confirming ? (
-          <div style={{ display: "grid", gap: 12, marginTop: 12 }}>
-            <p>
-              Remove {note ?? "this member"} from the app? Every device of theirs is signed out at once and they can&apos;t
-              sign back in. This can&apos;t be undone; to have them back, send a new invite.
-            </p>
-            <button className={styles.button} type="button" disabled={busy} onClick={() => void remove()}>
-              {busy ? "Removing…" : "Remove from the app"}
-            </button>
-            <button className={styles.secondary} type="button" disabled={busy} onClick={() => setConfirming(false)}>
-              Keep them
-            </button>
-          </div>
-        ) : (
-          <button className={styles.secondary} type="button" onClick={() => setConfirming(true)}>
-            Remove
-          </button>
-        ))}
-    </li>
+    <>
+      <div className={s.sheetTop}>
+        <IconTile name="user" tone="danger" large />
+        <CloseButton onClick={onCancel} />
+      </div>
+      <h2 className="heading-m">Remove {name} from the app?</h2>
+      <p style={{ margin: 0, color: "var(--ink-2)" }}>
+        Every device of theirs is signed out at once and they can’t sign back in. Everyone gets a new Public key. This can’t be
+        undone; to have them back, send a new invite.
+      </p>
+      {error && <p className={s.error}>{error}</p>}
+      <Button variant="danger" block disabled={busy} onClick={() => void remove()}>
+        {busy ? "Removing…" : "Remove from the app"}
+      </Button>
+      <Button variant="ghost" block disabled={busy} onClick={onCancel}>
+        Keep them
+      </Button>
+    </>
   );
 }

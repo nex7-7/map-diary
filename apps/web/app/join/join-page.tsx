@@ -1,24 +1,19 @@
 "use client";
 
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
-import entries from "@/app/_entries/entries.module.css";
+import { AccountPage, IconTile, accountStyles as s } from "@/app/_account/parts";
 import { groupErrorMessage } from "@/app/groups/messages";
-import { DeviceGate, type Diary } from "@/lib/device";
-import styles from "@/lib/device/device.module.css";
+import type { Diary } from "@/lib/device";
 import { inviteSecretFrom, joinGroup, previewInvite, type OpenedInvite } from "@/lib/groups";
+import { Button, ButtonLink } from "@/lib/ui";
 
 /** `/join#<secret>`: a group invite link. The secret after the `#` never reaches the server. */
 export function JoinPage() {
   return (
-    <main>
-      <Link href="/" className={entries.back}>
-        ← Diary
-      </Link>
-      <h1 style={{ margin: "12px 0 16px" }}>Join a group</h1>
-      <DeviceGate>{(diary) => <Join diary={diary} />}</DeviceGate>
-    </main>
+    <AccountPage current="groups" title="Join a group" back={false}>
+      {(diary) => <Join diary={diary} />}
+    </AccountPage>
   );
 }
 
@@ -32,12 +27,12 @@ function Join({ diary }: { diary: Diary }) {
 
   useEffect(() => {
     read.current ??= inviteSecretFrom(window.location.hash);
-    const s = read.current;
-    setSecret(s);
+    const secretRead = read.current;
+    setSecret(secretRead);
     // Keep the secret out of the address bar and history once read.
-    if (s) window.history.replaceState(null, "", window.location.pathname);
-    if (!s) return;
-    previewInvite(diary, s).then(setInvite, (err: unknown) => setError(groupErrorMessage(err)));
+    if (secretRead) window.history.replaceState(null, "", window.location.pathname);
+    if (!secretRead) return;
+    previewInvite(diary, secretRead).then(setInvite, (err: unknown) => setError(groupErrorMessage(err)));
   }, [diary]);
 
   async function join() {
@@ -53,39 +48,43 @@ function Join({ diary }: { diary: Diary }) {
     }
   }
 
-  if (secret === undefined) return <p className="muted">Opening the invite…</p>;
+  const toGroups = (
+    <ButtonLink href="/groups" variant="ghost" block>
+      Go to Groups
+    </ButtonLink>
+  );
+
+  if (secret === undefined) return <p className="sub">Opening the invite…</p>;
   if (secret === null) {
     return (
-      <div className={styles.card}>
-        <p>This link is missing its invite. Open the whole link again, or paste it on the Groups page.</p>
-        <Link className={styles.secondary} href="/groups">
-          Go to Groups
-        </Link>
+      <div className={s.card}>
+        <p style={{ margin: 0 }}>This link is missing its invite. Open the whole link again, or paste it on the Groups page.</p>
+        {toGroups}
       </div>
     );
   }
   return (
-    <div className={styles.card}>
+    <div className={s.card}>
+      <IconTile name="users" large />
       {error ? (
-        <p className={styles.error}>{error}</p>
+        <p className={s.error}>{error}</p>
       ) : !invite ? (
-        <p className="muted">Opening the invite…</p>
+        <p className="sub">Opening the invite…</p>
       ) : invite.isMember ? (
-        <p>You&apos;re already in {invite.groupName}.</p>
+        <p style={{ margin: 0 }}>You&apos;re already in {invite.groupName}.</p>
       ) : (
         <>
-          <p>
-            Join <strong>{invite.groupName}</strong>? It has {invite.members} {invite.members === 1 ? "person" : "people"}.
-            They&apos;ll see what you post to this group, and you&apos;ll see theirs.
+          <h2 className="heading-m">Join {invite.groupName}?</h2>
+          <p style={{ margin: 0, color: "var(--ink-2)" }}>
+            It has {invite.members} {invite.members === 1 ? "person" : "people"}. They&apos;ll see what you post to this group,
+            and you&apos;ll see theirs. Nothing on your Personal board is shared.
           </p>
-          <button className={styles.button} type="button" disabled={busy} onClick={() => void join()}>
+          <Button block disabled={busy} onClick={() => void join()}>
             {busy ? "Joining…" : "Join group"}
-          </button>
+          </Button>
         </>
       )}
-      <Link className={styles.secondary} href="/groups">
-        Go to Groups
-      </Link>
+      {toGroups}
     </div>
   );
 }

@@ -1,0 +1,74 @@
+/* The signed-out screen. Tokens come from app/globals.css. */
+
+/* Signed out: a map beside the welcome on desktop, above it on phones. */
+.welcome {
+  min-height: 100dvh;
+  display: grid;
+}
+
+.welcomeArt {
+  position: relative;
+  margin: max(16px, env(safe-area-inset-top)) 16px 0;
+  height: 240px;
+  border-radius: 24px;
+  overflow: hidden;
+  box-shadow: 0 0 0 1px var(--line);
+  background: var(--sea-soft);
+}
+
+.welcomeArt svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.welcomeBody {
+  display: grid;
+  gap: 28px;
+  align-content: center;
+  padding: 24px 24px max(32px, env(safe-area-inset-bottom));
+  max-width: 560px;
+}
+
+.welcomeBody .lede {
+  margin: 0;
+  color: var(--ink-2);
+  font-size: 15px;
+}
+
+.welcomeButtons {
+  display: grid;
+  gap: 10px;
+  max-width: 400px;
+}
+
+.small {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  font-size: 13px;
+  color: var(--ink-3);
+  margin: 0;
+}
+
+@media (min-width: 900px) {
+  .welcome {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .welcomeArt {
+    margin: 0;
+    height: auto;
+    border-radius: 0;
+    box-shadow: none;
+  }
+
+  .welcomeBody {
+    padding: 60px;
+  }
+
+  .welcomeBody :global(.display-xl) {
+    font-size: 56px;
+  }
+}
