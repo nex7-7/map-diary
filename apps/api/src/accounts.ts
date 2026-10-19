@@ -26,7 +26,7 @@ export interface NewDevice {
   authorization: string;
 }
 
-interface NewBoardKey {
+export interface NewBoardKey {
   boardId: string;
   keyVersion: number;
   wrappedKey: Uint8Array;
@@ -58,8 +58,8 @@ export function isPublicKey(value: unknown): value is string {
   return isB64(value, PUBLIC_KEY_B64) && value.length === PUBLIC_KEY_B64;
 }
 
-function parseBoardKeys(value: unknown): NewBoardKey[] | null {
-  if (!Array.isArray(value) || value.length > 50) return null;
+export function parseBoardKeys(value: unknown, max = 50): NewBoardKey[] | null {
+  if (!Array.isArray(value) || value.length > max) return null;
   const keys = value.map(parseBoardKey);
   return keys.every((k): k is NewBoardKey => k !== null) ? keys : null;
 }

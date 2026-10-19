@@ -1,4 +1,5 @@
-import { fromBase64, toBase64, type BoardKey, type DeviceKind, type IdentityKeys } from "@map-diary/crypto";
+import { fromBase64, toBase64, unwrapKeyFromMember, type BoardKey, type DeviceKind, type IdentityKeys } from "@map-diary/crypto";
+import type { MeResponse } from "./api";
 
 /** An account box keypair as a device stores it. */
 export interface StoredAccountBoxKeys {
@@ -42,6 +43,31 @@ export function currentBoardKey(device: DeviceState, boardId: string): BoardKey 
 
 export function boardKeyLookup(device: DeviceState): (boardId: string, version: number) => Uint8Array | undefined {
   return (boardId, version) => device.boardKeys.find((k) => k.boardId === boardId && k.version === version)?.key;
+}
+
+/**
+ * Opens the board keys wrapped to this account box key. Wraps made under an older account
+ * key version need the recovery seed, which a linked device does not hold; it skips them.
+ */
+export function openBoardKeys(me: MeResponse, box: StoredAccountBoxKeys): BoardKey[] {
+  const keys: BoardKey[] = [];
+  for (const board of me.boards) {
+    for (const k of board.keys) {
+      if (k.accountKeyVersion !== box.version) continue;
+      const key = unwrapKeyFromMember(fromBase64(k.wrappedKey), { boxPublicKey: box.publicKey, boxSecretKey: box.secretKey });
+      keys.push({ boardId: board.id, version: k.keyVersion, key });
+    }
+  }
+  return keys;
+}
+
+/** This device's keys plus `added`, keeping one copy of each board key version. */
+export function mergeBoardKeys(held: readonly BoardKey[], added: readonly BoardKey[]): BoardKey[] {
+  const out = [...held];
+  for (const k of added) {
+    if (!out.some((h) => h.boardId === k.boardId && h.version === k.version)) out.push(k);
+  }
+  return out;
 }
 
 /**

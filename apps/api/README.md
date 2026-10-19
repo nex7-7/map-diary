@@ -21,6 +21,8 @@ Signed routes need the `X-Device-Id`, `X-Timestamp` and `X-Signature` headers fr
 | `POST /api/devices` | the new device, authorised by the account key | Signs a new device in |
 | `GET /api/me` | device | The account and its box public key, its boards with their keys wrapped to the account, and its devices |
 | `PUT /api/board-keys` | device | Stores board keys wrapped to the account's box key |
+| `POST /api/devices/:id/revoke` | another device of the same account | Revokes the device and, in the same step, moves the account to the next box key version: the new public key, every board key re-wrapped to it, the next Personal board key, and the new account key sealed to each remaining device |
+| `GET /api/me/account-key` | device | The current account box key sealed to this device, after another device revoked one |
 | `POST /api/pairings` | device | Opens a ten-minute device pairing under an id derived from the link secret |
 | `GET /api/pairings/:id` | device of the same account | The joining device's public keys and MAC, once it has joined |
 | `POST /api/pairings/:id/approve` | device of the same account | Registers the joining device (authorised by the approving device's key) and stores the account keys sealed to it |
@@ -30,9 +32,9 @@ Signed routes need the `X-Device-Id`, `X-Timestamp` and `X-Signature` headers fr
 | `GET /api/pairings/:id/transfer` | the new device, once approved | The sealed account keys; deletes the pairing |
 | `POST /api/key-backup/fetch` | none, needs the passphrase-derived lookup id | Returns the passphrase key backup |
 | `PUT /api/key-backup` | device | Replaces the key backup |
-| `POST /api/envelopes` | device | Pushes up to 100 envelopes; last write wins per envelope on `updatedAt` |
+| `POST /api/envelopes` | device | Pushes up to 100 envelopes; last write wins per envelope on `updatedAt`; one sealed with a board key version a revocation replaced is refused as `stale_key` for the device to re-seal |
 | `POST /api/envelopes/delete` | device | Tombstones the account's own envelopes |
-| `GET /api/sync?since=&limit=` | device | Changes on the account's boards after a cursor, with signer keys |
+| `GET /api/sync?since=&limit=` | device | Changes on the account's boards after a cursor, with signer keys and the account's box key version |
 | `GET/HEAD /api/tiles/mumbai.pmtiles` | none | The map file, with Range and ETag. Devices download it whole and read it locally |
 | `POST /api/resolver/jobs` | none (anonymous) | Queues a name or link with a one-time reply key |
 | `GET/DELETE /api/resolver/jobs/:id` | none, the job id | Polls a job for its sealed result, or deletes it |

@@ -30,6 +30,7 @@ export {
   type PairingCheck,
   type PairingErrorCode,
 } from "./pairing";
+export { RevokeError, revokeDevice, type AccountSecret, type RevokeErrorCode } from "./revoke";
 export type { DeviceKind } from "@map-diary/crypto";
 export { MemoryStorage, type DiaryItem, type DiaryStorage } from "./storage";
 export { IdbStorage, IDB_NAME } from "./idb";

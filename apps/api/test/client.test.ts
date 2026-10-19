@@ -16,9 +16,11 @@ import {
   Diary,
   MemoryStorage,
   PairingError,
+  RevokeError,
   SetupError,
   joinPairing,
   prepareSetup,
+  revokeDevice,
   startPairing,
   signInWithPassphrase,
   signInWithRecoveryPhrase,
@@ -233,5 +235,77 @@ describe("device setup, sign-in and sync", () => {
     const online = new Diary(phone, storage, api);
     await online.sync();
     expect(online.getStatus()).toMatchObject({ phase: "idle", pending: 0 });
+  });
+
+  it("revokes a device and moves the account to new keys", async () => {
+    const NEW = "bombay sandwich, extra cheese";
+    const lost = await signInWithPassphrase(api, NEW);
+    const laptop = await signInWithPassphrase(api, NEW);
+
+    // The laptop writes while offline, before it hears about the revocation.
+    const laptopStorage = new MemoryStorage();
+    await laptopStorage.saveDevice(laptop);
+    const offline = new Diary(laptop, laptopStorage, new Api({
+      origin: "https://map.snehilsinha.com",
+      fetch: () => Promise.reject(new TypeError("Failed to fetch")),
+    }));
+    await offline.write({ type: "comment", placeId: "place-3", payload: { text: "written before" } });
+
+    await expect(revokeDevice(api, phone, lost.deviceId, { passphrase: PASSPHRASE })).rejects.toMatchObject({
+      code: "wrong_passphrase",
+    });
+    await expect(revokeDevice(api, phone, lost.deviceId, { recoveryPhrase: "0000" })).rejects.toBeInstanceOf(RevokeError);
+    await expect(revokeDevice(api, phone, phone.deviceId, { passphrase: NEW })).rejects.toMatchObject({ code: "server" });
+
+    const before = phone.accountBox.version;
+    // The Worker refuses a rotation that leaves out a remaining device or a board key.
+    await expect(
+      api.revokeDevice(
+        lost.deviceId,
+        {
+          boxPublicKey: toBase64(phone.accountBox.publicKey),
+          boxKeyVersion: before + 1,
+          boardKeys: [],
+          deviceKeys: [{ deviceId: phone.deviceId, sealedKey: "AAAA" }],
+        },
+        { deviceId: phone.deviceId, signSecretKey: phone.identity.signSecretKey },
+      ),
+    ).rejects.toMatchObject({ status: 409, code: "stale" });
+
+    const personalBefore = Math.max(...phone.boardKeys.filter((k) => k.boardId === phone.personalBoardId).map((k) => k.version));
+    phone = await revokeDevice(api, phone, lost.deviceId, { recoveryPhrase: phrase });
+    expect(phone.accountBox.version).toBe(before + 1);
+    expect(phone.boardKeys.some((k) => k.boardId === phone.personalBoardId && k.version === personalBefore + 1)).toBe(true);
+
+    // The revoked device is refused at once, and its old account key opens nothing new.
+    const lostDiary = diaryOf(lost);
+    await lostDiary.sync();
+    expect(lostDiary.getStatus().error).toBe("device_revoked");
+    const me = await api.me({ deviceId: phone.deviceId, signSecretKey: phone.identity.signSecretKey });
+    expect(me.account.boxKeyVersion).toBe(before + 1);
+    expect(me.boards.every((b) => b.keys.every((k) => k.accountKeyVersion === before + 1))).toBe(true);
+    expect(me.devices.find((d) => d.id === lost.deviceId)?.revokedAt).not.toBeNull();
+
+    // A revoked device cannot be revoked again.
+    await expect(revokeDevice(api, phone, lost.deviceId, { passphrase: NEW })).rejects.toMatchObject({ code: "server" });
+
+    // The phone writes with the new Personal key.
+    const phoneDiary = diaryOf(phone);
+    await phoneDiary.write({ type: "comment", placeId: "place-3", payload: { text: "after" } });
+    await phoneDiary.sync();
+
+    // The laptop comes online: it collects the new key, reads the phone's item, and re-seals
+    // its own offline write, which the Worker refused for its replaced key.
+    const online = new Diary(laptop, laptopStorage, api);
+    await online.sync();
+    expect(online.getStatus()).toMatchObject({ phase: "idle", pending: 0, error: null });
+    expect(online.device.accountBox.version).toBe(before + 1);
+    expect((await laptopStorage.loadDevice())?.accountBox.version).toBe(before + 1);
+    const texts = (await online.listItems()).map((i) => (i.payload as { text?: string }).text);
+    expect(texts).toEqual(expect.arrayContaining(["after", "written before"]));
+    expect(online.skipped).toEqual([]);
+
+    await phoneDiary.sync();
+    expect((await phoneDiary.listItems()).map((i) => (i.payload as { text?: string }).text)).toContain("written before");
   });
 });

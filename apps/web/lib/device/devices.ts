@@ -1,7 +1,7 @@
 "use client";
 
-import { startPairing, type Diary, type OpenPairing } from "@map-diary/sync";
-import { api } from "./session";
+import { revokeDevice, startPairing, type AccountSecret, type Diary, type OpenPairing } from "@map-diary/sync";
+import { adoptDevice, api } from "./session";
 
 export interface ListedDevice {
   id: string;
@@ -26,4 +26,13 @@ export async function listDevices(diary: Diary): Promise<ListedDevice[]> {
 /** Opens a pairing so a new device can sign in from this one. */
 export function addDevice(diary: Diary): Promise<OpenPairing> {
   return startPairing(api, diary.device, window.location.origin);
+}
+
+/**
+ * Removes another device from the account. This device moves the account to new keys (from
+ * the passphrase or recovery phrase), so the removed one cannot read anything new.
+ */
+export async function removeDevice(diary: Diary, deviceId: string, secret: AccountSecret): Promise<void> {
+  const next = await revokeDevice(api, diary.device, deviceId, secret);
+  await adoptDevice(next);
 }
