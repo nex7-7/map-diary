@@ -3,21 +3,23 @@
 import { useRef, useState, type PointerEvent } from "react";
 import { categoryStyle, STATUS_LABELS } from "@/lib/places/categories";
 import { formatDistance, type ListedPlace } from "@/lib/places/filter";
-import type { Status } from "@/lib/places/types";
+import type { DiarySnapshot, Status } from "@/lib/places/types";
+import { Icon, MarkVisited, PlaceRow } from "@/lib/ui";
 
 interface Props {
   listed: readonly ListedPlace[];
+  snapshot: DiarySnapshot;
   selectedId: string | null;
   onSelect: (id: string) => void;
   onSetStatus: (id: string, status: Status) => void;
 }
 
-export function PlacesList({ listed, selectedId, onSelect, onSetStatus }: Props) {
-  if (listed.length === 0) return <p className="empty muted">No places match these filters.</p>;
+export function PlacesList({ listed, snapshot, selectedId, onSelect, onSetStatus }: Props) {
+  if (listed.length === 0) return <p className="empty sub">Nothing matches these filters.</p>;
   return (
     <ul className="places" aria-label="Places">
       {listed.map((l) => (
-        <PlaceRow key={l.place.id} item={l} selected={l.place.id === selectedId} onSelect={onSelect} onSetStatus={onSetStatus} />
+        <SwipeRow key={l.place.id} item={l} snapshot={snapshot} selected={l.place.id === selectedId} onSelect={onSelect} onSetStatus={onSetStatus} />
       ))}
     </ul>
   );
@@ -25,8 +27,16 @@ export function PlacesList({ listed, selectedId, onSelect, onSetStatus }: Props)
 
 const SWIPE_PX = 80;
 
-/** A row; swipe right to mark it visited. */
-function PlaceRow({ item, selected, onSelect, onSetStatus }: { item: ListedPlace; selected: boolean } & Omit<Props, "listed" | "selectedId">) {
+/** Who else has it on their list, when it isn't on mine: "Aarav wants to go". */
+export function friendLine(item: ListedPlace, snapshot: DiarySnapshot): string | undefined {
+  if (item.mine) return undefined;
+  const o = item.place.opinions.find((x) => x.kind === "status" && x.authorId !== snapshot.me.id && x.status === item.status);
+  const name = o ? (snapshot.people.find((p) => p.id === o.authorId)?.name ?? "A friend") : "A friend";
+  return item.status === "visited" ? `${name} has been` : `${name} wants to go`;
+}
+
+/** A place row; swipe it right to mark it visited. */
+function SwipeRow({ item, snapshot, selected, onSelect, onSetStatus }: { item: ListedPlace; selected: boolean } & Omit<Props, "listed" | "selectedId">) {
   const { place, status, mine, distanceM } = item;
   const style = categoryStyle(place.category);
   const start = useRef<{ x: number; y: number; id: number } | null>(null);
@@ -51,43 +61,44 @@ function PlaceRow({ item, selected, onSelect, onSetStatus }: { item: ListedPlace
     setDx(0);
   };
 
+  const meta = [friendLine(item, snapshot), style.label, place.cuisine, distanceM !== undefined ? formatDistance(distanceM) : undefined]
+    .filter(Boolean)
+    .join(" · ");
+
   return (
-    <li className="place-row" aria-current={selected || undefined}>
+    <li className="place-row">
       <div className="swipe-hint" aria-hidden style={{ opacity: Math.min(1, dx / SWIPE_PX) }}>
-        ✓ Visited
+        <Icon name="check" />
+        Visited
       </div>
       <div
         className="place-row-body"
-        style={{ transform: dx ? `translateX(${dx}px)` : undefined, borderInlineStartColor: style.color }}
+        style={{ transform: dx ? `translateX(${dx}px)` : undefined }}
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
         onPointerUp={onPointerEnd}
         onPointerCancel={onPointerEnd}
       >
-        <button type="button" className="place-main" onClick={() => onSelect(place.id)}>
-          <span className="place-name">
-            <span aria-hidden>{style.emoji}</span> {place.name}
-            {place.isPrivate && <span className="badge">Pin</span>}
-          </span>
-          <span className="place-meta muted">
-            <span className={`dot dot-${status}`} aria-hidden /> {STATUS_LABELS[status]}
-            {!mine && " (friends)"}
-            {" · "}
-            {style.label}
-            {place.cuisine && ` · ${place.cuisine}`}
-            {distanceM !== undefined && ` · ${formatDistance(distanceM)}`}
-          </span>
-          {place.signatureDish && (
-            <span className="place-dish">
-              {place.signatureDish.name} <strong>₹{place.signatureDish.priceInr.toLocaleString("en-IN")}</strong>
-            </span>
-          )}
-        </button>
-        {!visitedByMe && (
-          <button type="button" className="mark-visited" onClick={() => onSetStatus(place.id, "visited")} aria-label={`Mark ${place.name} visited`}>
-            ✓
-          </button>
-        )}
+        <PlaceRow
+          emoji={style.emoji}
+          name={
+            <>
+              {place.name}
+              {place.isPrivate && <span className="pin-badge">Pin</span>}
+            </>
+          }
+          kind={mine ? status : "friend"}
+          meta={
+            <>
+              {mine && <span className="visually-hidden">{STATUS_LABELS[status]}. </span>}
+              {meta}
+            </>
+          }
+          dish={place.signatureDish}
+          current={selected}
+          onOpen={() => onSelect(place.id)}
+          action={!visitedByMe ? <MarkVisited placeName={place.name} onClick={() => onSetStatus(place.id, "visited")} /> : undefined}
+        />
       </div>
     </li>
   );

@@ -7,19 +7,43 @@ import styles from "@/app/_entries/entries.module.css";
 import { DeviceGate, type Diary } from "@/lib/device";
 import { setDisplayName } from "@/lib/entries/actions";
 import { DISPLAY_NAME_MAX } from "@/lib/places/payloads";
+import { DiaryShell } from "@/app/_shell/diary-shell";
+
+/** The other screens under You on a phone, until You gets its own design. */
+function YourScreens({ isAdmin }: { isAdmin: boolean }) {
+  const links: [string, string][] = [
+    ["/devices", "Devices"],
+    ["/groups", "Groups"],
+    ["/tags", "Tags"],
+    ...(isAdmin ? ([["/admin", "Admin"]] as [string, string][]) : []),
+  ];
+  return (
+    <nav className={styles.section} aria-label="More" style={{ marginTop: 32 }}>
+      {links.map(([href, label]) => (
+        <Link key={href} href={href} className={styles.secondary}>
+          {label}
+        </Link>
+      ))}
+    </nav>
+  );
+}
 
 /** `/profile`: the name everyone on the app sees next to your opinions. */
 export function ProfilePage() {
   return (
-    <main>
-      <Link href="/" className={styles.back}>
-        ← Diary
-      </Link>
-      <h1 className={styles.title} style={{ margin: "12px 0 16px" }}>
-        Your name
-      </h1>
-      <DeviceGate>{(diary) => <NameForm diary={diary} />}</DeviceGate>
-    </main>
+    <DeviceGate>
+      {(diary) => (
+        <DiaryShell diary={diary} current="you">
+          <main>
+            <h1 className={styles.title} style={{ margin: "12px 0 16px" }}>
+              Your name
+            </h1>
+            <NameForm diary={diary} />
+            <YourScreens isAdmin={diary.device.isAdmin === true} />
+          </main>
+        </DiaryShell>
+      )}
+    </DeviceGate>
   );
 }
 

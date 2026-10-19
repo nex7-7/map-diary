@@ -2,19 +2,17 @@
 
 import { useState } from "react";
 import { customCategory } from "@/lib/entries/facts";
-import { CATEGORY_STYLES, categoryStyle, STATUS_LABELS } from "@/lib/places/categories";
+import { CATEGORY_STYLES, categoryStyle } from "@/lib/places/categories";
 import type { TagDefPayload } from "@/lib/places/payloads";
 import { BUILTIN_CATEGORIES, type Category, type Status } from "@/lib/places/types";
+import { Icon, StatusChip } from "@/lib/ui";
 import styles from "./entries.module.css";
 
 export function StatusToggle({ value, onChange, disabled }: { value: Status | null; onChange: (s: Status) => void; disabled?: boolean }) {
   return (
-    <div className={styles.segmented} role="group" aria-label="Status">
+    <div className={styles.row} role="group" aria-label="Status">
       {(["want", "visited"] as const).map((s) => (
-        <button key={s} type="button" aria-pressed={value === s} onClick={() => onChange(s)} disabled={disabled}>
-          <span className={`${styles.dot} ${s === "visited" ? styles.dotvisited : styles.dotwant}`} aria-hidden />
-          {STATUS_LABELS[s]}
-        </button>
+        <StatusChip key={s} status={s} on={value === s} onClick={() => onChange(s)} disabled={disabled === true} />
       ))}
     </div>
   );
@@ -68,7 +66,8 @@ export function CategoryPicker({ value, onChange }: { value: Category; onChange:
       ) : (
         !isCustom && (
           <button type="button" className={styles.chip} onClick={() => setAdding(true)}>
-            + Other
+            <Icon name="plus" size="s" />
+            Other
           </button>
         )
       )}
@@ -119,7 +118,8 @@ export function TagPicker({ tags, selected, onToggle, onCreate, disabled }: TagP
         ))}
         {!creating && (
           <button type="button" className={styles.chip} onClick={() => setCreating(true)} disabled={disabled}>
-            + New tag
+            <Icon name="plus" size="s" />
+            New tag
           </button>
         )}
       </div>
@@ -167,6 +167,9 @@ export interface BoardChoice {
   kind: "master" | "group" | "personal";
 }
 
+const BOARD_ICONS = { personal: "lock", master: "globe", group: "users" } as const;
+const BOARD_SHORT: Record<BoardChoice["kind"], string> = { personal: "Only you", master: "Everyone", group: "This group" };
+
 const BOARD_HINTS: Record<BoardChoice["kind"], string> = {
   personal: "Only you can read it.",
   master: "Everyone on the app can read it.",
@@ -198,18 +201,26 @@ export function BoardPicker({
   return (
     <div className={styles.section}>
       <div className={styles.chips} role="group" aria-label="Who can read it">
-        {boards.map((b) => (
-          <button
-            key={b.id}
-            type="button"
-            className={styles.chip}
-            aria-pressed={value.includes(b.id)}
-            disabled={noPublic && b.kind === "master"}
-            onClick={() => toggle(b.id)}
-          >
-            {b.name}
-          </button>
-        ))}
+        {boards.map((b) => {
+          const on = value.includes(b.id);
+          return (
+            <button
+              key={b.id}
+              type="button"
+              className={styles.bopt}
+              aria-pressed={on}
+              disabled={noPublic && b.kind === "master"}
+              onClick={() => toggle(b.id)}
+            >
+              <Icon name={BOARD_ICONS[b.kind]} size="m" />
+              <span>
+                {b.name}
+                <small>{BOARD_SHORT[b.kind]}</small>
+              </span>
+              {on && <Icon name="check" size="m" />}
+            </button>
+          );
+        })}
       </div>
       <p className={styles.note}>
         {noPublic && boards.some((b) => b.kind === "master")

@@ -4,6 +4,9 @@ import Link from "next/link";
 import { useState } from "react";
 import type { ResolvedPlace } from "@map-diary/crypto";
 import styles from "@/app/_entries/entries.module.css";
+import { DiaryShell } from "@/app/_shell/diary-shell";
+import { buttonClass, Icon, Tile, type IconName } from "@/lib/ui";
+import b from "./inbox.module.css";
 import { DeviceGate, type Diary } from "@/lib/device";
 import { usePending, type FailReason, type PendingItem, type PendingQueue } from "@/lib/pending";
 import { categoryStyle, STATUS_LABELS } from "@/lib/places/categories";
@@ -14,15 +17,19 @@ const INBOX_POLL_MS = 15_000;
 /** `/inbox`: places waiting to be found, matches to choose between, and ones that weren't found. */
 export function InboxPage() {
   return (
-    <main>
-      <Link href="/" className={styles.back}>
-        ← Diary
-      </Link>
-      <h1 className={styles.title} style={{ margin: "12px 0 16px" }}>
-        Inbox
-      </h1>
-      <DeviceGate>{(diary) => <Inbox diary={diary} />}</DeviceGate>
-    </main>
+    <DeviceGate>
+      {(diary) => (
+        <DiaryShell diary={diary} current="inbox">
+          <div className={b.page}>
+            <header>
+              <h1 className="display">Inbox</h1>
+              <p className="sub">Lookups in progress and places that need you.</p>
+            </header>
+            <Inbox diary={diary} />
+          </div>
+        </DiaryShell>
+      )}
+    </DeviceGate>
   );
 }
 
@@ -49,14 +56,14 @@ function Inbox({ diary }: { diary: Diary }) {
         </p>
       )}
       {items.length === 0 && (
-        <p className={styles.note}>
+        <p className={b.empty}>
           Nothing waiting. Add a place by name or a Zomato or District link and it shows up here until it&apos;s found.
         </p>
       )}
 
       {choose.length > 0 && (
         <section className={styles.section}>
-          <h2>Pick the right one</h2>
+          <h2>Pick the right one · {choose.length}</h2>
           <ul className={styles.list}>
             {choose.map((i) => (
               <ChooseRow key={i.id} item={i} queue={queue} run={run} />
@@ -67,22 +74,26 @@ function Inbox({ diary }: { diary: Diary }) {
 
       {failed.length > 0 && (
         <section className={styles.section}>
-          <h2>Not found</h2>
-          <ul className={styles.list}>
+          <h2>Not found · {failed.length}</h2>
+          <ul className={b.rows}>
             {failed.map((i) => (
-              <li key={i.id} className={styles.item}>
-                <ItemHead item={i} />
-                <p className={styles.note}>{failText(i.state.kind === "failed" ? i.state.reason : "not_found")}</p>
-                <div className={styles.row}>
-                  <button type="button" className={styles.secondary} onClick={() => run(() => queue.retry(i.id))}>
-                    Try again
-                  </button>
-                  <Link href={`/add#pending=${encodeURIComponent(i.id)}`} className={styles.secondary}>
-                    Drop a pin
-                  </Link>
-                  <button type="button" className={styles.textbutton} onClick={() => run(() => queue.dismiss(i.id))}>
-                    Remove
-                  </button>
+              <li key={i.id} className={b.row}>
+                <RoundIcon icon="alert" tone="danger" />
+                <div className={b.rowText}>
+                  <ItemHead item={i} />
+                  <p className="sub">{failText(i.state.kind === "failed" ? i.state.reason : "not_found")}</p>
+                  <div className={styles.row}>
+                    <button type="button" className={buttonClass({ variant: "secondary", size: "m" })} onClick={() => run(() => queue.retry(i.id))}>
+                      Try again
+                    </button>
+                    <Link href={`/add#pending=${encodeURIComponent(i.id)}`} className={buttonClass({ variant: "ghost", size: "m" })}>
+                      <Icon name="pin" size="s" />
+                      Drop a pin
+                    </Link>
+                    <button type="button" className={styles.textbutton} onClick={() => run(() => queue.dismiss(i.id))}>
+                      Remove
+                    </button>
+                  </div>
                 </div>
               </li>
             ))}
@@ -92,21 +103,24 @@ function Inbox({ diary }: { diary: Diary }) {
 
       {waiting.length > 0 && (
         <section className={styles.section}>
-          <h2>Looking up</h2>
-          <ul className={styles.list}>
+          <h2>Looking up · {waiting.length}</h2>
+          <ul className={b.rows}>
             {waiting.map((i) => (
-              <li key={i.id} className={styles.item}>
-                <ItemHead item={i} />
-                <p className={styles.note}>
-                  {i.state.kind === "unsent" ? "Not sent yet. It goes when you're back online." : "Waiting for the lookup. This page checks on its own."}
-                </p>
-                <div className={styles.row}>
-                  <Link href={`/add#pending=${encodeURIComponent(i.id)}`} className={styles.textbutton}>
-                    Drop a pin instead
-                  </Link>
-                  <button type="button" className={styles.textbutton} onClick={() => run(() => queue.dismiss(i.id))}>
-                    Remove
-                  </button>
+              <li key={i.id} className={b.row}>
+                <RoundIcon icon="clock" tone="sea" />
+                <div className={b.rowText}>
+                  <ItemHead item={i} />
+                  <p className="sub">
+                    {i.state.kind === "unsent" ? "Not sent yet. It goes when you're back online." : "Waiting for the lookup. This page checks on its own."}
+                  </p>
+                  <div className={styles.row}>
+                    <Link href={`/add#pending=${encodeURIComponent(i.id)}`} className={styles.textbutton}>
+                      Drop a pin instead
+                    </Link>
+                    <button type="button" className={styles.textbutton} onClick={() => run(() => queue.dismiss(i.id))}>
+                      Remove
+                    </button>
+                  </div>
                 </div>
               </li>
             ))}
@@ -116,17 +130,19 @@ function Inbox({ diary }: { diary: Diary }) {
 
       {added.length > 0 && (
         <section className={styles.section}>
-          <h2>Found</h2>
-          <ul className={styles.list}>
+          <h2>Found · {added.length}</h2>
+          <ul className={b.rows}>
             {added.map((i) =>
               i.state.kind === "added" ? (
-                <li key={i.id} className={styles.item}>
-                  <div className={styles.row} style={{ justifyContent: "space-between" }}>
-                    <Link href={`/place#${encodeURIComponent(i.state.placeId)}`}>{i.state.name}</Link>
-                    <button type="button" className={styles.textbutton} onClick={() => run(() => queue.dismiss(i.id))}>
-                      Clear
-                    </button>
-                  </div>
+                <li key={i.id} className={b.row}>
+                  <RoundIcon icon="check" tone="visited" />
+                  <Link href={`/place#${encodeURIComponent(i.state.placeId)}`} className={`${b.rowText} ${b.found}`}>
+                    {i.state.name}
+                    <Icon name="chevronRight" size="m" />
+                  </Link>
+                  <button type="button" className={styles.textbutton} onClick={() => run(() => queue.dismiss(i.id))}>
+                    Clear
+                  </button>
                 </li>
               ) : null,
             )}
@@ -140,31 +156,32 @@ function Inbox({ diary }: { diary: Diary }) {
 function ItemHead({ item }: { item: PendingItem }) {
   return (
     <div>
-      <strong>{item.draft.label || item.query}</strong>{" "}
-      <span className="muted">· {STATUS_LABELS[item.draft.status]}</span>
-      {item.draft.link && item.draft.link !== item.draft.label && (
-        <p className={styles.note} style={{ overflowWrap: "anywhere", margin: "2px 0 0" }}>
-          {item.draft.link}
-        </p>
-      )}
+      <span className={b.name}>{item.draft.label || item.query}</span> <span className="sub">· {STATUS_LABELS[item.draft.status]}</span>
+      {item.draft.link && item.draft.link !== item.draft.label && <p className={`sub ${b.link}`}>{item.draft.link}</p>}
     </div>
+  );
+}
+
+function RoundIcon({ icon, tone }: { icon: IconName; tone: "sea" | "danger" | "visited" }) {
+  return (
+    <span className={`${b.round} ${b[tone]}`} aria-hidden>
+      <Icon name={icon} size="m" />
+    </span>
   );
 }
 
 function ChooseRow({ item, queue, run }: { item: PendingItem; queue: PendingQueue; run: (a: () => Promise<unknown>) => void }) {
   if (item.state.kind !== "choose") return null;
   return (
-    <li className={styles.item}>
-      <ItemHead item={item} />
-      <ul className={styles.list}>
+    <li className={`${styles.item} ${b.choose}`}>
+      <p className="heading-s">
+        “{item.draft.label || item.query}” matched {item.state.candidates.length} places
+      </p>
+      {item.draft.link && item.draft.link !== item.draft.label && <p className={`sub ${b.link}`}>{item.draft.link}</p>}
+      <ul className={b.candidates}>
         {item.state.candidates.map((c, n) => (
           <li key={n}>
-            <button
-              type="button"
-              className={styles.secondary}
-              style={{ width: "100%", textAlign: "left", display: "flex", flexDirection: "column", gap: 2 }}
-              onClick={() => run(() => queue.choose(item.id, n))}
-            >
+            <button type="button" className={b.candidate} onClick={() => run(() => queue.choose(item.id, n))}>
               <Candidate place={c} />
             </button>
           </li>
@@ -186,17 +203,17 @@ function Candidate({ place }: { place: ResolvedPlace }) {
   const style = categoryStyle(place.category);
   return (
     <>
-      <span>
-        <span aria-hidden>{style.emoji}</span> <strong>{place.name}</strong>
+      <Tile>{style.emoji}</Tile>
+      <span className={b.candidateText}>
+        <span className={b.name}>{place.name}</span>
+        <span className="sub">{[style.label, place.cuisine, place.address].filter(Boolean).join(" · ")}</span>
+        {place.signatureDish && (
+          <span className="sub">
+            Wallet bleeder: {place.signatureDish.name} <strong>₹{place.signatureDish.priceInr.toLocaleString("en-IN")}</strong>
+          </span>
+        )}
       </span>
-      <span className="muted" style={{ fontSize: "0.875rem" }}>
-        {[style.label, place.cuisine, place.address].filter(Boolean).join(" · ")}
-      </span>
-      {place.signatureDish && (
-        <span style={{ fontSize: "0.875rem" }}>
-          Wallet bleeder: {place.signatureDish.name} <strong>₹{place.signatureDish.priceInr.toLocaleString("en-IN")}</strong>
-        </span>
-      )}
+      <Icon name="chevronRight" size="m" />
     </>
   );
 }

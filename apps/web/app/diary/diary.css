@@ -1,21 +1,14 @@
+/* The places screen: map or list on phones, both side by side from 900px. */
+
 .diary {
+  position: relative;
   display: flex;
-  flex-direction: column;
-  height: 100dvh;
-  padding-top: env(safe-area-inset-top);
+  /* The tab bar sits below on phones. */
+  height: calc(100dvh - var(--tabbar-h) - env(safe-area-inset-bottom));
 }
 
 .pad {
   padding: 16px;
-}
-
-.visually-hidden {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  overflow: hidden;
-  clip-path: inset(50%);
-  white-space: nowrap;
 }
 
 .diary button,
@@ -29,238 +22,291 @@
   cursor: pointer;
 }
 
-.toolbar {
+/* List pane */
+.listpane {
   display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 16px;
+  flex-direction: column;
+  min-height: 0;
+  width: 100%;
+  background: var(--paper);
 }
 
-.toolbar .count {
-  margin-right: auto;
-  font-size: 0.875rem;
-  white-space: nowrap;
-}
-
-.segmented {
-  flex: none;
-}
-
-@media (max-width: 480px) {
-  .toolbar .count {
-    visibility: hidden;
-    width: 0;
-  }
-
-  .toolbar .sort select {
-    max-width: 6rem;
-  }
-
-  .inbox-label {
-    display: none;
-  }
-}
-
-.segmented {
-  display: inline-flex;
-  border: 1px solid var(--line);
-  border-radius: 999px;
-  overflow: hidden;
-}
-
-.segmented button {
-  border: 0;
-  background: transparent;
-  padding: 6px 14px;
-}
-
-.segmented button[aria-selected="true"] {
-  background: var(--fg);
-  color: var(--bg);
-}
-
-.toolbar select,
-.filters select,
-.filters input[type="search"] {
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: var(--bg);
-  padding: 6px 8px;
-  min-width: 0;
-}
-
-.near-me {
-  border: 1px solid var(--line);
-  border-radius: 999px;
-  background: var(--bg);
-  padding: 6px 12px;
-  white-space: nowrap;
-}
-
-.near-me[aria-pressed="true"] {
-  background: var(--accent);
-  border-color: var(--accent);
-  color: var(--on-ink);
-}
-
-.inbox-link {
-  border: 1px solid var(--line);
-  border-radius: 999px;
-  background: var(--bg);
-  padding: 6px 10px;
-  white-space: nowrap;
-  color: inherit;
-  text-decoration: none;
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-}
-
-.inbox-count {
-  min-width: 1.4em;
-  padding: 0 5px;
-  border-radius: 999px;
-  background: var(--want);
-  color: var(--on-ink);
-  font-size: 0.75rem;
-  line-height: 1.4em;
-  text-align: center;
-}
-
-.inbox-count.quiet {
-  background: var(--line);
-  color: inherit;
-}
-
-.price-input {
-  width: 7em;
-  border: 1px solid var(--line);
-  border-radius: 999px;
-  background: var(--bg);
-  color: inherit;
-  font: inherit;
-  padding: 4px 10px;
-}
-
-.notice {
-  margin: 0 16px 8px;
-  font-size: 0.875rem;
-  color: var(--want);
-}
-
-.filters {
-  padding: 0 16px 8px;
+.list-head {
   display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  gap: 8px;
+  gap: 12px;
+  padding: max(12px, env(safe-area-inset-top)) 16px 12px;
 }
 
-.filter-row {
+.list-title {
   display: flex;
-  gap: 8px;
+  align-items: flex-end;
+  gap: 12px;
 }
 
-.filter-row input {
+.list-title > div {
   flex: 1;
   min-width: 0;
 }
 
-.chips {
-  display: flex;
-  gap: 6px;
-  overflow-x: auto;
-  scrollbar-width: none;
+.list-title .sub {
+  margin: 2px 0 0;
 }
 
-.more-filters .chips {
-  flex-wrap: wrap;
+.list-items {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  border-top: 1px solid var(--line);
 }
 
-.chip {
+.diary .near-me {
   flex: none;
-  border: 1px solid var(--line);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 12px;
   border-radius: 999px;
-  background: var(--bg);
-  padding: 4px 10px;
-  font-size: 0.875rem;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--sea);
+  font-weight: 500;
+  font-size: 13.5px;
   white-space: nowrap;
 }
 
-.chip[aria-pressed="true"] {
-  background: var(--fg);
-  border-color: var(--fg);
-  color: var(--bg);
+.diary .near-me[aria-pressed="true"] {
+  background: var(--sea);
+  border-color: var(--sea);
+  color: var(--on-ink);
 }
 
-.chip-sep {
-  flex: none;
-  width: 1px;
-  background: var(--line);
+.notice {
+  margin: 0;
+  font-size: 13px;
+  color: var(--want);
 }
 
-.more-filters summary {
-  font-size: 0.875rem;
-  cursor: pointer;
+.sort-row {
   display: flex;
-  gap: 12px;
+  align-items: center;
+  gap: 6px;
+}
+
+.sort {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.diary .sort select {
+  appearance: none;
+  border: 0;
+  background: none;
+  padding: 0 16px 0 0;
+  field-sizing: content;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.sort svg {
+  position: absolute;
+  right: 0;
+  pointer-events: none;
+}
+
+/* Filters */
+.filters {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 10px;
+}
+
+.search {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 48px;
+  padding: 0 6px 0 14px;
+  border-radius: var(--radius-m);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  color: var(--ink-3);
+}
+
+.diary .search input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  background: none;
+  outline: none;
+  font-size: 16px; /* 16px keeps iOS Safari from zooming in */
+  color: var(--ink);
+}
+
+.search input::placeholder {
+  color: var(--ink-3);
+}
+
+.diary .search-more {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border: 0;
+  border-radius: var(--radius-s);
+  background: none;
+  color: var(--ink);
+}
+
+.search-more[aria-expanded="true"] {
+  background: var(--surface-2);
+}
+
+.search-count {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  min-width: 16px;
+  padding: 0 4px;
+  border-radius: 999px;
+  background: var(--want);
+  color: var(--on-ink);
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 16px;
+}
+
+/* The board picker is a native select dressed as a chip. */
+.board-chip {
+  position: relative;
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+}
+
+.board-chip.on {
+  background: var(--ink);
+  color: var(--on-ink);
+  border-color: var(--ink);
+}
+
+.diary .board-chip select {
+  appearance: none;
+  border: 0;
+  background: none;
+  color: inherit;
+  padding: 7px 28px 7px 12px;
+  field-sizing: content;
+  font-weight: 500;
+  font-size: 13.5px;
+  line-height: 1.2;
+  cursor: pointer;
+}
+
+.board-chip select option {
+  color: var(--ink);
+  background: var(--surface);
+}
+
+.board-chip svg {
+  position: absolute;
+  right: 10px;
+  pointer-events: none;
+}
+
+.more-filters {
+  display: grid;
+  gap: 14px;
+  padding: 14px;
+  border-radius: var(--radius-m);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  max-height: 45dvh;
+  overflow-y: auto;
 }
 
 .more-filters fieldset {
   border: 0;
-  margin: 8px 0 0;
+  margin: 0;
   padding: 0;
+  display: grid;
+  gap: 8px;
 }
 
-.more-filters legend {
-  font-size: 0.75rem;
-  color: var(--muted);
-  margin-bottom: 4px;
+.wrap-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 
-.link {
-  border: 0;
-  background: none;
-  padding: 0;
-  color: var(--accent);
-  text-decoration: underline;
+.diary .price-input {
+  width: 7em;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--paper);
+  padding: 6px 12px;
 }
 
-.dot {
-  display: inline-block;
-  width: 0.6em;
-  height: 0.6em;
-  border-radius: 50%;
-  vertical-align: 0.05em;
+/* Rows */
+.places {
+  list-style: none;
+  margin: 0;
+  padding: 0 0 24px;
 }
 
-.dot-visited {
+.place-row {
+  position: relative;
+  overflow: hidden;
+}
+
+.swipe-hint {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-left: 20px;
   background: var(--visited);
+  color: var(--on-ink);
+  font-weight: 500;
 }
 
-.dot-want {
-  border: 2px solid var(--want);
+.place-row-body {
+  position: relative;
+  touch-action: pan-y;
+  transition: transform 0.15s ease-out;
 }
 
-.panes {
+.pin-badge {
+  margin-left: 8px;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: var(--surface-2);
+  color: var(--ink-2);
+  font-family: var(--sans);
+  font-size: 11px;
+  font-weight: 500;
+  vertical-align: 0.2em;
+}
+
+.empty {
+  padding: 24px 16px;
+  text-align: center;
+}
+
+/* Map pane */
+.mappane {
   position: relative;
   flex: 1;
-  min-height: 0;
-  display: flex;
-  border-top: 1px solid var(--line);
-}
-
-.pane {
-  min-height: 0;
-  flex: 1;
-}
-
-.pane-list {
-  overflow-y: auto;
-}
-
-.diary[data-view="map"] .pane-list,
-.diary[data-view="list"] .pane-map {
-  display: none;
+  min-width: 0;
+  overflow: hidden;
 }
 
 .map-wrap,
@@ -278,7 +324,7 @@
   justify-items: center;
   gap: 4px;
   text-align: center;
-  background: var(--bg);
+  background: var(--paper);
   padding: 16px;
 }
 
@@ -286,210 +332,220 @@
   margin: 0;
 }
 
-.places {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-}
-
-.place-row {
-  position: relative;
-  border-bottom: 1px solid var(--line);
-  overflow: hidden;
-}
-
-.swipe-hint {
-  position: absolute;
-  inset: 0;
-  display: flex;
-  align-items: center;
-  padding-left: 16px;
-  background: var(--visited);
-  color: var(--on-ink);
-  font-weight: 600;
-}
-
-.place-row-body {
-  position: relative;
-  display: flex;
-  align-items: center;
-  background: var(--bg);
-  border-inline-start: 4px solid transparent;
-  touch-action: pan-y;
-  transition: transform 0.15s ease-out;
-}
-
-.place-row[aria-current="true"] .place-row-body {
+.map-overlay button {
+  margin-top: 8px;
+  padding: 9px 14px;
+  border-radius: var(--radius-s);
+  border: 1px solid var(--line);
   background: var(--surface);
 }
 
-.place-main {
+.map-tools {
+  position: absolute;
+  right: 16px;
+  bottom: 16px;
+  z-index: 2;
+  display: grid;
+  gap: 8px;
+}
+
+.diary .fab {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border: 0;
+  border-radius: 50%;
+  background: var(--surface);
+  color: var(--sea);
+  box-shadow: 0 6px 18px var(--shadow);
+}
+
+.diary .fab[aria-pressed="true"] {
+  background: var(--sea);
+  color: var(--on-ink);
+}
+
+/* MapLibre's own controls in the diary palette. */
+.mappane .maplibregl-ctrl-group {
+  background: var(--surface);
+  border-radius: var(--radius-s);
+  box-shadow: 0 6px 18px var(--shadow);
+}
+
+.mappane .maplibregl-ctrl-group button + button {
+  border-top-color: var(--line);
+}
+
+.mappane .maplibregl-ctrl-bottom-right {
+  bottom: 64px;
+  right: 6px;
+}
+
+/* Place card over the map */
+.peek {
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  bottom: 12px;
+  z-index: 3;
+}
+
+.place-card {
+  display: grid;
+  gap: 12px;
+  padding: 16px;
+  border-radius: var(--radius-l);
+  background: var(--surface);
+  box-shadow: 0 1px 2px var(--shadow), 0 10px 30px var(--shadow);
+  max-height: 60dvh;
+  overflow-y: auto;
+}
+
+.place-card-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.place-card-title {
   flex: 1;
   min-width: 0;
   display: grid;
   gap: 2px;
-  text-align: left;
-  border: 0;
-  background: none;
-  padding: 10px 12px;
+  color: inherit;
+  text-decoration: none;
 }
 
-.place-name {
-  font-weight: 600;
-}
-
-.place-meta {
-  font-size: 0.8125rem;
-}
-
-.place-dish {
-  font-size: 0.875rem;
-}
-
-.mark-visited {
-  flex: none;
-  width: 36px;
-  height: 36px;
-  margin-right: 12px;
-  border: 1px solid var(--line);
-  border-radius: 50%;
-  background: var(--bg);
-  color: var(--visited);
-}
-
-.badge {
-  display: inline-block;
-  margin-left: 4px;
-  padding: 0 6px;
-  border-radius: 4px;
-  font-size: 0.6875rem;
-  font-weight: 500;
-  background: var(--surface);
-  border: 1px solid var(--line);
-  vertical-align: 0.1em;
-}
-
-.empty {
-  padding: 24px 16px;
-  text-align: center;
-}
-
-.place-card {
-  position: absolute;
-  left: 8px;
-  right: 8px;
-  bottom: calc(8px + env(safe-area-inset-bottom));
-  max-height: 60%;
-  overflow-y: auto;
-  padding: 12px 16px;
-  border-radius: 12px;
-  background: var(--bg);
-  border: 1px solid var(--line);
-  box-shadow: 0 6px 24px rgb(0 0 0 / 0.18);
-  z-index: 2;
-}
-
-.place-card header {
-  display: flex;
-  align-items: start;
-  justify-content: space-between;
-  gap: 8px;
-}
-
-.place-card h2 {
-  margin: 0;
-  font-size: 1.125rem;
-}
-
-.place-card p {
-  margin: 6px 0;
-}
-
-.place-card .icon {
-  border: 0;
-  background: none;
-  font-size: 1.5rem;
-  line-height: 1;
-  padding: 0 4px;
-}
-
-.status-buttons {
-  display: flex;
-  gap: 8px;
-  margin: 8px 0;
-}
-
-.status-buttons button {
-  border: 1px solid var(--line);
-  border-radius: 999px;
-  background: var(--bg);
-  padding: 4px 12px;
-}
-
-.status-buttons button[aria-pressed="true"] {
-  border-color: var(--fg);
-  font-weight: 600;
-}
-
-.opinions {
-  margin: 8px 0;
-  padding-left: 18px;
-  font-size: 0.875rem;
+.diary .icon-button {
+  align-self: flex-start;
   display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border: 0;
+  border-radius: 50%;
+  background: none;
+  color: var(--ink-2);
+}
+
+.bleeder {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: var(--paper);
+}
+
+.bleeder > div {
+  flex: 1;
+  min-width: 0;
+}
+
+.bleeder .quote {
+  font-size: 16px;
+}
+
+.price {
+  font-family: var(--serif);
+  font-weight: 500;
+  font-size: 21px;
+  font-variant-numeric: tabular-nums;
+}
+
+.place-card-status {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.place-card-boards {
+  margin-left: auto;
+  display: flex;
+  flex-wrap: wrap;
   gap: 4px;
 }
 
-.links {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 12px;
-  font-size: 0.875rem;
-}
-
-.links a {
-  color: var(--accent);
-}
-
-.add-fab {
-  position: absolute;
-  right: 16px;
-  bottom: calc(40px + env(safe-area-inset-bottom));
-  z-index: 3;
-  width: 56px;
-  height: 56px;
-  display: grid;
-  place-items: center;
-  border-radius: 50%;
-  background: var(--accent);
-  color: var(--on-ink);
-  font-size: 2rem;
-  line-height: 1;
+.text-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  justify-self: start;
+  color: var(--sea);
+  font-weight: 500;
   text-decoration: none;
-  box-shadow: 0 4px 16px rgb(0 0 0 / 0.25);
 }
 
-/* Wide screens: list and map side by side, whatever the toggle says. */
-@media (min-width: 900px) {
-  .segmented {
+/* Phones: one pane at a time. */
+@media (max-width: 899px) {
+  .diary[data-view="list"] .mappane {
     display: none;
   }
 
-  .diary[data-view] .pane-list,
-  .diary[data-view] .pane-map {
-    display: block;
+  .diary[data-view="map"] .listpane {
+    display: none;
   }
 
-  .pane-list {
-    flex: 0 0 380px;
+  /* On the map only the search and chips float over it; the selected card hides the tools. */
+  .diary[data-view="map"] .listpane {
+    display: flex;
+    position: absolute;
+    inset: 0 0 auto;
+    z-index: 2;
+    background: linear-gradient(var(--paper) 40%, transparent);
+    pointer-events: none;
+  }
+
+  .diary[data-view="map"] .search,
+  .diary[data-view="map"] .filters > [role="group"],
+  .diary[data-view="map"] .more-filters,
+  .diary[data-view="map"] .notice {
+    pointer-events: auto;
+  }
+
+  .diary[data-view="map"] .list-title,
+  .diary[data-view="map"] .sort-row,
+  .diary[data-view="map"] .list-items {
+    display: none;
+  }
+
+  .diary[data-view="map"] .search {
+    border: 0;
+    box-shadow: 0 1px 2px var(--shadow), 0 6px 18px var(--shadow);
+  }
+
+  .diary[data-selected] .map-tools,
+  .diary[data-selected] .maplibregl-ctrl-bottom-right {
+    display: none;
+  }
+}
+
+@media (min-width: 900px) {
+  .diary {
+    height: 100dvh;
+  }
+
+  .listpane {
+    flex: 0 0 400px;
+    width: 400px;
     border-right: 1px solid var(--line);
   }
 
-  .place-card {
-    left: 8px;
+  .list-head {
+    padding: 22px 20px 14px;
+  }
+
+  .peek {
+    left: 20px;
     right: auto;
-    top: 8px;
+    top: 20px;
     bottom: auto;
     width: 360px;
-    max-height: calc(100% - 16px);
+  }
+
+  .place-card {
+    max-height: calc(100dvh - 40px);
   }
 }

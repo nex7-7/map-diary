@@ -1,10 +1,11 @@
 "use client";
 
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState, type ReactNode } from "react";
 import { AddForm, type AddInitial } from "@/app/_entries/add-form";
-import styles from "@/app/_entries/entries.module.css";
+import { DiaryShell } from "@/app/_shell/diary-shell";
+import { Icon } from "@/lib/ui";
+import a from "./add.module.css";
 import { parseCoordinates } from "@/lib/entries/parse-input";
 import { DeviceGate, type Diary } from "@/lib/device";
 import { getPendingQueue, type PendingItem } from "@/lib/pending";
@@ -31,35 +32,38 @@ export function AddPage() {
   const [initial, setInitial] = useState<(AddInitial & { pendingId?: string }) | null>(null);
   useEffect(() => setInitial(readFragment()), []);
 
-  return (
-    <main>
-      <div className={styles.row} style={{ justifyContent: "space-between", marginBottom: 12 }}>
-        <Link href="/" className={styles.back}>
-          ← Diary
-        </Link>
-      </div>
-      <h1 className={styles.title} style={{ marginBottom: 16 }}>
-        Add a place
-      </h1>
-      {initial && (
-        <DeviceGate>
-          {(diary) => (
+  const close = (pending: boolean) => router.push(pending ? "/inbox" : "/");
+  return initial ? (
+    <DeviceGate>
+      {(diary) => (
+        <DiaryShell diary={diary} current="map">
+          <section className={a.sheet} aria-labelledby="add-title">
             <WithPending diary={diary} pendingId={initial.pendingId}>
               {(pending) => (
-                <AddForm
-                  diary={diary}
-                  initial={{ ...initial, ...(pending ? { pending } : {}) }}
-                  onSaved={(id) => router.push(`/place#${id}`)}
-                  onQueued={() => router.push("/inbox")}
-                  onCancel={() => router.push(pending ? "/inbox" : "/")}
-                />
+                <>
+                  <div className={a.head}>
+                    <h1 id="add-title" className="display">
+                      Add a place
+                    </h1>
+                    <button type="button" className={a.close} onClick={() => close(pending !== null)} aria-label="Close">
+                      <Icon name="x" size="l" />
+                    </button>
+                  </div>
+                  <AddForm
+                    diary={diary}
+                    initial={{ ...initial, ...(pending ? { pending } : {}) }}
+                    onSaved={(id) => router.push(`/place#${id}`)}
+                    onQueued={() => router.push("/inbox")}
+                    onCancel={() => close(pending !== null)}
+                  />
+                </>
               )}
             </WithPending>
-          )}
-        </DeviceGate>
+          </section>
+        </DiaryShell>
       )}
-    </main>
-  );
+    </DeviceGate>
+  ) : null;
 }
 
 /** Loads the Inbox item named in the fragment before the form starts, so it can prefill. */
