@@ -7,7 +7,8 @@ import {
   wrapKeyForMember,
   type BoardKey,
 } from "@map-diary/crypto";
-import { ApiError, type Api, type BoardSummary, type Signer, type WrappedBoardKey } from "./api";
+import { ApiError, NetworkError, type Api, type BoardSummary, type Signer, type WrappedBoardKey } from "./api";
+import { topUpClaudeKeys } from "./claude";
 import { boardsFrom, currentBoardKey, mergeBoardKeys, openBoardKeys, type BoardInfo, type DeviceState } from "./device";
 
 /**
@@ -23,17 +24,23 @@ function signerOf(device: DeviceState): Signer {
 
 /**
  * Fetches the account's boards and opens every board key wrapped to this device's current
- * account box key. Collecting a newer account key (after a revocation) is the sync loop's job.
+ * account box key, then gives the account's Claude device any master or Personal key version
+ * it is missing. Collecting a newer account key (after a revocation) is the sync loop's job.
  */
 export async function refreshKeyRing(api: Api, device: DeviceState): Promise<DeviceState> {
   await ready();
   const me = await api.me(signerOf(device));
-  return {
+  const next: DeviceState = {
     ...device,
     boards: boardsFrom(me.boards),
     isAdmin: me.account.isAdmin,
     boardKeys: mergeBoardKeys(device.boardKeys, openBoardKeys(me, device.accountBox)),
   };
+  // A refusal here must not stop the key ring refreshing; the next refresh tries again.
+  await topUpClaudeKeys(api, next, me).catch((err: unknown) => {
+    if (err instanceof NetworkError) throw err;
+  });
+  return next;
 }
 
 /** The account's board of a kind (the first, for groups). */

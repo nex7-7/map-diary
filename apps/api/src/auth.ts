@@ -4,6 +4,7 @@ import {
   REQUEST_MAX_SKEW_MS,
   ready,
   verifyRequest,
+  type DeviceKind,
 } from "@map-diary/crypto";
 import { bytes, fail } from "./http";
 
@@ -14,7 +15,26 @@ export const MAX_BODY_BYTES = 2 * 1024 * 1024;
 export interface AuthedDevice {
   id: string;
   accountId: string;
+  kind: DeviceKind;
+  /** Always false for a `claude` device: admin power stays with the person's own devices. */
   isAdmin: boolean;
+}
+
+/**
+ * The only routes a `claude` device may call: reading and writing its own account's
+ * envelopes on the boards it holds keys for (master and Personal). Everything else (account
+ * keys, group keys and invites, pairing, revoking, backups, admin) is refused, whatever the
+ * account may do from its other devices.
+ */
+const CLAUDE_ROUTES: readonly string[] = [
+  "GET /api/sync",
+  "POST /api/envelopes",
+  "POST /api/envelopes/delete",
+  "POST /api/place-links/check",
+];
+
+export function claudeMayCall(method: string, path: string): boolean {
+  return CLAUDE_ROUTES.includes(`${method.toUpperCase()} ${path}`);
 }
 
 export type SignedVars = {
@@ -108,13 +128,14 @@ export const requireDevice = createMiddleware<AuthedEnv>(async (c, next) => {
   if (!headers) return fail(c, 401, "unauthenticated");
 
   const row = await c.env.DB.prepare(
-    `SELECT d.account_id, d.sign_public_key, d.last_seen_at, d.revoked_at, a.is_admin, a.removed_at
+    `SELECT d.account_id, d.kind, d.sign_public_key, d.last_seen_at, d.revoked_at, a.is_admin, a.removed_at
        FROM devices d JOIN accounts a ON a.id = d.account_id
       WHERE d.id = ?`,
   )
     .bind(headers.deviceId)
     .first<{
       account_id: string;
+      kind: DeviceKind;
       sign_public_key: unknown;
       last_seen_at: number | null;
       revoked_at: number | null;
@@ -130,7 +151,9 @@ export const requireDevice = createMiddleware<AuthedEnv>(async (c, next) => {
   // app), so it can forget its keys.
   if (row.revoked_at !== null || row.removed_at !== null) return fail(c, 401, "device_revoked");
 
-  c.set("device", { id: headers.deviceId, accountId: row.account_id, isAdmin: row.is_admin === 1 });
+  const claude = row.kind === "claude";
+  if (claude && !claudeMayCall(c.req.method, new URL(c.req.url).pathname)) return fail(c, 403, "claude_not_allowed");
+  c.set("device", { id: headers.deviceId, accountId: row.account_id, kind: row.kind, isAdmin: row.is_admin === 1 && !claude });
 
   // Hourly is enough for the admin device list, and keeps D1 writes low.
   if (row.last_seen_at === null || now - row.last_seen_at > 60 * 60 * 1000) {

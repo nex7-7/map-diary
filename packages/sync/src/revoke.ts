@@ -152,8 +152,10 @@ export async function revokeDevice(
     wrappedKey: toBase64(wrapKeyForMember(k.key, newBox.publicKey)),
   }));
   const transfer = { accountId: account.accountId, personalBoardId: account.personalBoardId, accountBox: newBox };
+  // A Claude device never holds the account key; this or another device wraps it the new
+  // master and Personal keys on its next sync.
   const deviceKeys = me.devices
-    .filter((d) => d.revokedAt === null && d.id !== targetDeviceId)
+    .filter((d) => d.revokedAt === null && d.id !== targetDeviceId && d.kind !== "claude")
     .map((d) => ({ deviceId: d.id, sealedKey: sealAccountTransfer(transfer, fromBase64(d.boxPublicKey)) }));
 
   try {
