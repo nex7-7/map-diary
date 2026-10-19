@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(pnpm --filter @map-diary/api deploy)",
+      "Bash(pnpm --filter @map-diary/web deploy)",
+      "Bash(CI=1 pnpm --filter @map-diary/api deploy)",
+      "Bash(CI=1 pnpm --filter @map-diary/web deploy)"
+    ]
+  }
+}
