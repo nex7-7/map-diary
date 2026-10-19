@@ -8,6 +8,7 @@ import styles from "@/lib/device/device.module.css";
 import { InstallWarning } from "../install-warning";
 import { inviteErrorMessage, needsHomeScreenInstall } from "../messages";
 import { SetupFlow } from "../setup/setup-flow";
+import { InviteIntro } from "./intro";
 
 const CHECK_MESSAGES: Record<Exclude<InviteCheck["state"], "open">, string> = {
   bad_code: "That invite code has a typo. It is twenty letters and digits, like 7K3QM-9XT2B-QW4RT-ZP0HK.",
@@ -26,6 +27,7 @@ export function InviteFlow() {
   const [homeScreen, setHomeScreen] = useState(false);
   const [typed, setTyped] = useState("");
   const [accepted, setAccepted] = useState<string | null>(null);
+  const [introDone, setIntroDone] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -69,7 +71,7 @@ export function InviteFlow() {
       </div>
     );
   }
-  if (accepted) return <SetupFlow inviteCode={accepted} />;
+  if (accepted) return introDone ? <SetupFlow inviteCode={accepted} /> : <InviteIntro onDone={() => setIntroDone(true)} />;
 
   // A tapped link opens in Safari, whose storage is separate from the Home Screen app.
   if (homeScreen && linkCode) {

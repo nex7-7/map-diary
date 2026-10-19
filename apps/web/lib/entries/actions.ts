@@ -1,7 +1,7 @@
 import type { EnvelopeType, JsonValue } from "@map-diary/crypto";
 import { outletIds } from "../places/chains";
 import type { StoredItem } from "../places/items-source";
-import { cleanDisplayName, readPayload, type CommentPayload, type PlacePayload, type ProfilePayload, type TagDefPayload } from "../places/payloads";
+import { cleanDisplayName, readAvatar, readPayload, type AvatarPayload, type CommentPayload, type PlacePayload, type ProfilePayload, type TagDefPayload } from "../places/payloads";
 import type { Status } from "../places/types";
 import { oneEmoji } from "./emoji";
 import { normaliseLink } from "./parse-input";
@@ -231,16 +231,30 @@ export async function deletePlace(w: DiaryWriter, placeId: string): Promise<void
 
 /**
  * Sets how this person appears to everyone: one profile item on the master board, edited in
- * place. Returns the name as saved.
+ * place. `avatar` replaces their picture, `null` removes it, and leaving it out keeps it.
+ * Returns the profile as saved.
  */
-export async function setDisplayName(w: DiaryWriter, name: string, masterBoardId: string): Promise<string> {
-  const payload: ProfilePayload = { name: cleanDisplayName(name) };
-  if (!payload.name) throw new EntryError("A name needs at least one letter");
+export async function setProfile(
+  w: DiaryWriter,
+  profile: { name: string; avatar?: AvatarPayload | null },
+  masterBoardId: string,
+): Promise<ProfilePayload> {
+  const name = cleanDisplayName(profile.name);
+  if (!name) throw new EntryError("A name needs at least one letter");
   const mine = (await w.listItems()).filter((i) => i.type === "profile" && i.authorId === w.device.accountId);
   const latest = mine.reduce<StoredItem | undefined>((a, b) => (!a || b.updatedAt > a.updatedAt ? b : a), undefined);
+  const kept = profile.avatar === undefined && latest ? readPayload("profile", latest.payload)?.avatar : undefined;
+  const avatar = profile.avatar === undefined ? kept : profile.avatar === null ? undefined : readAvatar(json(profile.avatar));
+  if (profile.avatar && !avatar) throw new EntryError("That picture could not be used. Try a smaller photo or another emoji.");
+  const payload: ProfilePayload = avatar ? { name, avatar } : { name };
   await w.write({ type: "profile", placeId: null, payload: json(payload), boards: [masterBoardId], ...(latest ? { id: latest.id } : {}) });
   for (const extra of mine) if (extra !== latest) await w.remove(extra.id);
-  return payload.name;
+  return payload;
+}
+
+/** Sets this person's display name and keeps their picture. Returns the name as saved. */
+export async function setDisplayName(w: DiaryWriter, name: string, masterBoardId: string): Promise<string> {
+  return (await setProfile(w, { name }, masterBoardId)).name;
 }
 
 function cleanTag(def: TagDefPayload): TagDefPayload {

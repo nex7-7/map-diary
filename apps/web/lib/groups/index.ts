@@ -18,7 +18,8 @@ import {
 } from "@map-diary/sync";
 import { api } from "@/lib/device/session";
 import { useDiaryItems } from "@/lib/device/hooks";
-import { displayNames, groupNames } from "@/lib/places/items-source";
+import { groupNames, profilesOf } from "@/lib/places/items-source";
+import type { AvatarPayload } from "@/lib/places/payloads";
 import { memberName } from "./people";
 
 export { GroupError, inviteSecretFrom, GROUP_NAME_MAX, MAX_GROUP_MEMBERS, type OpenedInvite } from "@map-diary/sync";
@@ -30,7 +31,7 @@ export interface Group {
   /** This member's own name item, if they set the current name; renaming rewrites it. */
   ownNameItemId: string | undefined;
   /** Members as the Worker lists them, each with how to show them. */
-  members: (GroupView["members"][number] & { name: string })[];
+  members: (GroupView["members"][number] & { name: string; avatar?: AvatarPayload })[];
   keyVersion: number;
 }
 
@@ -60,14 +61,18 @@ export function useGroups(diary: Diary): { groups: Group[] | null; failed: boole
   const groups = useMemo(() => {
     if (views === null) return null;
     const names = groupNames(items);
-    const people = displayNames(items);
+    const profiles = profilesOf(items);
+    const people = new Map([...profiles].map(([id, p]) => [id, p.name]));
     return views.map((v): Group => {
       const named = names.get(v.id);
       return {
         id: v.id,
         name: named?.name ?? "",
         ownNameItemId: named?.item.authorId === diary.device.accountId ? named.item.id : undefined,
-        members: v.members.map((m) => ({ ...m, name: memberName(m.accountId, diary.device.accountId, people) })),
+        members: v.members.map((m) => {
+          const avatar = profiles.get(m.accountId)?.avatar;
+          return { ...m, name: memberName(m.accountId, diary.device.accountId, people), ...(avatar ? { avatar } : {}) };
+        }),
         keyVersion: v.keyVersion,
       };
     });

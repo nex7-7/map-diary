@@ -1,7 +1,7 @@
 import type { EnvelopeType, JsonValue } from "@map-diary/crypto";
 import { applyBoardRules } from "./boards";
 import { foldChains, outletIds } from "./chains";
-import { readPayload } from "./payloads";
+import { readPayload, type ProfilePayload } from "./payloads";
 import type { Board, BoardKind, DiarySnapshot, DiarySource, Opinion, Person, PlaceView, Status, StatusOpinion, TagDefinition } from "./types";
 
 /** A decrypted item as the device store keeps it (the shape of `DiaryItem` in `@map-diary/sync`). */
@@ -109,7 +109,7 @@ export function snapshotFromItems(
   const tags: TagDefinition[] = [];
   const opinions: { placeId: string; opinion: Opinion }[] = [];
   const authors = new Set<string>([accountId]);
-  const profiles = displayNames(items);
+  const profiles = profilesOf(items);
   const groups = groupNames(items);
 
   for (const item of items) {
@@ -184,23 +184,29 @@ export function snapshotFromItems(
   for (const p of snapshot.places) for (const o of p.opinions) authors.add(o.authorId);
   let unnamed = 0;
   const people = [...authors].map((id): Person => {
-    const name = profiles.get(id);
-    if (id === accountId) return { id, name: name ?? "Me" };
-    return { id, name: name ?? `Friend ${++unnamed}` };
+    const profile = profiles.get(id);
+    const avatar = profile?.avatar ? { avatar: profile.avatar } : {};
+    if (id === accountId) return { id, name: profile?.name ?? "Me", ...avatar };
+    return { id, name: profile?.name ?? `Friend ${++unnamed}`, ...avatar };
   });
   return { ...snapshot, me: people[0]!, people };
 }
 
-/** Each account's display name: the newest valid `profile` item it wrote. */
-export function displayNames(items: readonly StoredItem[]): Map<string, string> {
-  const latest = new Map<string, { name: string; updatedAt: number }>();
+/** Each account's profile (name and avatar): the newest valid `profile` item it wrote. */
+export function profilesOf(items: readonly StoredItem[]): Map<string, ProfilePayload> {
+  const latest = new Map<string, { profile: ProfilePayload; updatedAt: number }>();
   for (const item of items) {
     if (item.type !== "profile") continue;
     const p = readPayload("profile", item.payload);
     const prior = latest.get(item.authorId);
-    if (p && (!prior || item.updatedAt > prior.updatedAt)) latest.set(item.authorId, { name: p.name, updatedAt: item.updatedAt });
+    if (p && (!prior || item.updatedAt > prior.updatedAt)) latest.set(item.authorId, { profile: p, updatedAt: item.updatedAt });
   }
-  return new Map([...latest].map(([id, v]) => [id, v.name]));
+  return new Map([...latest].map(([id, v]) => [id, v.profile]));
+}
+
+/** Each account's display name, from `profilesOf`. */
+export function displayNames(items: readonly StoredItem[]): Map<string, string> {
+  return new Map([...profilesOf(items)].map(([id, p]) => [id, p.name]));
 }
 
 /** Each group's name by board id: the newest valid `group` item posted to that board. */

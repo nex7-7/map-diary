@@ -1,4 +1,5 @@
 import type { EnvelopeType, JsonValue } from "@map-diary/crypto";
+import { oneEmoji } from "../entries/emoji";
 import { BUILTIN_CATEGORIES, type Category, type LngLat, type PlaceChain, type SignatureDish, type Status } from "./types";
 
 /**
@@ -44,9 +45,24 @@ export interface CommentPayload {
 export interface ProfilePayload {
   /** How the person appears to everyone on the app. */
   name: string;
+  /** Their picture; without one they show as their initial. */
+  avatar?: AvatarPayload;
 }
 
 export const DISPLAY_NAME_MAX = 40;
+
+/** One of the four soft colours an initial or emoji sits on. */
+export type AvatarTone = 0 | 1 | 2 | 3;
+
+/**
+ * A photo, shrunk on the device to a small square and kept inline as a data URL, or an emoji
+ * on a colour. Both travel inside the encrypted profile item.
+ */
+export type AvatarPayload = { kind: "photo"; dataUrl: string } | { kind: "emoji"; emoji: string; tone: AvatarTone };
+
+/** Longest photo data URL accepted, so a profile stays well inside one envelope. */
+export const AVATAR_PHOTO_MAX = 24_000;
+const PHOTO_URL = /^data:image\/(jpeg|webp|png);base64,[A-Za-z0-9+/]+={0,2}$/;
 
 /** A group's name, on the group's own board; the newest one from a member wins. */
 export interface GroupPayload {
@@ -137,7 +153,9 @@ const readers: { [T in EnvelopeType]: (p: JsonObject) => PayloadByType[T] | unde
   },
   profile: (p) => {
     const name = cleanDisplayName(str(p.name) ?? "");
-    return name ? { name } : undefined;
+    if (!name) return undefined;
+    const avatar = readAvatar(p.avatar);
+    return avatar ? { name, avatar } : { name };
   },
   group: (p) => {
     const name = str(p.name)?.trim();
@@ -151,6 +169,21 @@ const readers: { [T in EnvelopeType]: (p: JsonObject) => PayloadByType[T] | unde
 };
 
 /** Trims a display name, drops control characters and caps its length. */
+/** A photo only as a small raster data URL (never SVG), an emoji only as one short emoji. */
+export function readAvatar(p: JsonValue | undefined): AvatarPayload | undefined {
+  if (!isObject(p)) return undefined;
+  if (p.kind === "photo") {
+    const dataUrl = str(p.dataUrl);
+    return dataUrl && dataUrl.length <= AVATAR_PHOTO_MAX && PHOTO_URL.test(dataUrl) ? { kind: "photo", dataUrl } : undefined;
+  }
+  if (p.kind === "emoji") {
+    const emoji = oneEmoji((str(p.emoji) ?? "").slice(0, 32));
+    const tone = p.tone === 0 || p.tone === 1 || p.tone === 2 || p.tone === 3 ? p.tone : 0;
+    return emoji ? { kind: "emoji", emoji, tone } : undefined;
+  }
+  return undefined;
+}
+
 export function cleanDisplayName(name: string): string {
   return [...name.replace(/[\p{Cc}\p{Cf}]/gu, "").trim()].slice(0, DISPLAY_NAME_MAX).join("").trim();
 }
