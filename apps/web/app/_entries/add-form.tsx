@@ -269,13 +269,18 @@ export function AddForm({ diary, initial, onSaved, onQueued, onCancel }: Props) 
       </div>
 
       <div className={styles.section}>
-        <span className={styles.label}>Category</span>
-        <CategoryPicker value={category} onChange={setCategoryEdit} />
+        <span className={styles.label}>Status</span>
+        <StatusToggle value={status} onChange={setStatus} />
       </div>
 
       <div className={styles.section}>
-        <span className={styles.label}>Status</span>
-        <StatusToggle value={status} onChange={setStatus} />
+        <span className={styles.label}>Who sees this</span>
+        <BoardPicker boards={choices} value={pickedBoards} onChange={setBoards} noPublic={noPublic} />
+      </div>
+
+      <div className={styles.section}>
+        <span className={styles.label}>Category</span>
+        <CategoryPicker value={category} onChange={setCategoryEdit} />
       </div>
 
       <div className={styles.section}>
@@ -302,7 +307,6 @@ export function AddForm({ diary, initial, onSaved, onQueued, onCancel }: Props) 
       </div>
 
       <div className={styles.savebar}>
-        <BoardPicker boards={choices} value={pickedBoards} onChange={setBoards} noPublic={noPublic} />
         {error && (
           <p className={styles.error} role="alert">
             {error}

@@ -1,0 +1,245 @@
+/* The place page: map on top on phones; facts and notes beside a map column on desktop. */
+
+.place {
+  display: flex;
+  flex-direction: column;
+  min-height: 100%;
+}
+
+.plain {
+  max-width: 40rem;
+  margin: 0 auto;
+  padding: max(16px, env(safe-area-inset-top)) 20px 24px;
+}
+
+.side {
+  position: relative;
+}
+
+.hero {
+  position: relative;
+  height: calc(220px + env(safe-area-inset-top));
+  background: var(--surface-2);
+  overflow: hidden;
+}
+
+.map {
+  width: 100%;
+  height: 100%;
+}
+
+.fab {
+  position: absolute;
+  z-index: 2;
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: var(--surface);
+  color: var(--ink);
+  box-shadow: 0 6px 18px var(--shadow);
+}
+
+.backFab {
+  top: max(12px, env(safe-area-inset-top));
+  left: 16px;
+}
+
+.main {
+  position: relative;
+  margin-top: -24px;
+  padding: 24px 20px 40px;
+  border-radius: 24px 24px 0 0;
+  background: var(--paper);
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.head {
+  display: grid;
+  gap: 6px;
+}
+
+.head .sub {
+  margin: 0;
+}
+
+.head > :last-child {
+  margin-top: 6px;
+}
+
+.wideOnly {
+  display: none;
+}
+
+.bleeder {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px;
+  border-radius: 16px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+}
+
+.bleeder > div {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.bleeder p {
+  margin: 0;
+}
+
+.price {
+  font-family: var(--serif);
+  font-weight: 500;
+  font-size: 32px;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+.others {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+  font-size: 14px;
+}
+
+.others li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.others strong {
+  font-weight: 600;
+}
+
+.tagChip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 6px 5px 10px;
+  border-radius: 999px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  font-weight: 500;
+  font-size: 13.5px;
+  white-space: nowrap;
+}
+
+.comments {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+}
+
+.comment {
+  display: grid;
+  gap: 8px;
+  padding: 4px 0 16px;
+  margin-bottom: 12px;
+  border-bottom: 1px solid var(--line);
+}
+
+.commentText {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.byline {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+}
+
+.byline strong {
+  font-weight: 500;
+}
+
+.claude {
+  color: var(--claude);
+  display: inline-flex;
+}
+
+.commentActions {
+  margin-left: auto;
+  display: inline-flex;
+}
+
+.composer {
+  display: grid;
+  gap: 8px;
+}
+
+.composer > div {
+  justify-content: space-between;
+}
+
+@media (min-width: 900px) {
+  .place {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 320px;
+    gap: 36px;
+    align-items: start;
+    max-width: 1040px;
+    margin: 0 auto;
+    padding: 40px 40px 80px;
+  }
+
+  .side {
+    grid-column: 2;
+    grid-row: 1;
+    position: sticky;
+    top: 40px;
+    display: grid;
+    gap: 16px;
+  }
+
+  .hero {
+    height: 240px;
+    border-radius: 16px;
+    box-shadow: 0 0 0 1px var(--line);
+  }
+
+  .backFab {
+    display: none;
+  }
+
+  .main {
+    grid-column: 1;
+    grid-row: 1;
+    margin: 0;
+    padding: 0;
+    border-radius: 0;
+    gap: 28px;
+  }
+
+  .wideOnly {
+    display: block;
+  }
+
+  a.wideOnly {
+    display: inline-flex;
+  }
+
+  .narrowOnly {
+    display: none;
+  }
+}
+
+.narrowOnly:empty,
+.wideOnly:empty {
+  display: none !important;
+}

@@ -1,6 +1,6 @@
-import { layers, namedFlavor } from "@protomaps/basemaps";
+import { layers, namedFlavor, type Flavor } from "@protomaps/basemaps";
 import type { FeatureCollection, Point } from "geojson";
-import type { ExpressionSpecification, LayerSpecification, LngLatBoundsLike, StyleSpecification } from "maplibre-gl";
+import type { LayerSpecification, LngLatBoundsLike, StyleSpecification } from "maplibre-gl";
 import { categoryStyle } from "../places/categories";
 import type { ListedPlace } from "../places/filter";
 import type { LngLat } from "../places/types";
@@ -33,67 +33,84 @@ export function basemapStyle(origin: string, dark: boolean): StyleSpecification 
       [PINS_SOURCE]: { type: "geojson", data: emptyCollection() },
       [HERE_SOURCE]: { type: "geojson", data: emptyCollection() },
     },
-    layers: [...layers("protomaps", namedFlavor(flavor), { lang: "en" }), ...pinLayers(dark)],
+    layers: [...layers("protomaps", diaryFlavor(dark), { lang: "en" }), ...pinLayers(dark)],
   };
 }
 
-const isVisited: ExpressionSpecification = ["==", ["get", "status"], "visited"];
+/** Protomaps' light and dark flavours in the diary's paper palette (the map colours in Figma). */
+function diaryFlavor(dark: boolean): Flavor {
+  const base = namedFlavor(dark ? "dark" : "light");
+  const land = dark ? "#29251f" : "#efe8d9";
+  const park = dark ? "#25301f" : "#d5e2c3";
+  const road = dark ? "#3b352c" : "#ffffff";
+  const label = dark ? "#80766a" : "#9a8f7a";
+  return {
+    ...base,
+    background: dark ? "#16130f" : "#e6dfd0",
+    earth: land,
+    water: dark ? "#1b3138" : "#bcd8dd",
+    park_a: park,
+    park_b: park,
+    wood_a: park,
+    wood_b: park,
+    scrub_a: park,
+    scrub_b: park,
+    sand: dark ? "#2e2920" : "#ece2cc",
+    beach: dark ? "#2e2920" : "#ece2cc",
+    buildings: dark ? "#332d25" : "#e4dbc9",
+    pedestrian: land,
+    minor_b: road,
+    link: road,
+    major: road,
+    highway: road,
+    ocean_label: dark ? "#6db3c4" : "#24697a",
+    subplace_label: label,
+    subplace_label_halo: land,
+    city_label: label,
+    city_label_halo: land,
+  };
+}
 
-/**
- * Pins: colour is the category. Visited is a solid dot; Want to is a ring.
- * Someone else's status (not mine) is drawn smaller.
- */
+/** The marker image's name: status colour, emoji and size, and the colour scheme. */
+export function pinImageId(kind: PinKind, emoji: string, selected: boolean, dark: boolean): string {
+  return ["pin", dark ? "dark" : "light", kind, selected ? "1" : "0", emoji].join("|");
+}
+
+/** Pins are images drawn on demand (see `drawPin`), so labels sit under them. */
 function pinLayers(dark: boolean): LayerSpecification[] {
-  const surface = dark ? "#1f1f1c" : "#ffffff";
-  // "zoom" may only sit at the top of an expression, so the halo gets its own curve.
-  const radius = (extra: number): ExpressionSpecification => [
-    "interpolate", ["linear"], ["zoom"],
-    10, ["case", ["get", "mine"], 5 + extra, 4 + extra],
-    15, ["case", ["get", "mine"], 9 + extra, 7 + extra],
-  ];
+  const surface = dark ? "#201c17" : "#fffdf8";
+  const ink = dark ? "#f1eadc" : "#1e1a15";
   return [
     {
-      id: "pins-selected",
-      type: "circle",
-      source: PINS_SOURCE,
-      filter: ["==", ["get", "selected"], true],
-      paint: { "circle-radius": radius(6), "circle-color": ["get", "color"], "circle-opacity": 0.25 },
-    },
-    {
       id: PIN_LAYER,
-      type: "circle",
-      source: PINS_SOURCE,
-      paint: {
-        "circle-radius": radius(0),
-        "circle-color": ["case", isVisited, ["get", "color"], surface],
-        "circle-stroke-color": ["case", isVisited, surface, ["get", "color"]],
-        "circle-stroke-width": ["case", isVisited, 1.5, 3],
-      },
-    },
-    {
-      id: "pins-label",
       type: "symbol",
       source: PINS_SOURCE,
-      minzoom: 13,
       layout: {
+        "icon-image": dark ? ["get", "iconDark"] : ["get", "icon"],
+        "icon-allow-overlap": true,
+        "icon-ignore-placement": true,
+        // Selected on top, then my own places over friends'.
+        "symbol-sort-key": ["case", ["get", "selected"], 2, ["get", "mine"], 1, 0],
         "text-field": ["get", "name"],
         "text-font": ["Noto Sans Medium"],
         "text-size": 12,
-        "text-offset": [0, 1.1],
+        "text-offset": [0, 1.6],
         "text-anchor": "top",
         "text-optional": true,
       },
       paint: {
-        "text-color": ["get", "color"],
+        "text-color": ink,
         "text-halo-color": surface,
         "text-halo-width": 1.5,
+        // Names show once zoomed in, and always for the selected place.
+        "text-opacity": ["step", ["zoom"], ["case", ["get", "selected"], 1, 0], 14, 1],
       },
     },
     {
       id: "here-halo",
       type: "circle",
       source: HERE_SOURCE,
-      paint: { "circle-radius": 18, "circle-color": "#228be6", "circle-opacity": 0.18 },
+      paint: { "circle-radius": 18, "circle-color": dark ? "#6db3c4" : "#24697a", "circle-opacity": 0.18 },
     },
     {
       id: "here",
@@ -101,19 +118,65 @@ function pinLayers(dark: boolean): LayerSpecification[] {
       source: HERE_SOURCE,
       paint: {
         "circle-radius": 7,
-        "circle-color": "#228be6",
-        "circle-stroke-color": "#ffffff",
+        "circle-color": dark ? "#6db3c4" : "#24697a",
+        "circle-stroke-color": surface,
         "circle-stroke-width": 2.5,
       },
     },
   ];
 }
 
+const PIN_COLORS: Record<"light" | "dark", Record<PinKind, string>> = {
+  light: { visited: "#2e7a51", want: "#cf5b24", friend: "#7a4a86", pending: "#8e846f" },
+  dark: { visited: "#6cc28f", want: "#ee8a55", friend: "#c99dd5", pending: "#928874" },
+};
+
+/**
+ * Draws a marker for `pinImageId`: a status-coloured disc with a light rim around the
+ * category emoji. MapLibre asks for each one the first time it is needed.
+ */
+export function drawPin(id: string, pixelRatio: number): ImageData | null {
+  const [prefix, scheme, kind, selected, ...rest] = id.split("|");
+  const emoji = rest.join("|");
+  if (prefix !== "pin" || (scheme !== "light" && scheme !== "dark") || !kind || !(kind in PIN_COLORS.light)) return null;
+  const radius = selected === "1" ? 21 : 14;
+  const rim = 3;
+  const shadow = 3;
+  const css = (radius + rim + shadow) * 2;
+  const px = Math.ceil(css * pixelRatio);
+  const canvas = document.createElement("canvas");
+  canvas.width = px;
+  canvas.height = px;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return null;
+  ctx.scale(pixelRatio, pixelRatio);
+  const c = css / 2;
+  ctx.shadowColor = scheme === "dark" ? "rgba(0,0,0,0.5)" : "rgba(40,28,12,0.25)";
+  ctx.shadowBlur = shadow;
+  ctx.shadowOffsetY = 1;
+  ctx.beginPath();
+  ctx.arc(c, c, radius + rim, 0, Math.PI * 2);
+  ctx.fillStyle = scheme === "dark" ? "#201c17" : "#fffdf8";
+  ctx.fill();
+  ctx.shadowColor = "transparent";
+  ctx.beginPath();
+  ctx.arc(c, c, radius, 0, Math.PI * 2);
+  ctx.fillStyle = PIN_COLORS[scheme][kind as PinKind];
+  ctx.fill();
+  ctx.font = `${Math.round(radius * 1.05)}px "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif`;
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText(emoji, c, c + radius * 0.08);
+  return ctx.getImageData(0, 0, px, px);
+}
+
+export type PinKind = "visited" | "want" | "friend" | "pending";
+
 export interface PinProps {
   id: string;
   name: string;
-  status: string;
-  color: string;
+  icon: string;
+  iconDark: string;
   mine: boolean;
   selected: boolean;
 }
@@ -121,18 +184,24 @@ export interface PinProps {
 export function pinsCollection(listed: readonly ListedPlace[], selectedId: string | null): FeatureCollection<Point, PinProps> {
   return {
     type: "FeatureCollection",
-    features: listed.map(({ place, status, mine }) => ({
-      type: "Feature",
-      geometry: { type: "Point", coordinates: [place.location.lng, place.location.lat] },
-      properties: {
-        id: place.id,
-        name: place.name,
-        status,
-        color: categoryStyle(place.category).color,
-        mine,
-        selected: place.id === selectedId,
-      },
-    })),
+    features: listed.map(({ place, status, mine }) => {
+      // Someone else's status, not mine: drawn in the friends' colour.
+      const kind: PinKind = mine ? status : "friend";
+      const selected = place.id === selectedId;
+      const emoji = categoryStyle(place.category).emoji;
+      return {
+        type: "Feature",
+        geometry: { type: "Point", coordinates: [place.location.lng, place.location.lat] },
+        properties: {
+          id: place.id,
+          name: place.name,
+          icon: pinImageId(kind, emoji, selected, false),
+          iconDark: pinImageId(kind, emoji, selected, true),
+          mine,
+          selected,
+        },
+      };
+    }),
   };
 }
 

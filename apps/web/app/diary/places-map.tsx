@@ -7,6 +7,7 @@ import { loadMapFile } from "@/lib/map/map-file";
 import { registerProtocol } from "@/lib/map/protocol";
 import {
   basemapStyle,
+  drawPin,
   HERE_SOURCE,
   hereCollection,
   MUMBAI_BOUNDS,
@@ -68,7 +69,13 @@ export function PlacesMap({ listed, here, selectedId, onSelect, onLongPress }: P
           maxBounds: padBounds(MUMBAI_BOUNDS as [number, number, number, number], 0.15),
           attributionControl: false,
         });
-        map.addControl(new NavigationControl({ showCompass: false }), "top-right");
+        map.addControl(new NavigationControl({ showCompass: false }), "bottom-right");
+        // Pin images are drawn the first time each status, emoji and size is needed.
+        map.setMissingStyleImageResolver((id) => {
+          const ratio = window.devicePixelRatio || 1;
+          const image = drawPin(id, ratio);
+          if (image && map && !map.hasImage(id)) map.addImage(id, image, { pixelRatio: ratio });
+        });
         map.addControl(new AttributionControl({ compact: true }), "bottom-right");
         map.on("style.load", syncData);
         map.on("click", PIN_LAYER, (e) => {
