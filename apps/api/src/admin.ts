@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import { fromBase64 } from "@map-diary/crypto";
 import { readBody, requireAdmin, requireDevice, type AuthedEnv, type SignedEnv } from "./auth";
 import { masterBoard } from "./boards";
 import { leaveGroupStatements } from "./groups";
@@ -140,18 +141,37 @@ admin.get("/members", async (c) => {
   });
 });
 
+/** The next master key wrapped to one remaining member's current account box key. */
+interface MasterMemberKey {
+  accountId: string;
+  accountKeyVersion: number;
+  wrappedKey: Uint8Array;
+}
+
+function parseMasterMemberKeys(value: unknown): MasterMemberKey[] | null {
+  if (!Array.isArray(value) || value.length === 0 || value.length > MAX_KEY_VERSIONS) return null;
+  const out: MasterMemberKey[] = [];
+  for (const v of value) {
+    if (!isObject(v)) return null;
+    const { accountId, accountKeyVersion, wrappedKey } = v;
+    if (!isId(accountId) || !isPositiveInt(accountKeyVersion) || !isB64(wrappedKey, MAX_WRAPPED_KEY_B64)) return null;
+    out.push({ accountId, accountKeyVersion, wrappedKey: fromBase64(wrappedKey) });
+  }
+  return new Set(out.map((k) => k.accountId)).size === out.length ? out : null;
+}
+
 /**
  * Removes someone from the app: the account is marked removed and every one of its devices is
- * refused from now on. Their encrypted data stays where it is (nobody can read it without
- * their keys); a board shows only its members' opinions.
+ * refused from now on. In the same step the master (Public) board moves to a new key that the
+ * admin's device made and wrapped for every remaining member, so nothing posted from now on is
+ * readable with the keys the removed person held, even with the server's help. Their encrypted
+ * data stays where it is (nobody can read it without their keys); a board shows only its
+ * members' opinions.
  */
 admin.post("/members/:id/remove", async (c) => {
   const id = c.req.param("id");
   if (!isId(id)) return fail(c, 400, "bad_request");
   if (id === c.var.device.accountId) return fail(c, 400, "cannot_remove_self");
-  // TODO: rotate the master key and re-wrap it for the remaining members in this same step, so
-  // the removed person cannot read anything new on it even with the server's help. Until then
-  // the server refusing all their devices is what keeps them out.
   const now = Date.now();
   const db = c.env.DB;
   const removed = "EXISTS (SELECT 1 FROM accounts WHERE id = ? AND removed_at = ?)";
@@ -169,7 +189,50 @@ admin.post("/members/:id/remove", async (c) => {
     )
     .bind(id)
     .all<{ board_id: string; members: number }>();
-  const results = await db.batch([
+
+  // The master key rotation: the next version, wrapped for exactly the members who stay.
+  const master = await masterBoard(db);
+  const masterStatements: D1PreparedStatement[] = [];
+  if (master) {
+    const body = c.var.body;
+    const keyVersion = isObject(body) ? body.masterKeyVersion : undefined;
+    const keys = isObject(body) ? parseMasterMemberKeys(body.masterKeys) : null;
+    if (!isPositiveInt(keyVersion) || !keys) return fail(c, 400, "bad_request");
+    const { results: staying } = await db
+      .prepare(
+        `SELECT a.id, a.box_key_version FROM board_members m
+           JOIN accounts a ON a.id = m.account_id AND a.removed_at IS NULL
+          WHERE m.board_id = ? AND a.id <> ?`,
+      )
+      .bind(master.id, id)
+      .all<{ id: string; box_key_version: number }>();
+    const current = new Map(staying.map((m) => [m.id, m.box_key_version]));
+    if (
+      keyVersion !== master.key_version + 1 ||
+      keys.length !== staying.length ||
+      !keys.every((k) => current.get(k.accountId) === k.accountKeyVersion)
+    ) {
+      return fail(c, 409, "stale");
+    }
+    masterStatements.push(
+      db
+        .prepare(`UPDATE boards SET key_version = ? WHERE id = ? AND key_version = ? AND ${removed}`)
+        .bind(keyVersion, master.id, master.key_version, id, now),
+      // Plain inserts: a rotation racing this one to the same version fails the whole batch.
+      ...keys.map((k) =>
+        db
+          .prepare(
+            `INSERT INTO board_keys (board_id, key_version, account_id, account_key_version, wrapped_key, created_at)
+             SELECT ?, ?, ?, ?, ?, ? WHERE ${removed}`,
+          )
+          .bind(master.id, keyVersion, k.accountId, k.accountKeyVersion, k.wrappedKey, now, id, now),
+      ),
+    );
+  }
+
+  let results: D1Result[];
+  try {
+    results = await db.batch([
     db.prepare("UPDATE accounts SET removed_at = ? WHERE id = ? AND removed_at IS NULL AND is_admin = 0").bind(now, id),
     db
       .prepare(`UPDATE devices SET revoked_at = ? WHERE account_id = ? AND revoked_at IS NULL AND ${removed}`)
@@ -180,7 +243,11 @@ admin.post("/members/:id/remove", async (c) => {
       )
       .bind(id, id, now),
     ...groups.flatMap((g) => leaveGroupStatements(db, g.board_id, id, g.members - 1, now)),
+    ...masterStatements,
   ]);
+  } catch {
+    return fail(c, 409, "stale");
+  }
   if (results[0]?.meta.changes !== 1) return fail(c, 404, "not_found");
   return c.json({ removed: id });
 });

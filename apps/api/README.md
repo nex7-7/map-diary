@@ -25,7 +25,7 @@ Signed routes need the `X-Device-Id`, `X-Timestamp` and `X-Signature` headers fr
 | `DELETE /api/app-invites/:id` | admin device | Cancels an unused invite |
 | `GET /api/app-invites/:id/status` | none, needs the id from the code | Open, used or expired; while open, the master board id and the invite's wrapped master keys |
 | `GET /api/members` | admin device | Every account with its invite id, active device count and last use; no names |
-| `POST /api/members/:id/remove` | admin device | Removes someone from the app: marks the account removed and revokes all its devices (master key rotation on removal is still to come) |
+| `POST /api/members/:id/remove` | admin device | Removes someone from the app: marks the account removed, revokes all its devices, and in the same step moves the master board to the next key, sent as `masterKeyVersion` and `masterKeys` (one wrap per member who stays) |
 | `PUT /api/board-keys` | device | Stores board keys wrapped to the account's box key |
 | `POST /api/boards/master` | the admin's device | Creates the master board once, with its first key wrapped to the admin's account |
 | `GET /api/boards/:id/members` | device of a member | The board's members and their current account box public keys, for wrapping a rotated key |
