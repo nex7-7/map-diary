@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { FactsEditor } from "@/app/_entries/facts-editor";
-import { BoardNote, StatusToggle, TagPicker } from "@/app/_entries/fields";
+import { BoardPicker, boardChoices, StatusToggle, TagPicker } from "@/app/_entries/fields";
 import { useItems } from "@/app/_entries/use-items";
 import styles from "@/app/_entries/entries.module.css";
 import type { Diary } from "@/lib/device";
@@ -33,6 +33,7 @@ export function PlaceView({ diary, placeId }: { diary: Diary; placeId: string })
   const [editing, setEditing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
+  const [boardEdit, setBoardEdit] = useState<string[] | null>(null);
 
   const me = diary.device.accountId;
   const place = snapshot.places.find((p) => p.id === placeId);
@@ -60,8 +61,16 @@ export function PlaceView({ diary, placeId }: { diary: Diary; placeId: string })
 
   const style = categoryStyle(place.category);
   const isAuthor = item.authorId === me;
+  // A catalogue place's facts are the admin's to change once written; a dropped pin is its owner's.
+  const canEdit = isAuthor && (item.type === "private_place" || diary.device.isAdmin === true);
   const of = <K extends Opinion["kind"]>(kind: K) => place.opinions.filter((o): o is Extract<Opinion, { kind: K }> => o.kind === kind);
-  const myStatus = of("status").find((o) => o.authorId === me)?.status ?? null;
+  const myStatusOpinion = of("status").find((o) => o.authorId === me);
+  const myStatus = myStatusOpinion?.status ?? null;
+  const choices = boardChoices(snapshot.boards.filter((b) => diary.boards.some((k) => k.id === b.id)));
+  // New opinions here go where the person's status is, unless they pick otherwise.
+  const picked = (boardEdit ?? myStatusOpinion?.boards ?? [diary.device.personalBoardId]).filter((id) => choices.some((b) => b.id === id));
+  const onBoards = picked.filter((id) => !place.isPrivate || choices.find((b) => b.id === id)?.kind !== "master");
+  const boards = onBoards.length > 0 ? onBoards : [diary.device.personalBoardId];
   const myTagIds = new Set(of("tag").filter((o) => o.authorId === me).map((o) => o.tagId));
   const othersTags = of("tag").filter((o) => o.authorId !== me);
   const comments = of("comment").sort((a, b) => a.createdAt.localeCompare(b.createdAt));
@@ -122,7 +131,17 @@ export function PlaceView({ diary, placeId }: { diary: Diary; placeId: string })
 
       <section className={styles.section}>
         <h2>Your status</h2>
-        <StatusToggle value={myStatus} onChange={(s: Status) => run(() => setStatus(diary, place.id, s))} />
+        <BoardPicker
+          boards={choices}
+          value={boards}
+          noPublic={place.isPrivate}
+          onChange={(next) => {
+            setBoardEdit(next);
+            // Moving the status moves the place on the person's list for those boards too.
+            if (myStatus !== null) run(() => setStatus(diary, place.id, myStatus, next));
+          }}
+        />
+        <StatusToggle value={myStatus} onChange={(s: Status) => run(() => setStatus(diary, place.id, s, boards))} />
         {myStatus === null && <p className={styles.note}>Mark it Want to or Visited to put it on your list.</p>}
         <Others snapshot={snapshot} me={me} opinions={of("status").filter((o) => o.authorId !== me)} render={(o: StatusOpinion) => (o.status === "visited" ? "visited" : "wants to go")} />
       </section>
@@ -133,8 +152,8 @@ export function PlaceView({ diary, placeId }: { diary: Diary; placeId: string })
           tags={snapshot.tags}
           selected={myTagIds}
           disabled={myStatus === null}
-          onToggle={(tagId) => run(() => (myTagIds.has(tagId) ? unapplyTag(diary, place.id, tagId) : applyTag(diary, place.id, tagId)))}
-          onCreate={(def) => run(async () => applyTag(diary, place.id, await defineTag(diary, def)))}
+          onToggle={(tagId) => run(() => (myTagIds.has(tagId) ? unapplyTag(diary, place.id, tagId) : applyTag(diary, place.id, tagId, boards)))}
+          onCreate={(def) => run(async () => applyTag(diary, place.id, await defineTag(diary, def, boards), boards))}
         />
         <Others
           snapshot={snapshot}
@@ -169,7 +188,7 @@ export function PlaceView({ diary, placeId }: { diary: Diary; placeId: string })
             e.preventDefault();
             const text = draft;
             run(async () => {
-              await addComment(diary, place.id, text);
+              await addComment(diary, place.id, text, boards);
               setDraft("");
             });
           }}
@@ -188,9 +207,7 @@ export function PlaceView({ diary, placeId }: { diary: Diary; placeId: string })
         </form>
       </section>
 
-      <BoardNote />
-
-      {isAuthor && (
+      {canEdit && (
         <section className={styles.section}>
           <h2>Place</h2>
           <div className={styles.row}>

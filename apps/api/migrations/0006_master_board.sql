@@ -1,0 +1,12 @@
+-- Phase 5: the master board and the shared place catalogue.
+--
+-- The master board is an ordinary row in boards (kind 'master', at most one)
+-- whose key is wrapped to every member's account box key in board_keys. Place
+-- envelopes move there, so everyone on the app reads one catalogue.
+--
+-- Duplicate places are blocked by keyed hashes of normalised source links in
+-- place_link_hashes (from 0001). The key is derived from the master key, so
+-- members can compute and check hashes and the server cannot test a guessed
+-- link. A place's hashes are replaced when its facts change and removed when it
+-- is deleted, which needs a lookup by place.
+CREATE INDEX place_link_hashes_place ON place_link_hashes (place_id);

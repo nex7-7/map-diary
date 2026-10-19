@@ -26,7 +26,7 @@ export function useItems(diary: Diary): Items {
     };
   }, [diary]);
   const snapshot = useMemo(
-    () => snapshotFromItems(state.items, diary.device.accountId, diary.device.personalBoardId),
+    () => snapshotFromItems(state.items, diary.device.accountId, diary.device.personalBoardId, diary.boards),
     [state.items, diary],
   );
   return { ...state, snapshot };

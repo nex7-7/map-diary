@@ -10,6 +10,7 @@ import {
   type WrappedContentKey,
 } from "@map-diary/crypto";
 import { readBody, requireDevice, type AuthedEnv } from "./auth";
+import { MAX_LINK_HASHES, isLinkHash, masterBoard } from "./boards";
 import { bytes, fail, isB64, isId, isMillis, isObject, isPositiveInt } from "./http";
 
 export const MAX_PUSH = 100;
@@ -19,7 +20,25 @@ const MAX_BOARDS = 10;
 const DEFAULT_PULL = 200;
 const MAX_PULL = 500;
 
-type Rejection = { id: string | null; reason: string };
+/** `placeId` names the catalogue place that already has the link, for `duplicate_place`. */
+type Rejection = { id: string | null; reason: string; placeId?: string };
+
+/**
+ * Link hashes sent beside place envelopes (outside the signed envelope, since only the
+ * catalogue needs them): envelope id to the keyed hashes of its normalised source links.
+ */
+function parseLinkHashes(value: unknown): Map<string, string[]> | null {
+  const out = new Map<string, string[]>();
+  if (value === undefined) return out;
+  if (!isObject(value)) return null;
+  const entries = Object.entries(value);
+  if (entries.length > MAX_PUSH) return null;
+  for (const [id, hashes] of entries) {
+    if (!isId(id) || !Array.isArray(hashes) || hashes.length > MAX_LINK_HASHES || !hashes.every(isLinkHash)) return null;
+    out.set(id, [...new Set(hashes)]);
+  }
+  return out;
+}
 
 /** Shape checks only; the signature and board rights are checked separately. */
 function parseEnvelope(value: unknown): Envelope | null {
@@ -68,6 +87,8 @@ envelopes.post("/envelopes", readBody, requireDevice, async (c) => {
   const body = c.var.body;
   const list = isObject(body) ? body.envelopes : undefined;
   if (!Array.isArray(list) || list.length === 0 || list.length > MAX_PUSH) return fail(c, 400, "bad_request");
+  const linkHashes = parseLinkHashes(isObject(body) ? body.linkHashes : undefined);
+  if (!linkHashes) return fail(c, 400, "bad_request");
   const device = c.var.device;
   const db = c.env.DB;
 
@@ -125,17 +146,44 @@ envelopes.post("/envelopes", readBody, requireDevice, async (c) => {
     for (const r of results) existing.set(r.id, r);
   }
 
+  const master = await masterBoard(db);
+  // Hashes already taken, by place id, for the new places in this push.
+  const taken = new Map<string, string>();
+  const newPlaceHashes = candidates.filter((e) => e.type === "place" && !existing.has(e.id)).flatMap((e) => linkHashes.get(e.id) ?? []);
+  if (newPlaceHashes.length > 0) {
+    const rows = await db.batch(
+      [...new Set(newPlaceHashes)].map((h) =>
+        db.prepare("SELECT link_hash, place_id FROM place_link_hashes WHERE link_hash = ?").bind(fromBase64(h)),
+      ),
+    );
+    for (const r of rows) {
+      for (const m of (r.results ?? []) as { link_hash: unknown; place_id: string }[]) taken.set(toBase64(bytes(m.link_hash)), m.place_id);
+    }
+  }
+
   const accepted: Envelope[] = [];
   const unchanged: string[] = [];
   for (const e of candidates) {
     const prior = existing.get(e.id);
-    if (e.boards.some((b) => (allowed.get(b.boardId) ?? 0) > b.keyVersion)) {
+    const onMaster = master !== null && e.boards.some((b) => b.boardId === master.id);
+    const duplicateOf = e.type === "place" && !prior ? (linkHashes.get(e.id) ?? []).map((h) => taken.get(h)).find((p) => p !== undefined && p !== e.id) : undefined;
+    if (e.type === "place" && master !== null && !(onMaster && e.boards.length === 1)) {
+      // The catalogue lives on the master board alone, so everyone reads one copy of each place.
+      rejected.push({ id: e.id, reason: "place_not_on_master" });
+    } else if (e.type === "private_place" && onMaster) {
+      // Dropped pins never enter the catalogue.
+      rejected.push({ id: e.id, reason: "private_on_master" });
+    } else if (e.boards.some((b) => (allowed.get(b.boardId) ?? 0) > b.keyVersion)) {
       // Sealed before its device collected a rotated key; the device re-seals it and retries.
       rejected.push({ id: e.id, reason: "stale_key" });
     } else if (e.boards.some((b) => allowed.get(b.boardId) !== b.keyVersion)) {
       rejected.push({ id: e.id, reason: "board_not_allowed" });
+    } else if (duplicateOf !== undefined) {
+      rejected.push({ id: e.id, reason: "duplicate_place", placeId: duplicateOf });
     } else if (!prior) {
       accepted.push(e);
+      // Later places in the same push cannot claim these links either.
+      for (const h of linkHashes.get(e.id) ?? []) if (!taken.has(h)) taken.set(h, e.id);
     } else if (prior.author_id !== e.authorId) {
       rejected.push({ id: e.id, reason: "not_author" });
     } else if (prior.deleted_at !== null) {
@@ -144,6 +192,9 @@ envelopes.post("/envelopes", readBody, requireDevice, async (c) => {
       rejected.push({ id: e.id, reason: "immutable_field" });
     } else if (e.updatedAt <= prior.updated_at) {
       unchanged.push(e.id);
+    } else if (e.type === "place" && !device.isAdmin) {
+      // Facts are written once by the first resolution; after that only the admin edits them.
+      rejected.push({ id: e.id, reason: "facts_locked" });
     } else {
       accepted.push(e);
     }
@@ -186,6 +237,18 @@ envelopes.post("/envelopes", readBody, requireDevice, async (c) => {
         )
         .bind(e.id, b.boardId, b.keyVersion, fromBase64(b.nonce), fromBase64(b.wrappedKey), e.id),
     ),
+    // A catalogue place's link hashes follow its latest facts. A link another place already
+    // holds stays with that place.
+    ...(e.type === "place" && master !== null && linkHashes.has(e.id)
+      ? [
+          db.prepare("DELETE FROM place_link_hashes WHERE place_id = ?").bind(e.id),
+          ...(linkHashes.get(e.id) ?? []).map((h) =>
+            db
+              .prepare("INSERT INTO place_link_hashes (link_hash, place_id, created_at) VALUES (?, ?, ?) ON CONFLICT DO NOTHING")
+              .bind(fromBase64(h), e.id, now),
+          ),
+        ]
+      : []),
   ]);
   if (statements.length > 0) await db.batch(statements);
 
@@ -195,7 +258,8 @@ envelopes.post("/envelopes", readBody, requireDevice, async (c) => {
 /**
  * Deletes the account's own envelopes. The row stays as a tombstone with its ciphertext
  * cleared, so every device drops its cached copy on the next pull. Nobody can delete
- * another person's envelope.
+ * another person's envelope, and only the admin can delete a catalogue place, since other
+ * people's opinions hang on it.
  */
 envelopes.post("/envelopes/delete", readBody, requireDevice, async (c) => {
   const body = c.var.body;
@@ -206,24 +270,32 @@ envelopes.post("/envelopes/delete", readBody, requireDevice, async (c) => {
   const db = c.env.DB;
   const now = Date.now();
   const unique = [...new Set(ids)];
+  const { accountId, isAdmin } = c.var.device;
   const results = await db.batch(
     unique.flatMap((id) => [
       db
         .prepare(
           `UPDATE envelopes SET nonce = NULL, ciphertext = NULL, deleted_at = ?, server_updated_at = ?,
              seq = ${NEXT_SEQ}
-           WHERE id = ? AND author_id = ? AND deleted_at IS NULL`,
+           WHERE id = ? AND author_id = ? AND deleted_at IS NULL AND (type <> 'place' OR ?)`,
         )
-        .bind(now, now, id, c.var.device.accountId),
+        .bind(now, now, id, accountId, isAdmin ? 1 : 0),
       db
         .prepare(
           `UPDATE envelope_boards SET seq = (SELECT seq FROM envelopes WHERE id = ?)
            WHERE envelope_id = ?`,
         )
         .bind(id, id),
+      // A deleted place frees its links. (No-op for anything else, or a refused delete.)
+      db
+        .prepare(
+          `DELETE FROM place_link_hashes WHERE place_id = ?
+             AND EXISTS (SELECT 1 FROM envelopes WHERE id = ? AND deleted_at IS NOT NULL)`,
+        )
+        .bind(id, id),
     ]),
   );
-  const deleted = unique.filter((_, i) => (results[i * 2]?.meta.changes ?? 0) > 0);
+  const deleted = unique.filter((_, i) => (results[i * 3]?.meta.changes ?? 0) > 0);
   return c.json({ deleted });
 });
 
@@ -325,11 +397,20 @@ envelopes.get("/sync", readBody, requireDevice, async (c) => {
     signature: toBase64(bytes(r.signature)),
   }));
 
-  // Lets the device notice that another of its account's devices moved the account to new keys.
-  const account = await db
-    .prepare("SELECT box_key_version FROM accounts WHERE id = ?")
-    .bind(c.var.device.accountId)
-    .first<{ box_key_version: number }>();
+  // Lets the device notice that another of its account's devices moved the account to new
+  // keys, that a board key was rotated, or that it joined a board.
+  const [accountRes, boardRes] = await db.batch([
+    db.prepare("SELECT box_key_version FROM accounts WHERE id = ?").bind(c.var.device.accountId),
+    db
+      .prepare(
+        `SELECT b.id, b.kind, b.key_version FROM boards b
+           JOIN board_members m ON m.board_id = b.id AND m.account_id = ?
+          ORDER BY b.created_at`,
+      )
+      .bind(c.var.device.accountId),
+  ]);
+  const account = (accountRes?.results?.[0] ?? null) as { box_key_version: number } | null;
+  const boardList = (boardRes?.results ?? []) as { id: string; kind: string; key_version: number }[];
 
   return c.json({
     envelopes: out,
@@ -344,5 +425,6 @@ envelopes.get("/sync", readBody, requireDevice, async (c) => {
     cursor: page.at(-1)?.seq ?? since,
     more,
     boxKeyVersion: account?.box_key_version ?? 1,
+    boards: boardList.map((b) => ({ id: b.id, kind: b.kind, keyVersion: b.key_version })),
   });
 });
