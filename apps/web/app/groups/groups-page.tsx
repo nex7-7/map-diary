@@ -145,7 +145,7 @@ function GroupCard({
                 <li key={m.accountId} className={s.row} style={{ padding: "10px 0" }}>
                   <Avatar id={m.accountId} name={m.name} />
                   <span className={s.rowText}>
-                    <span className={s.plainName}>{you ? `${m.name} (you)` : m.name}</span>
+                    <span className={s.plainName}>{m.name}</span>
                   </span>
                   {you ? (
                     <Button variant="ghost" size="m" className={s.dangerText} onClick={() => onConfirm({ kind: "leave", group })}>

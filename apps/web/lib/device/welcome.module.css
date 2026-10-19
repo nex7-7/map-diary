@@ -4,6 +4,7 @@
 .welcome {
   min-height: 100dvh;
   display: grid;
+  align-content: start;
 }
 
 .welcomeArt {
@@ -55,6 +56,7 @@
 @media (min-width: 900px) {
   .welcome {
     grid-template-columns: 1fr 1fr;
+    align-content: stretch;
   }
 
   .welcomeArt {

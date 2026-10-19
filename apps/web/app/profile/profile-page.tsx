@@ -8,7 +8,7 @@ import { listDevices, type Diary } from "@/lib/device";
 import { setDisplayName } from "@/lib/entries/actions";
 import { useGroups } from "@/lib/groups";
 import { DISPLAY_NAME_MAX } from "@/lib/places/payloads";
-import { Badge, BoardBadge, Button, Icon, type IconName } from "@/lib/ui";
+import { Badge, Button, Icon, type IconName } from "@/lib/ui";
 
 /** `/profile`, the You tab: your name, and the screens about your account. */
 export function ProfilePage() {
@@ -131,9 +131,7 @@ function NameForm({ diary, current, masterId, masterName }: { diary: Diary; curr
           Save
         </Button>
       </div>
-      <p className={s.hint} style={{ display: "flex", flexWrap: "wrap", gap: 4, alignItems: "center" }}>
-        Everyone on the app sees this next to your opinions. It is encrypted on the <BoardBadge kind="master" name={masterName ?? "Public"} /> board.
-      </p>
+      <p className={s.hint}>Everyone on the app sees this next to your opinions. It is encrypted on the {masterName ?? "Public"} board.</p>
       {state.kind === "saved" && (
         <p className={s.okText} role="status">
           Saved. Friends see you as {state.name}.

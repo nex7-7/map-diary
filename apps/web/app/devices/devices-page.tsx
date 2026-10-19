@@ -596,8 +596,8 @@ function AddDevice({ diary, onDone }: { diary: Diary; onDone: (added: boolean) =
     <>
       {top}
       <p className="sub" style={{ margin: 0 }}>
-        On the new device, scan this with the camera. Or open the diary there, tap “Add this phone from another device” (or
-        computer) and type the code.
+        On the new device, scan this with the camera. Or open the diary there, tap the “Add this … from another device” button and type
+        the code.
       </p>
       {qr ? <img className={s.qr} src={qr} alt="QR code to add a device" width={220} height={220} /> : <p className="sub">Making a code…</p>}
       {pairing && <p className={s.bigCode}>{pairing.secret}</p>}

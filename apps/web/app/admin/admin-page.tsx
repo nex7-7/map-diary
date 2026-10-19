@@ -197,7 +197,7 @@ function Invite({ diary, onMade }: { diary: Diary; onMade: () => void }) {
           <CopyCode label="invite link" value={made.link} />
           <div className={s.field}>
             <span className={s.label}>Code for an iPhone</span>
-            <p className={s.bigCode} style={{ fontSize: 20 }}>
+            <p className={s.bigCode} style={{ fontSize: 18 }}>
               {made.code}
             </p>
           </div>

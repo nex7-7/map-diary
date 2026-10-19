@@ -87,6 +87,7 @@
   text-align: left;
   cursor: pointer;
   text-decoration: none;
+  width: 100%;
 }
 
 .action:hover {
@@ -502,6 +503,8 @@ textarea.input {
   background: var(--surface);
   color: var(--ink);
   box-shadow: 0 -4px 24px var(--shadow);
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 .sheet::backdrop {
@@ -525,12 +528,8 @@ textarea.input {
 .sheetTop {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 12px;
-}
-
-.sheetTop > :first-child {
-  flex: 1;
-  min-width: 0;
 }
 
 @media (min-width: 900px) {
