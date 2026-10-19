@@ -4,13 +4,13 @@ import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { api, type Diary } from "@/lib/device";
-import { addPlace, findDuplicate } from "@/lib/entries/actions";
+import { addOpinions, addPlace, findCataloguePlace, findDuplicate } from "@/lib/entries/actions";
 import { buildFacts } from "@/lib/entries/facts";
 import { parseEntry, parseLink, type ParsedEntry } from "@/lib/entries/parse-input";
 import { getPendingQueue, MAX_QUERY_LENGTH, type PendingItem } from "@/lib/pending";
 import type { TagDefPayload } from "@/lib/places/payloads";
 import type { Category, LngLat, Status } from "@/lib/places/types";
-import { BoardNote, CategoryPicker, StatusToggle, TagPicker, type TagChoice } from "./fields";
+import { BoardPicker, boardChoices, CategoryPicker, StatusToggle, TagPicker, type TagChoice } from "./fields";
 import { useItems } from "./use-items";
 import styles from "./entries.module.css";
 
@@ -48,7 +48,8 @@ function guessCategory(parsed: ParsedEntry): Category {
 /**
  * The Add sheet: paste a link or type a name, set category, status, tags and a note, and
  * save. Only the save tap is required once the place has a location. Everything is
- * encrypted on the device and goes to the Personal board.
+ * encrypted on the device. The status, tags and note go to the boards picked (Personal
+ * unless changed); a place from a link joins the shared catalogue, a dropped pin never does.
  */
 export function AddForm({ diary, initial, onSaved, onQueued, onCancel }: Props) {
   const { items, snapshot } = useItems(diary);
@@ -62,6 +63,7 @@ export function AddForm({ diary, initial, onSaved, onQueued, onCancel }: Props) 
   const [selected, setSelected] = useState<Set<string>>(new Set(draft?.tagIds));
   const [newTags, setNewTags] = useState<TagDefPayload[]>(draft?.newTags ?? []);
   const [comment, setComment] = useState(draft?.comment ?? "");
+  const [boards, setBoards] = useState<string[]>(draft?.boards ?? [diary.device.personalBoardId]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -79,6 +81,11 @@ export function AddForm({ diary, initial, onSaved, onQueued, onCancel }: Props) 
   // hand is a dropped pin, which stays private.
   const fromLink = !pinned && parsed.location !== undefined && parsed.source === "google-maps";
   const kind = fromLink ? "place" : "private_place";
+  const choices = boardChoices(snapshot.boards.filter((b) => diary.boards.some((k) => k.id === b.id)));
+  const noPublic = kind === "private_place" && !findLater;
+  // A dropped pin's opinions stay off the Public board, as the pin itself does.
+  const opinionBoards = noPublic ? boards.filter((id) => choices.find((b) => b.id === id)?.kind !== "master") : boards;
+  const pickedBoards = opinionBoards.length > 0 ? opinionBoards : [diary.device.personalBoardId];
   // A typed name is already the name; links and coordinates get a name field to fill or fix.
   const hasLinkOrCoords = parsed.link !== undefined || (parsed.location !== undefined && !parsed.name) || (pinned !== null && !parsed.name);
   const name = nameEdit ?? parsed.name ?? "";
@@ -123,6 +130,7 @@ export function AddForm({ diary, initial, onSaved, onQueued, onCancel }: Props) 
         tagIds: [...selected],
         newTags,
         comment,
+        boards: pickedBoards,
       });
       onQueued();
     } catch (err) {
@@ -150,7 +158,16 @@ export function AddForm({ diary, initial, onSaved, onQueued, onCancel }: Props) 
     }
     setSaving(true);
     try {
-      const id = await addPlace(diary, { kind, facts: result.facts, status, tagIds: [...selected], newTags, comment });
+      const opinions = { status, tagIds: [...selected], newTags, comment, boards: pickedBoards };
+      // Someone may have put it in the catalogue already: add to theirs rather than a copy.
+      const existing = kind === "place" ? await findCataloguePlace(diary, result.facts.sourceLinks) : undefined;
+      let id: string;
+      if (existing) {
+        await addOpinions(diary, existing, opinions);
+        id = existing;
+      } else {
+        id = await addPlace(diary, { kind, facts: result.facts, ...opinions });
+      }
       if (initial?.pending) await (await getPendingQueue(diary)).dismiss(initial.pending.id);
       onSaved(id);
     } catch (err) {
@@ -190,7 +207,7 @@ export function AddForm({ diary, initial, onSaved, onQueued, onCancel }: Props) 
         <InputSummary parsed={parsed} pinned={pinned} expansion={expansion.kind} findLater={findLater && !adjusting} />
         {duplicate && (
           <p className={styles.found}>
-            Already in your diary.{" "}
+            Already on the map. Saving adds your notes to it.{" "}
             <Link href={`/place#${duplicate.id}`} className={styles.textbutton}>
               Open it
             </Link>
@@ -285,7 +302,7 @@ export function AddForm({ diary, initial, onSaved, onQueued, onCancel }: Props) 
       </div>
 
       <div className={styles.savebar}>
-        <BoardNote />
+        <BoardPicker boards={choices} value={pickedBoards} onChange={setBoards} noPublic={noPublic} />
         {error && (
           <p className={styles.error} role="alert">
             {error}

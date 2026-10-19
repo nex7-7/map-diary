@@ -161,11 +161,68 @@ export function TagPicker({ tags, selected, onToggle, onCreate, disabled }: TagP
   );
 }
 
-/** Where an opinion goes. Only the Personal board exists until sharing lands. */
-export function BoardNote() {
+export interface BoardChoice {
+  id: string;
+  name: string;
+  kind: "master" | "group" | "personal";
+}
+
+const BOARD_HINTS: Record<BoardChoice["kind"], string> = {
+  personal: "Only you can read it.",
+  master: "Everyone on the app can read it.",
+  group: "Only that group can read it.",
+};
+
+/**
+ * Where an opinion goes: one or more boards, Personal unless the person picks otherwise.
+ * `noPublic` greys out the Public board, for a dropped pin, which never leaves its owner's
+ * boards.
+ */
+export function BoardPicker({
+  boards,
+  value,
+  onChange,
+  noPublic,
+}: {
+  boards: readonly BoardChoice[];
+  value: readonly string[];
+  onChange: (ids: string[]) => void;
+  noPublic?: boolean;
+}) {
+  const picked = boards.filter((b) => value.includes(b.id));
+  const toggle = (id: string) => {
+    const next = value.includes(id) ? value.filter((v) => v !== id) : [...value, id];
+    // Something always stays picked.
+    if (next.length > 0) onChange(next);
+  };
   return (
-    <p className={styles.note}>
-      <span className={styles.badge}>Personal</span> Only you can read this. Sharing with your groups comes later.
-    </p>
+    <div className={styles.section}>
+      <div className={styles.chips} role="group" aria-label="Who can read it">
+        {boards.map((b) => (
+          <button
+            key={b.id}
+            type="button"
+            className={styles.chip}
+            aria-pressed={value.includes(b.id)}
+            disabled={noPublic && b.kind === "master"}
+            onClick={() => toggle(b.id)}
+          >
+            {b.name}
+          </button>
+        ))}
+      </div>
+      <p className={styles.note}>
+        {noPublic && boards.some((b) => b.kind === "master")
+          ? "A dropped pin stays off the Public board. "
+          : ""}
+        {picked.map((b) => BOARD_HINTS[b.kind]).join(" ")}
+      </p>
+    </div>
   );
+}
+
+/** The boards an opinion can go to, Personal first. */
+export function boardChoices(boards: readonly { id: string; kind: BoardChoice["kind"]; name: string }[]): BoardChoice[] {
+  const order = { personal: 0, master: 1, group: 2 } as const;
+  return [...boards].sort((a, b) => order[a.kind] - order[b.kind]);
 }

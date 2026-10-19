@@ -88,3 +88,4 @@ export {
   type PairingJoin,
   type AccountTransfer,
 } from "./pairing";
+export { LINK_HASH_BYTES, linkHashKey, linkHash } from "./links";

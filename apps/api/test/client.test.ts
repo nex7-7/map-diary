@@ -20,10 +20,13 @@ import {
   SetupError,
   joinPairing,
   prepareSetup,
+  masterBoardOf,
   revokeDevice,
   startPairing,
+  writeKey,
   signInWithPassphrase,
   signInWithRecoveryPhrase,
+  type BoardInfo,
   type DeviceState,
 } from "@map-diary/sync";
 
@@ -52,13 +55,18 @@ describe("device setup, sign-in and sync", () => {
   let phone: DeviceState;
   let phrase: string;
   let group: BoardKey;
+  let master: BoardInfo;
 
   it("sets up the account on the first device", async () => {
     const setup = await prepareSetup({ passphrase: PASSPHRASE, kdf: FAST_KDF });
     phrase = setup.recoveryPhrase;
     expect(phrase).toMatch(/^(\w{4}-){6}\w{4}$/);
     phone = await setup.complete(api);
-    expect(phone.boardKeys).toHaveLength(1);
+    // The first account is the admin, and its setup creates the master board.
+    expect(phone.isAdmin).toBe(true);
+    master = masterBoardOf(phone)!;
+    expect(master).toMatchObject({ kind: "master", keyVersion: 1 });
+    expect(phone.boardKeys.map((k) => k.boardId).sort()).toEqual([phone.personalBoardId, master.id].sort());
 
     const again = await prepareSetup({ passphrase: "another long phrase", kdf: FAST_KDF });
     await expectSetupError(again.complete(api), "registration_closed");
@@ -73,7 +81,8 @@ describe("device setup, sign-in and sync", () => {
     const laptop = await signInWithPassphrase(api, PASSPHRASE);
     expect(laptop.accountId).toBe(phone.accountId);
     expect(laptop.deviceId).not.toBe(phone.deviceId);
-    expect(laptop.boardKeys.map((k) => [k.boardId, k.version])).toEqual([[phone.personalBoardId, 1]]);
+    expect(laptop.boardKeys.map((k) => [k.boardId, k.version]).sort()).toEqual([[phone.personalBoardId, 1], [master.id, 1]].sort());
+    expect(writeKey(laptop, master.id)?.key).toEqual(writeKey(phone, master.id)?.key);
 
     const a = diaryOf(phone);
     const b = diaryOf(laptop);
@@ -152,7 +161,7 @@ describe("device setup, sign-in and sync", () => {
     expect(linked!.accountId).toBe(phone.accountId);
     expect(linked!.kind).toBe("android");
     expect(linked!.accountBox.publicKey).toEqual(phone.accountBox.publicKey);
-    expect(linked!.boardKeys.map((k) => k.boardId).sort()).toEqual([phone.personalBoardId, group.boardId].sort());
+    expect(linked!.boardKeys.map((k) => k.boardId).sort()).toEqual([phone.personalBoardId, master.id, group.boardId].sort());
 
     // It syncs like any other device, and the pairing is gone.
     const d = diaryOf(linked!);
@@ -211,7 +220,7 @@ describe("device setup, sign-in and sync", () => {
     });
     expect(restored.accountId).toBe(phone.accountId);
     // The phrase restores shared boards too, not just the personal one.
-    expect(restored.boardKeys.map((k) => k.boardId).sort()).toEqual([phone.personalBoardId, group.boardId].sort());
+    expect(restored.boardKeys.map((k) => k.boardId).sort()).toEqual([phone.personalBoardId, master.id, group.boardId].sort());
 
     const d = diaryOf(restored);
     await d.sync();

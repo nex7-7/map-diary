@@ -1,17 +1,20 @@
 import {
   CryptoError,
   fromBase64,
+  linkHash,
   openAccountTransfer,
   openEnvelope,
   ready,
   sealEnvelope,
+  toBase64,
   type Envelope,
   type BoardKey,
   type EnvelopeType,
   type JsonValue,
 } from "@map-diary/crypto";
 import { ApiError, NetworkError, type Api, type Signer, type SyncResponse } from "./api";
-import { boardKeyLookup, currentBoardKey, mergeBoardKeys, openBoardKeys, type DeviceState } from "./device";
+import { ensureMasterBoard, keysBehind, linkHashKeyOf, masterBoardOf, refreshKeyRing, writeKey } from "./boards";
+import { boardKeyLookup, mergeBoardKeys, openBoardKeys, type BoardInfo, type DeviceState } from "./device";
 import type { DiaryItem, DiaryStorage } from "./storage";
 
 /** The API takes at most this many envelopes or deletions per call. */
@@ -41,6 +44,26 @@ export interface WriteInput {
   payload: JsonValue;
   /** Rewrites an existing item of this device's account. Omit for a new one. */
   id?: string;
+  /**
+   * The boards to post it to. Defaults to the item's current boards for an edit and the
+   * Personal board for a new item. A catalogue place always goes to the master board alone,
+   * and a dropped pin never does.
+   */
+  boards?: readonly string[];
+}
+
+export interface DiaryOptions {
+  /**
+   * The normalised source links of a place payload, for the catalogue's duplicate check.
+   * Without it, places are pushed with no link hashes.
+   */
+  placeLinks?: (payload: JsonValue) => string[];
+}
+
+/** An item the Worker refused for its boards, and the key versions it was sealed with. */
+interface Refused {
+  id: string;
+  versions: Map<string, number>;
 }
 
 type Listener = () => void;
@@ -62,7 +85,8 @@ function itemFrom(envelope: Envelope, payload: JsonValue): DiaryItem {
 /**
  * The device's diary: a local store that is always readable, and a sync loop that pushes
  * local writes and pulls changes. Writes land locally first and sync in the background.
- * Phase 2 writes to the Personal board only.
+ * Each round first brings the board key ring up to date (and, on the admin's device,
+ * creates the master board and moves the admin's places onto it).
  */
 export class Diary {
   private readonly listeners = new Set<Listener>();
@@ -71,10 +95,11 @@ export class Diary {
   private again = false;
   private timer: ReturnType<typeof setInterval> | null = null;
   private readonly skippedLog: SkippedEnvelope[] = [];
-  /** Items refused for a replaced key version, waiting to be re-sealed. */
-  private readonly stale: string[] = [];
-  /** Set when a pull collected a newer account key, so stale items can be re-sealed. */
-  private keysCollected = false;
+  /** Items refused for a replaced key version or the wrong boards, waiting to be re-sealed. */
+  private readonly stale: Refused[] = [];
+  /** False until this run has fetched the board key ring; set again when a pull sees it is behind. */
+  private ringLoaded = false;
+  private ringStale = false;
 
   private current: DeviceState;
 
@@ -82,6 +107,7 @@ export class Diary {
     device: DeviceState,
     private readonly storage: DiaryStorage,
     private readonly api: Api,
+    private readonly options: DiaryOptions = {},
   ) {
     this.current = device;
   }
@@ -132,14 +158,17 @@ export class Diary {
     return this.storage.getItem(id);
   }
 
+  /** The boards the account is in, as last fetched; the Personal board alone before the first sync. */
+  get boards(): BoardInfo[] {
+    return this.device.boards ?? [{ id: this.device.personalBoardId, kind: "personal", keyVersion: 1 }];
+  }
+
   /** Encrypts and saves an item on this device, then syncs it. Returns the stored item. */
   async write(input: WriteInput): Promise<DiaryItem> {
     await ready();
-    const board = currentBoardKey(this.device, this.device.personalBoardId);
-    if (!board) throw new Error("This device has no key for the Personal board");
-
     let createdAt: number | undefined;
     let updatedAt: number | undefined;
+    let boardIds = input.boards;
     if (input.id !== undefined) {
       const prior = await this.storage.getItem(input.id);
       if (!prior) throw new Error("No such item on this device");
@@ -150,22 +179,43 @@ export class Diary {
       createdAt = prior.createdAt;
       // Strictly newer than the last version, even if this clock runs behind another device's.
       updatedAt = Math.max(Date.now(), prior.updatedAt + 1);
+      boardIds ??= prior.boardIds;
     }
 
-    const item = await this.sealLocal(input, board, createdAt, updatedAt);
+    const item = await this.sealLocal(input, this.boardKeysFor(input.type, boardIds), createdAt, updatedAt);
     this.emit();
     void this.sync();
     return item;
   }
 
-  private async sealLocal(input: WriteInput, board: BoardKey, createdAt?: number, updatedAt?: number): Promise<DiaryItem> {
+  /** The current keys of the boards an item goes to, after the catalogue rules. */
+  private boardKeysFor(type: EnvelopeType, requested: readonly string[] | undefined): BoardKey[] {
+    const master = masterBoardOf(this.device);
+    const personal = this.device.personalBoardId;
+    let ids: string[];
+    if (type === "place") {
+      // Before this device has the master key, a place waits on the Personal board and moves later.
+      ids = [master?.id ?? personal];
+    } else {
+      ids = [...new Set(requested && requested.length > 0 ? requested : [personal])];
+      if (type === "private_place") ids = ids.filter((id) => id !== master?.id);
+      if (ids.length === 0) ids = [personal];
+    }
+    return ids.map((id) => {
+      const key = writeKey(this.device, id);
+      if (!key) throw new Error("This device has no key for that board");
+      return key;
+    });
+  }
+
+  private async sealLocal(input: WriteInput, boards: BoardKey[], createdAt?: number, updatedAt?: number): Promise<DiaryItem> {
     const envelope = sealEnvelope({
       type: input.type,
       authorId: this.device.accountId,
       deviceId: this.device.deviceId,
       placeId: input.placeId,
       payload: input.payload,
-      boards: [board],
+      boards,
       signSecretKey: this.device.identity.signSecretKey,
       ...(input.id === undefined ? {} : { id: input.id }),
       ...(createdAt === undefined ? {} : { createdAt }),
@@ -178,31 +228,96 @@ export class Diary {
 
   /**
    * Re-seals this device's items that the Worker refused because they were sealed with a key
-   * version a revocation has since replaced. Runs after a pull has collected the new keys.
+   * version a rotation has since replaced, or (for a place) to a board the catalogue rules no
+   * longer allow. Runs after the round has brought the key ring up to date.
    */
   private async resealStale(): Promise<void> {
-    const ids = this.stale.splice(0);
-    const board = currentBoardKey(this.device, this.device.personalBoardId);
-    // Without a newer key, sealing again would be refused again.
-    if (!board || !this.keysCollected) {
-      for (const id of ids) this.skip({ id, reason: "stale_key" });
-      return;
-    }
-    this.keysCollected = false;
+    const refused = this.stale.splice(0);
     let resealed = false;
-    for (const id of ids) {
-      const item = await this.storage.getItem(id);
+    for (const r of refused) {
+      const item = await this.storage.getItem(r.id);
       if (!item || item.authorId !== this.device.accountId) continue;
+      let boards: BoardKey[];
+      try {
+        boards = this.boardKeysFor(item.type, item.boardIds);
+      } catch {
+        this.skip({ id: r.id, reason: "stale_key" });
+        continue;
+      }
+      // Sealing to the same board versions again would be refused again.
+      const same = boards.length === r.versions.size && boards.every((b) => r.versions.get(b.boardId) === b.version);
+      if (same) {
+        this.skip({ id: r.id, reason: "stale_key" });
+        continue;
+      }
       // One past the refused version, so settling that one does not drop this from the outbox.
       await this.sealLocal(
         { type: item.type, placeId: item.placeId, payload: item.payload, id: item.id },
-        board,
+        boards,
         item.createdAt,
         item.updatedAt + 1,
       );
       resealed = true;
     }
     if (resealed) this.again = true;
+  }
+
+  /**
+   * Brings the key ring up to date when this run has not fetched it yet or a pull found it
+   * behind; on the admin's device, also creates the master board and moves the admin's own
+   * places onto it.
+   */
+  private async maintainBoards(): Promise<void> {
+    if (this.ringLoaded && !this.ringStale) return;
+    const fetched = await refreshKeyRing(this.api, this.current);
+    // A refusal here must not stop the diary syncing; the next round tries again.
+    const device = await ensureMasterBoard(this.api, fetched).catch((err: unknown) => {
+      if (err instanceof NetworkError) throw err;
+      return fetched;
+    });
+    await this.storage.saveDevice(device);
+    this.current = device;
+    this.ringLoaded = true;
+    this.ringStale = false;
+    if (device.isAdmin) await this.movePlacesToMaster();
+    this.emit();
+  }
+
+  /**
+   * Places written before the master board existed sit on the Personal board. The admin's
+   * device re-seals its own onto the master board, where the catalogue lives.
+   */
+  private async movePlacesToMaster(): Promise<void> {
+    const master = masterBoardOf(this.device);
+    if (!master) return;
+    const boards = this.boardKeysFor("place", undefined);
+    for (const item of await this.storage.listItems()) {
+      if (item.type !== "place" || item.authorId !== this.device.accountId) continue;
+      if (item.boardIds.length === 1 && item.boardIds[0] === master.id) continue;
+      await this.sealLocal(
+        { type: item.type, placeId: item.placeId, payload: item.payload, id: item.id },
+        boards,
+        item.createdAt,
+        Math.max(Date.now(), item.updatedAt + 1),
+      );
+    }
+  }
+
+  /**
+   * The catalogue place that already has one of these normalised source links, if any. Asks
+   * the Worker with keyed hashes, so it also finds places this device has not synced yet.
+   * Returns null without the master board.
+   */
+  async findCataloguePlace(links: readonly string[]): Promise<string | null> {
+    await ready();
+    const key = linkHashKeyOf(this.device);
+    const clean = [...new Set(links.filter((l) => l.length > 0))];
+    if (!key || clean.length === 0 || !masterBoardOf(this.device)) return null;
+    const { matches } = await this.api.checkPlaceLinks(
+      clean.map((l) => toBase64(linkHash(key, l))),
+      this.signer,
+    );
+    return matches[0]?.placeId ?? null;
   }
 
   /** Deletes one of this account's items everywhere. */
@@ -252,9 +367,12 @@ export class Diary {
     await ready();
     this.setStatus({ phase: "syncing" });
     try {
+      await this.maintainBoards();
       await this.pushDeletes();
       await this.pushEnvelopes();
       await this.pull();
+      if (this.stale.length > 0) this.ringStale = true;
+      await this.maintainBoards();
       if (this.stale.length > 0) await this.resealStale();
       this.setStatus({ phase: "idle", lastSyncedAt: Date.now(), error: null, pending: await this.countPending() });
     } catch (err) {
@@ -283,12 +401,13 @@ export class Diary {
     const outbox = await this.storage.listOutbox();
     for (let i = 0; i < outbox.length; i += PUSH_BATCH) {
       const batch = outbox.slice(i, i + PUSH_BATCH);
-      const result = await this.api.pushEnvelopes(batch, this.signer);
+      const result = await this.api.pushEnvelopes(batch, this.signer, await this.linkHashes(batch));
       const deletedOnServer: string[] = [];
       for (const r of result.rejected) {
         // Ids only; never the content.
-        if (r.reason === "stale_key" && r.id !== null) {
-          this.stale.push(r.id);
+        if ((r.reason === "stale_key" || r.reason === "place_not_on_master") && r.id !== null) {
+          const sent = batch.find((e) => e.id === r.id);
+          this.stale.push({ id: r.id, versions: new Map(sent?.boards.map((b) => [b.boardId, b.keyVersion]) ?? []) });
           continue;
         }
         this.skip({ id: r.id, reason: r.reason });
@@ -300,12 +419,33 @@ export class Diary {
     }
   }
 
+  /** Keyed hashes of each catalogue place's source links, so the Worker can block duplicates. */
+  private async linkHashes(batch: readonly Envelope[]): Promise<Record<string, string[]>> {
+    const out: Record<string, string[]> = {};
+    const key = linkHashKeyOf(this.device);
+    const master = masterBoardOf(this.device);
+    if (!key || !master || !this.options.placeLinks) return out;
+    for (const e of batch) {
+      if (e.type !== "place" || !e.boards.some((b) => b.boardId === master.id)) continue;
+      const item = await this.storage.getItem(e.id);
+      if (!item) continue;
+      const links = [...new Set(this.options.placeLinks(item.payload).filter((l) => l.length > 0))].slice(0, 10);
+      out[e.id] = links.map((l) => toBase64(linkHash(key, l)));
+    }
+    return out;
+  }
+
   private async pull(): Promise<void> {
     let cursor = await this.storage.getCursor();
     for (;;) {
       const page = await this.api.pull(cursor, this.signer);
       // Another device moved the account to new keys: collect them before opening anything.
       if (page.boxKeyVersion > this.current.accountBox.version) await this.collectAccountKey();
+      // Someone rotated a board key or added the account to a board: fetch the keys first.
+      if (keysBehind(this.current, page.boards ?? [])) {
+        this.ringStale = true;
+        await this.maintainBoards();
+      }
       const items = this.openPage(page);
       const changed = await this.storage.applyPull({ items, deleted: page.deleted, cursor: page.cursor });
       if (changed.length > 0) this.emit();
@@ -332,7 +472,7 @@ export class Diary {
     };
     await this.storage.saveDevice(device);
     this.current = device;
-    this.keysCollected = true;
+    this.ringStale = true;
   }
 
   private openPage(page: SyncResponse): DiaryItem[] {

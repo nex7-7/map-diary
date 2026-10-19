@@ -20,6 +20,8 @@ export interface PendingDraft {
   tagIds: string[];
   newTags: TagDefPayload[];
   comment: string;
+  /** Where the status, tags and note go once the place is found; Personal if missing. */
+  boards?: string[];
 }
 
 export type PendingState =

@@ -6,6 +6,8 @@ import { bytes, fail, isB64, isId, isObject, isPositiveInt } from "./http";
 
 /** A sealed account box key is a few hundred bytes, like a pairing transfer. */
 const MAX_SEALED_KEY_B64 = 1024;
+/** crypto_box_seal of a 32-byte board key: 32 + 48 bytes. */
+const MAX_WRAPPED_KEY_B64 = 200;
 /** Every board key version the account holds is re-wrapped on each revocation. */
 const MAX_BOARD_KEYS = 500;
 const MAX_DEVICES = 50;
@@ -25,7 +27,32 @@ function parseDeviceKeys(value: unknown): SealedDeviceKey[] | null {
   return out;
 }
 
+/** A rotated shared-board key wrapped to another member's account box key. */
+interface MemberKey {
+  boardId: string;
+  keyVersion: number;
+  accountId: string;
+  accountKeyVersion: number;
+  wrappedKey: Uint8Array;
+}
+
+function parseMemberKeys(value: unknown): MemberKey[] | null {
+  if (value === undefined) return [];
+  if (!Array.isArray(value) || value.length > MAX_BOARD_KEYS) return null;
+  const out: MemberKey[] = [];
+  for (const v of value) {
+    if (!isObject(v)) return null;
+    const { boardId, keyVersion, accountId, accountKeyVersion, wrappedKey } = v;
+    if (!isId(boardId) || !isPositiveInt(keyVersion) || !isId(accountId) || !isPositiveInt(accountKeyVersion)) return null;
+    if (!isB64(wrappedKey, MAX_WRAPPED_KEY_B64)) return null;
+    out.push({ boardId, keyVersion, accountId, accountKeyVersion, wrappedKey: fromBase64(wrappedKey) });
+  }
+  return out;
+}
+
 const keyOf = (boardId: string, version: number) => `${boardId}\u0000${version}`;
+const memberKeyOf = (boardId: string, version: number, accountId: string, accountKeyVersion: number) =>
+  `${boardId}\u0000${version}\u0000${accountId}\u0000${accountKeyVersion}`;
 
 function sameSet(a: Iterable<string>, b: Iterable<string>): boolean {
   const left = new Set(a);
@@ -39,8 +66,10 @@ export const devices = new Hono<AuthedEnv>();
  * Revokes another device of the caller's account and moves the account to the next box key
  * version in the same step. The caller has derived the new account box key from the recovery
  * seed, sealed it to every remaining device, re-wrapped every board key the account holds to
- * it, and added the next Personal board key. The revoked device gets none of this, so the
- * server refuses it at once and nothing written from now on is readable with its keys.
+ * it, and added the next Personal board key. Every shared board the account is in (the master
+ * board, later groups) moves to a fresh random key too, wrapped to the caller's new account key
+ * and to every other member's current one. The revoked device gets none of this, so the server
+ * refuses it at once and nothing written from now on is readable with its keys.
  */
 devices.post("/devices/:id/revoke", readBody, requireDevice, async (c) => {
   const body = c.var.body;
@@ -48,7 +77,8 @@ devices.post("/devices/:id/revoke", readBody, requireDevice, async (c) => {
   const { boxPublicKey, boxKeyVersion } = body;
   const boardKeys = parseBoardKeys(body.boardKeys, MAX_BOARD_KEYS);
   const deviceKeys = parseDeviceKeys(body.deviceKeys);
-  if (!isPublicKey(boxPublicKey) || !isPositiveInt(boxKeyVersion) || !boardKeys || !deviceKeys) {
+  const memberKeys = parseMemberKeys(body.memberKeys);
+  if (!isPublicKey(boxPublicKey) || !isPositiveInt(boxKeyVersion) || !boardKeys || !deviceKeys || !memberKeys) {
     return fail(c, 400, "bad_request");
   }
 
@@ -57,7 +87,7 @@ devices.post("/devices/:id/revoke", readBody, requireDevice, async (c) => {
   if (targetId === callerId) return fail(c, 400, "cannot_revoke_self");
   const db = c.env.DB;
 
-  const [accountRes, devicesRes, boardsRes, keysRes] = await db.batch([
+  const [accountRes, devicesRes, boardsRes, keysRes, membersRes] = await db.batch([
     db.prepare("SELECT box_key_version FROM accounts WHERE id = ?").bind(accountId),
     db.prepare("SELECT id FROM devices WHERE account_id = ? AND revoked_at IS NULL").bind(accountId),
     db
@@ -67,11 +97,21 @@ devices.post("/devices/:id/revoke", readBody, requireDevice, async (c) => {
       )
       .bind(accountId),
     db.prepare("SELECT board_id, key_version FROM board_keys WHERE account_id = ?").bind(accountId),
+    // The other members of every shared board the account is in.
+    db
+      .prepare(
+        `SELECT m.board_id, a.id, a.box_key_version FROM board_members m
+           JOIN boards b ON b.id = m.board_id AND b.kind <> 'personal'
+           JOIN accounts a ON a.id = m.account_id AND a.removed_at IS NULL AND a.id <> ?
+          WHERE m.board_id IN (SELECT board_id FROM board_members WHERE account_id = ?)`,
+      )
+      .bind(accountId, accountId),
   ]);
   const account = (accountRes?.results?.[0] ?? null) as { box_key_version: number } | null;
   const active = ((devicesRes?.results ?? []) as { id: string }[]).map((d) => d.id);
   const boards = (boardsRes?.results ?? []) as { id: string; kind: string; key_version: number }[];
   const held = (keysRes?.results ?? []) as { board_id: string; key_version: number }[];
+  const others = (membersRes?.results ?? []) as { board_id: string; id: string; box_key_version: number }[];
   if (!account || !active.includes(targetId)) return fail(c, 404, "not_found");
 
   // The account moves exactly one version on; anything else is a stale view of it.
@@ -83,16 +123,25 @@ devices.post("/devices/:id/revoke", readBody, requireDevice, async (c) => {
     return fail(c, 409, "stale");
   }
 
-  // Every board key the account holds is re-wrapped, and the Personal board moves on one version.
-  // Master and group keys rotate too once sharing exists (Phase 5); today only Personal boards do.
-  const personal = boards.filter((b) => b.kind === "personal");
+  // Every board key the account holds is re-wrapped, and every board it is in moves on one
+  // version: the Personal board to the next key derived from the seed, shared boards to a new
+  // random key that every other member gets too.
+  const rotated = boards;
+  const shared = boards.filter((b) => b.kind !== "personal");
   const expected = [
     ...held.map((k) => keyOf(k.board_id, k.key_version)),
-    ...personal.map((b) => keyOf(b.id, b.key_version + 1)),
+    ...rotated.map((b) => keyOf(b.id, b.key_version + 1)),
   ];
   if (!sameSet(expected, boardKeys.map((k) => keyOf(k.boardId, k.keyVersion))) || boardKeys.length !== expected.length) {
     return fail(c, 409, "stale");
   }
+  const sharedVersion = new Map(shared.map((b) => [b.id, b.key_version + 1]));
+  const expectedMembers = others.map((m) => memberKeyOf(m.board_id, sharedVersion.get(m.board_id) ?? 0, m.id, m.box_key_version));
+  const sentMembers = memberKeys.map((k) => memberKeyOf(k.boardId, k.keyVersion, k.accountId, k.accountKeyVersion));
+  if (!sameSet(expectedMembers, sentMembers) || sentMembers.length !== expectedMembers.length) {
+    return fail(c, 409, "stale");
+  }
+  const newVersions = new Set(rotated.map((b) => keyOf(b.id, b.key_version + 1)));
 
   const now = Date.now();
   const newBox = fromBase64(boxPublicKey);
@@ -109,20 +158,37 @@ devices.post("/devices/:id/revoke", readBody, requireDevice, async (c) => {
       .bind(now, targetId, accountId, ...guard),
     db.prepare(`DELETE FROM device_account_keys WHERE device_id = ? AND ${moved}`).bind(targetId, ...guard),
     db.prepare(`DELETE FROM pairings WHERE created_by_device_id = ? AND ${moved}`).bind(targetId, ...guard),
-    ...personal.map((b) =>
+    ...rotated.map((b) =>
       db
         .prepare(`UPDATE boards SET key_version = ? WHERE id = ? AND key_version = ? AND ${moved}`)
         .bind(b.key_version + 1, b.id, b.key_version, ...guard),
     ),
+    // Re-wraps of keys the account already holds replace the old wrap. A new version is a plain
+    // insert, so someone else rotating the same board at the same moment fails this whole batch.
     ...boardKeys.map((k: NewBoardKey) =>
+      newVersions.has(keyOf(k.boardId, k.keyVersion))
+        ? db
+            .prepare(
+              `INSERT INTO board_keys (board_id, key_version, account_id, account_key_version, wrapped_key, created_at)
+               SELECT ?, ?, ?, ?, ?, ? WHERE ${moved}`,
+            )
+            .bind(k.boardId, k.keyVersion, accountId, boxKeyVersion, k.wrappedKey, now, ...guard)
+        : db
+            .prepare(
+              `INSERT INTO board_keys (board_id, key_version, account_id, account_key_version, wrapped_key, created_at)
+               SELECT ?, ?, ?, ?, ?, ? WHERE ${moved}
+               ON CONFLICT (board_id, key_version, account_id) DO UPDATE SET
+                 account_key_version = excluded.account_key_version, wrapped_key = excluded.wrapped_key`,
+            )
+            .bind(k.boardId, k.keyVersion, accountId, boxKeyVersion, k.wrappedKey, now, ...guard),
+    ),
+    ...memberKeys.map((k) =>
       db
         .prepare(
           `INSERT INTO board_keys (board_id, key_version, account_id, account_key_version, wrapped_key, created_at)
-           SELECT ?, ?, ?, ?, ?, ? WHERE ${moved}
-           ON CONFLICT (board_id, key_version, account_id) DO UPDATE SET
-             account_key_version = excluded.account_key_version, wrapped_key = excluded.wrapped_key`,
+           SELECT ?, ?, ?, ?, ?, ? WHERE ${moved}`,
         )
-        .bind(k.boardId, k.keyVersion, accountId, boxKeyVersion, k.wrappedKey, now, ...guard),
+        .bind(k.boardId, k.keyVersion, k.accountId, k.accountKeyVersion, k.wrappedKey, now, ...guard),
     ),
     ...deviceKeys.map((k) =>
       db
@@ -134,7 +200,13 @@ devices.post("/devices/:id/revoke", readBody, requireDevice, async (c) => {
     ),
   ];
 
-  const results = await db.batch(statements);
+  let results: D1Result[];
+  try {
+    results = await db.batch(statements);
+  } catch {
+    // Another rotation of a shared board got there first; nothing was applied.
+    return fail(c, 409, "stale");
+  }
   if (results[0]?.meta.changes !== 1) return fail(c, 409, "stale");
   return c.json({ revoked: targetId, boxKeyVersion });
 });

@@ -23,7 +23,8 @@ import {
   type KdfParams,
 } from "@map-diary/crypto";
 import { ApiError, NetworkError, type Api, type DeviceBody, type KeyBackupBody, type Signer } from "./api";
-import { decodeKeyBundle, encodeKeyBundle, type DeviceState, type KeyBundle, type StoredAccountBoxKeys } from "./device";
+import { ensureMasterBoard } from "./boards";
+import { boardsFrom, decodeKeyBundle, encodeKeyBundle, type DeviceState, type KeyBundle, type StoredAccountBoxKeys } from "./device";
 
 export const PASSPHRASE_MIN_LENGTH = 12;
 
@@ -151,7 +152,9 @@ export async function prepareSetup(options: SetupOptions): Promise<PreparedSetup
       } catch (err) {
         throw asSetupError(err);
       }
-      return {
+      // The first account is the admin: it creates the master board straight away. If that
+      // call fails, the diary's first sync tries again.
+      const device: DeviceState = {
         v: 2,
         accountId: account.accountId,
         deviceId,
@@ -160,8 +163,11 @@ export async function prepareSetup(options: SetupOptions): Promise<PreparedSetup
         accountBox,
         personalBoardId: personal.boardId,
         boardKeys: [personal],
+        boards: [{ id: personal.boardId, kind: "personal", keyVersion: 1 }],
+        isAdmin: true,
         createdAt: Date.now(),
       };
+      return ensureMasterBoard(api, device).catch(() => device);
     },
   };
 }
@@ -189,8 +195,9 @@ async function registerDevice(
 
   let accountBox: StoredAccountBoxKeys;
   const boardKeys: BoardKey[] = [];
+  let me: Awaited<ReturnType<Api["me"]>>;
   try {
-    const me = await api.me(signer);
+    me = await api.me(signer);
     accountBox = account.accountBoxKeys(me.account.boxKeyVersion);
     const boxes = new Map<number, StoredAccountBoxKeys>([[accountBox.version, accountBox]]);
     for (const board of me.boards) {
@@ -218,6 +225,8 @@ async function registerDevice(
     accountBox,
     personalBoardId: account.personalBoardId,
     boardKeys,
+    boards: boardsFrom(me.boards),
+    isAdmin: me.account.isAdmin,
     createdAt: Date.now(),
   };
 }
