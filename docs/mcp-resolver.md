@@ -50,6 +50,15 @@ jobs. If it leaks, set a new token and update the connector.
    with only this connector enabled. If scheduled tasks are not on the Pro plan, paste the
    prompt into a chat whenever the Inbox shows pending places.
 
+### Two connectors, not one
+
+The resolver connector and the Claude assistant connector (Devices → Connect Claude) are
+separate connectors with different URLs and secrets. Add the assistant as a new connector
+named `Map diary`; don't edit this one. If the "Map diary resolver" connector lists tools
+like Search places or Add a place instead of `get_pending_jobs` and `submit_resolution`, its
+URL was changed to `/api/claude/mcp`: rename it to `Map diary`, and add the resolver again
+as in step 3.
+
 ## Scheduled task prompt
 
 ```text
