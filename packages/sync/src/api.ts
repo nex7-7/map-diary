@@ -107,6 +107,8 @@ export interface BoardState {
   keyVersion: number;
   /** A member left this group; a remaining member's device moves it to a new key. */
   rotationDue: boolean;
+  /** A group's members, whose opinions its board shows. */
+  memberIds?: string[];
 }
 
 export interface GroupMember {

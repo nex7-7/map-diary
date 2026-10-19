@@ -339,7 +339,7 @@ envelopes.get("/sync", readBody, requireDevice, async (c) => {
   // Lets the device notice that another of its account's devices moved the account to new keys,
   // that it joined or left a board, that a board moved to a new key, or that a group is waiting
   // for a remaining member to rotate its key.
-  const [accountRes, boardsRes] = await db.batch([
+  const [accountRes, boardsRes, membersRes] = await db.batch([
     db.prepare("SELECT box_key_version FROM accounts WHERE id = ?").bind(accountId),
     db
       .prepare(
@@ -348,7 +348,16 @@ envelopes.get("/sync", readBody, requireDevice, async (c) => {
           ORDER BY b.created_at`,
       )
       .bind(accountId),
+    // Group members, so each device shows a group's board with its members' opinions only.
+    db
+      .prepare(
+        `SELECT g.board_id, g.account_id FROM board_members g JOIN boards b ON b.id = g.board_id AND b.kind = 'group'
+          WHERE g.board_id IN (SELECT board_id FROM board_members WHERE account_id = ?)
+          ORDER BY g.joined_at, g.account_id`,
+      )
+      .bind(accountId),
   ]);
+  const groupMembers = (membersRes?.results ?? []) as { board_id: string; account_id: string }[];
   const account = (accountRes?.results?.[0] ?? null) as { box_key_version: number } | null;
   type BoardStateRow = { id: string; kind: string; key_version: number; rotation_due_at: number | null };
 
@@ -370,6 +379,9 @@ envelopes.get("/sync", readBody, requireDevice, async (c) => {
       kind: b.kind,
       keyVersion: b.key_version,
       rotationDue: b.rotation_due_at !== null,
+      ...(b.kind === "group"
+        ? { memberIds: groupMembers.filter((m) => m.board_id === b.id).map((m) => m.account_id) }
+        : {}),
     })),
   });
 });

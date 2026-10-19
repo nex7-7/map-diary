@@ -120,6 +120,15 @@ describe("groups", () => {
     }>();
     expect(new TextDecoder().decode(new Uint8Array(row!.ciphertext))).not.toContain("Bandra");
 
+    // Each sync tells the device which boards it is in and who is in each group.
+    expect(snehil.device.boards?.find((b) => b.id === groupId)).toEqual({
+      id: groupId,
+      kind: "group",
+      keyVersion: 1,
+      rotationDue: false,
+      memberIds: [snehil.device.accountId],
+    });
+
     await asha.sync();
     expect(await asha.listItems()).toEqual([]);
   });

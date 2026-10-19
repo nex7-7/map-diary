@@ -1,5 +1,5 @@
 import { fromBase64, toBase64, unwrapKeyFromMember, type BoardKey, type DeviceKind, type IdentityKeys } from "@map-diary/crypto";
-import type { MeResponse } from "./api";
+import type { BoardState, MeResponse } from "./api";
 
 /** An account box keypair as a device stores it. */
 export interface StoredAccountBoxKeys {
@@ -24,6 +24,8 @@ export interface DeviceState {
   personalBoardId: string;
   /** Every board key version this device holds. */
   boardKeys: BoardKey[];
+  /** The boards the account is in, as of the last sync: kinds, key versions and group members. */
+  boards?: BoardState[];
   createdAt: number;
 }
 

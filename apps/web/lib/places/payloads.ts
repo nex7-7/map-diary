@@ -35,6 +35,11 @@ export interface CommentPayload {
   text: string;
 }
 
+/** A group's name, on the group's own board; the newest one from a member wins. */
+export interface GroupPayload {
+  name: string;
+}
+
 export interface PayloadByType {
   place: PlacePayload;
   private_place: PlacePayload;
@@ -42,6 +47,7 @@ export interface PayloadByType {
   tag_def: TagDefPayload;
   tag: TagPayload;
   comment: CommentPayload;
+  group: GroupPayload;
 }
 
 type JsonObject = { [key: string]: JsonValue };
@@ -99,6 +105,10 @@ const readers: { [T in EnvelopeType]: (p: JsonObject) => PayloadByType[T] | unde
   comment: (p) => {
     const text = str(p.text)?.trim();
     return text ? { text } : undefined;
+  },
+  group: (p) => {
+    const name = str(p.name)?.trim();
+    return name ? { name } : undefined;
   },
 };
 

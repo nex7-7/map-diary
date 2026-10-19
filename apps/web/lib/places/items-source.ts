@@ -1,6 +1,6 @@
 import type { EnvelopeType, JsonValue } from "@map-diary/crypto";
 import { readPayload } from "./payloads";
-import type { Board, DiarySnapshot, DiarySource, Opinion, Person, PlaceView, Status, StatusOpinion, TagDefinition } from "./types";
+import type { Board, BoardKind, DiarySnapshot, DiarySource, Opinion, Person, PlaceView, Status, StatusOpinion, TagDefinition } from "./types";
 
 /** A decrypted item as the device store keeps it (the shape of `DiaryItem` in `@map-diary/sync`). */
 export interface StoredItem {
@@ -15,9 +15,20 @@ export interface StoredItem {
   payload: JsonValue;
 }
 
+/** A board the account is in, as the sync loop last saw it. */
+export interface BoardMembership {
+  id: string;
+  kind: string;
+  memberIds?: string[];
+}
+
 /** The parts of the device's `Diary` this source needs. */
 export interface ItemStore {
-  readonly device: { readonly accountId: string; readonly personalBoardId: string };
+  readonly device: {
+    readonly accountId: string;
+    readonly personalBoardId: string;
+    readonly boards?: readonly BoardMembership[];
+  };
   listItems(): Promise<StoredItem[]>;
   write(input: { type: EnvelopeType; placeId: string | null; payload: JsonValue; id?: string }): Promise<unknown>;
   subscribe(listener: () => void): () => void;
@@ -26,7 +37,8 @@ export interface ItemStore {
 /** A `DiarySource` over the device's decrypted items. */
 export function createItemsSource(store: ItemStore): DiarySource {
   const { accountId, personalBoardId } = store.device;
-  const load = async () => snapshotFromItems(await store.listItems(), accountId, personalBoardId);
+  // Boards change as groups are joined and left, so read them from the device on each load.
+  const load = async () => snapshotFromItems(await store.listItems(), accountId, personalBoardId, store.device.boards);
 
   return {
     load,
@@ -41,13 +53,19 @@ export function createItemsSource(store: ItemStore): DiarySource {
   };
 }
 
-export function snapshotFromItems(items: readonly StoredItem[], accountId: string, personalBoardId: string): DiarySnapshot {
+export function snapshotFromItems(
+  items: readonly StoredItem[],
+  accountId: string,
+  personalBoardId: string,
+  memberships: readonly BoardMembership[] = [],
+): DiarySnapshot {
   const iso = (ms: number) => new Date(ms).toISOString();
   const places = new Map<string, PlaceView>();
   const tags: TagDefinition[] = [];
   const opinions: { placeId: string; opinion: Opinion }[] = [];
   const authors = new Set<string>([accountId]);
-  const boardIds = new Set<string>([personalBoardId]);
+  const boardIds = new Set<string>([personalBoardId, ...memberships.map((b) => b.id)]);
+  const groupNames = new Map<string, { name: string; updatedAt: number }>();
 
   for (const item of items) {
     const base = { id: item.id, authorId: item.authorId, boards: item.boardIds, createdAt: iso(item.createdAt), updatedAt: iso(item.updatedAt) };
@@ -78,6 +96,16 @@ export function snapshotFromItems(items: readonly StoredItem[], accountId: strin
         if (c && item.placeId) opinions.push({ placeId: item.placeId, opinion: { ...base, kind: "comment", text: c.text } });
         break;
       }
+      case "group": {
+        // The newest name posted to a group's board names it.
+        const g = readPayload("group", item.payload);
+        const groupId = item.boardIds[0];
+        const prior = groupId === undefined ? undefined : groupNames.get(groupId);
+        if (g && groupId !== undefined && (!prior || item.updatedAt > prior.updatedAt)) {
+          groupNames.set(groupId, { name: g.name, updatedAt: item.updatedAt });
+        }
+        break;
+      }
     }
   }
 
@@ -101,10 +129,16 @@ export function snapshotFromItems(items: readonly StoredItem[], accountId: strin
 
   const me: Person = { id: accountId, name: "Me" };
   const others = [...authors].filter((id) => id !== accountId).map((id, i): Person => ({ id, name: `Friend ${i + 1}` }));
-  // Only the Personal board exists until sharing lands; name any other board generically.
-  const boards = [...boardIds].map(
-    (id): Board => (id === personalBoardId ? { id, kind: "personal", name: "Personal" } : { id, kind: "group", name: "Shared board" }),
-  );
+  const known = new Map(memberships.map((b) => [b.id, b]));
+  const boards = [...boardIds].map((id): Board => {
+    if (id === personalBoardId) return { id, kind: "personal", name: "Personal" };
+    const m = known.get(id);
+    const kind: BoardKind = m?.kind === "master" ? "master" : m?.kind === "personal" ? "personal" : "group";
+    if (kind === "master") return { id, kind, name: "Public" };
+    const board: Board = { id, kind, name: groupNames.get(id)?.name ?? "Shared board" };
+    if (m?.memberIds) board.memberIds = [...m.memberIds];
+    return board;
+  });
 
   return { me, people: [me, ...others], boards, tags, places: [...places.values()] };
 }

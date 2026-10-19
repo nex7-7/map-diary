@@ -385,6 +385,12 @@ export class Diary {
    * forgets boards it left, and rotates any group a member left, since the leaver must not.
    */
   private async reconcileBoards(boards: readonly BoardState[]): Promise<void> {
+    if (JSON.stringify(boards) !== JSON.stringify(this.current.boards ?? [])) {
+      const device: DeviceState = { ...this.current, boards: [...boards] };
+      await this.storage.saveDevice(device);
+      this.current = device;
+      this.emit();
+    }
     const held = new Set(this.heldBoards());
     const listed = new Set(boards.map((b) => b.id));
     const left = [...held].filter((id) => !listed.has(id));

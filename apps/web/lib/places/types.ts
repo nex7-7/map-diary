@@ -18,6 +18,11 @@ export interface Board {
   id: string;
   kind: BoardKind;
   name: string;
+  /**
+   * A group's members. Its board shows only their opinions: those posted to the group or to
+   * the master board. Unset for other boards.
+   */
+  memberIds?: string[];
 }
 
 export interface Person {
