@@ -7,17 +7,19 @@ import { addAttribution } from "@/lib/map/attribution";
 import { loadMapFile } from "@/lib/map/map-file";
 import { registerProtocol } from "@/lib/map/protocol";
 import { basemapStyle, drawPin, PINS_SOURCE, pinsCollection, type PinKind } from "@/lib/map/style";
-import type { PlaceView } from "@/lib/places/types";
+import type { LngLat, PlaceView } from "@/lib/places/types";
 
 /**
  * A still map around one place, from the map file on this device. It only shows where the
- * place is; panning and zooming happen on the main map.
+ * place is; panning and zooming happen on the main map. A chain shows every location's pin,
+ * centred on `focus`.
  */
-export function PlaceMap({ place, kind, className }: { place: PlaceView; kind: PinKind; className?: string | undefined }) {
+export function PlaceMap({ place, focus, kind, className }: { place: PlaceView; focus?: LngLat; kind: PinKind; className?: string | undefined }) {
   const container = useRef<HTMLDivElement>(null);
   const latest = useRef(place);
   latest.current = place;
-  const { id, location: at } = place;
+  const { id } = place;
+  const at = focus ?? place.location;
 
   useEffect(() => {
     const abort = new AbortController();

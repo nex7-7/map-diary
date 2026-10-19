@@ -1,5 +1,5 @@
 import { beforeAll, describe, expect, it } from "vitest";
-import { fromBase64, generateReplyKeys, ready, sealResolverResult, toBase64, type ResolvedPlace } from "@map-diary/crypto";
+import { fromBase64, generateReplyKeys, ready, sealResolverResult, toBase64, type ResolvedChain, type ResolvedPlace } from "@map-diary/crypto";
 import { ApiError, NetworkError, type ResolverJobResponse } from "@map-diary/sync";
 import { readPayload } from "../lib/places/payloads";
 import { ADDED_KEEP_MS, PendingQueue, type ResolverApi } from "../lib/pending/queue";
@@ -38,10 +38,10 @@ class FakeResolver implements ResolverApi {
     if (!entry || this.jobs.size !== 1) throw new Error(`expected one job, have ${this.jobs.size}`);
     return entry;
   }
-  answer(candidates: ResolvedPlace[]) {
+  answer(candidates: ResolvedPlace[], chain?: ResolvedChain) {
     const [, job] = this.only();
     job.status = "resolved";
-    job.sealedResult = toBase64(sealResolverResult({ v: 1, candidates }, fromBase64(job.replyPublicKey)));
+    job.sealedResult = toBase64(sealResolverResult({ v: 1, candidates, ...(chain ? { chain } : {}) }, fromBase64(job.replyPublicKey)));
   }
 }
 
@@ -206,5 +206,71 @@ describe("PendingQueue", () => {
     clock.advance(ADDED_KEEP_MS + 1);
     await queue.poll();
     expect(await queue.list()).toHaveLength(0);
+  });
+
+  describe("chains", () => {
+    const link = "https://www.zomato.com/mumbai/the-bombay-cartel-lower-parel";
+    const lowerParel: ResolvedPlace = { ...kyani, name: "The Bombay Cartel", address: "Kamala Mills, Lower Parel", sourceLinks: [link] };
+    const bandra: ResolvedPlace = { ...lowerParel, address: "Linking Road, Bandra", location: { lat: 19.06, lng: 72.83 }, sourceLinks: ["https://www.zomato.com/mumbai/the-bombay-cartel-bandra"] };
+    const andheri: ResolvedPlace = { ...lowerParel, address: "Andheri West", location: { lat: 19.13, lng: 72.83 }, sourceLinks: ["https://www.zomato.com/mumbai/the-bombay-cartel-andheri"] };
+    const chain: ResolvedChain = { name: "The Bombay Cartel", outlets: [bandra, andheri] };
+
+    it("asks before adding a chain, even with one match", async () => {
+      const { api, diary, queue } = setup();
+      await queue.add(link, draft({ link }));
+      api.answer([lowerParel], chain);
+      await queue.poll();
+      expect((await queue.list())[0]!.state).toMatchObject({ kind: "choose", chain: { name: "The Bombay Cartel" } });
+      expect(places(diary)).toHaveLength(0);
+    });
+
+    it("adds every outlet as one chain, with the opinions on the one linked", async () => {
+      const { api, diary, queue } = setup();
+      const item = await queue.add(link, draft({ link, status: "visited", comment: "Great cocktails" }));
+      api.answer([lowerParel], chain);
+      await queue.poll();
+      const placeId = await queue.addAll(item.id);
+
+      const written = places(diary).map((p) => readPayload("place", p.payload)!);
+      expect(written).toHaveLength(3);
+      expect(new Set(written.map((f) => f.chain?.id)).size).toBe(1);
+      // The person's link goes on the outlet it was for only.
+      expect(written.filter((f) => f.sourceLinks.includes(link))).toHaveLength(1);
+
+      const view = diary.snapshot().places;
+      expect(view).toHaveLength(1);
+      expect(view[0]).toMatchObject({ id: placeId, name: "The Bombay Cartel" });
+      expect(view[0]!.outlets?.map((o) => o.address)).toEqual(["Kamala Mills, Lower Parel", "Linking Road, Bandra", "Andheri West"]);
+      expect(view[0]!.opinions.find((o) => o.kind === "comment")).toMatchObject({ text: "Great cocktails", allOutlets: true });
+    });
+
+    it("adds only the outlet picked, still labelled with its chain, and later outlets join it", async () => {
+      const { api, diary, queue } = setup();
+      const first = await queue.add(link, draft({ link }));
+      api.answer([lowerParel], chain);
+      await queue.poll();
+      await queue.choose(first.id, 0);
+      expect(places(diary)).toHaveLength(1);
+
+      const second = await queue.add("Bombay Cartel Bandra", draft({ label: "Bombay Cartel Bandra" }));
+      api.answer([bandra], { name: "Bombay Cartel", outlets: [lowerParel, andheri] });
+      await queue.poll();
+      await queue.choose(second.id, 0);
+
+      const chains = places(diary).map((p) => readPayload("place", p.payload)!.chain?.id);
+      expect(chains).toHaveLength(2);
+      expect(chains[0]).toBe(chains[1]);
+      expect(diary.snapshot().places).toHaveLength(1);
+    });
+
+    it("doesn't add an outlet the diary already has twice", async () => {
+      const { api, diary, queue } = setup();
+      await diary.write({ type: "place", placeId: null, payload: { name: "TBC Bandra", category: "restaurant", location: { lat: 19.06, lng: 72.83 }, sourceLinks: bandra.sourceLinks } });
+      const item = await queue.add(link, draft({ link }));
+      api.answer([lowerParel], chain);
+      await queue.poll();
+      await queue.addAll(item.id);
+      expect(places(diary)).toHaveLength(3);
+    });
   });
 });

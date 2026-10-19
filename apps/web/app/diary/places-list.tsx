@@ -61,7 +61,8 @@ function SwipeRow({ item, snapshot, selected, onSelect, onSetStatus }: { item: L
     setDx(0);
   };
 
-  const meta = [friendLine(item, snapshot), style.label, place.cuisine, distanceM !== undefined ? formatDistance(distanceM) : undefined]
+  const outlets = place.outlets && place.outlets.length > 1 ? `${place.outlets.length} locations` : undefined;
+  const meta = [friendLine(item, snapshot), style.label, place.cuisine, outlets, distanceM !== undefined ? formatDistance(distanceM) : undefined]
     .filter(Boolean)
     .join(" · ");
 

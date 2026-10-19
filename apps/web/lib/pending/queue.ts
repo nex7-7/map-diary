@@ -6,11 +6,15 @@ import {
   ready,
   toBase64,
   type JsonValue,
+  type ResolvedChain,
   type ResolvedPlace,
+  type ResolverResult,
 } from "@map-diary/crypto";
 import { ApiError, NetworkError, type Api } from "@map-diary/sync";
 import { addOpinions, addPlace, findCataloguePlace, type DiaryWriter } from "../entries/actions";
 import { isFood } from "../entries/facts";
+import { chainFor } from "../places/chains";
+import type { PlaceChain } from "../places/types";
 import { readPayload, type PlacePayload } from "../places/payloads";
 import type { PendingDraft, PendingItem, PendingState, PendingStore } from "./store";
 
@@ -125,17 +129,20 @@ export class PendingQueue {
     if (job.status === "failed" || !job.sealedResult) {
       await this.save(item, { kind: "failed", reason: "not_found" });
     } else {
-      let candidates: ResolvedPlace[];
+      let result: ResolverResult;
       try {
-        candidates = openResolverResult(fromBase64(job.sealedResult), { publicKey: state.publicKey, secretKey: state.secretKey }).candidates;
+        result = openResolverResult(fromBase64(job.sealedResult), { publicKey: state.publicKey, secretKey: state.secretKey });
       } catch (err) {
         if (!(err instanceof CryptoError)) throw err;
         await this.save(item, { kind: "failed", reason: "bad_result" });
         await this.forgetJob(state.jobId);
         return;
       }
-      // The result is on the device now; the one-time key is no longer needed.
-      if (candidates.length === 1) await this.write(item, candidates[0]!);
+      const { candidates, chain } = result;
+      // The result is on the device now; the one-time key is no longer needed. A chain always
+      // asks: every outlet, or only the one the link was for.
+      if (chain) await this.save(item, { kind: "choose", candidates, chain });
+      else if (candidates.length === 1) await this.write(item, candidates[0]!);
       else await this.save(item, { kind: "choose", candidates });
     }
     await this.forgetJob(state.jobId);
@@ -146,17 +153,37 @@ export class PendingQueue {
     await this.api.deleteResolverJob(jobId).catch(() => undefined);
   }
 
-  /** Picks one of several matches and writes it to the diary. Returns the place id. */
+  /**
+   * Picks one of several matches (for a chain, one of `choicesOf`: the matches, then the
+   * other outlets) and writes it to the diary. Returns the place id.
+   */
   async choose(id: string, index: number): Promise<string> {
     const item = await this.store.get(id);
     if (!item || item.state.kind !== "choose") throw new Error("Nothing to choose here");
-    const candidate = item.state.candidates[index];
+    const candidate = choicesOf(item.state)[index];
     if (!candidate) throw new Error("No such match");
-    return this.write(item, candidate);
+    return this.write(item, candidate, item.state.chain);
   }
 
-  private async write(item: PendingItem, candidate: ResolvedPlace): Promise<string> {
-    const placeId = await writeResolved(this.diary, item.draft, candidate);
+  /**
+   * Adds every outlet of the chain: the match carries the status, tags and note (about every
+   * outlet), and the others join it as places of the same chain.
+   */
+  async addAll(id: string): Promise<string> {
+    const item = await this.store.get(id);
+    if (!item || item.state.kind !== "choose" || !item.state.chain) throw new Error("No chain to add");
+    const { chain } = item.state;
+    const match = item.state.candidates[0]!;
+    const label = chainFor(await this.diary.listItems(), chain.name);
+    const placeId = await writeResolved(this.diary, item.draft, match, label, true);
+    for (const outlet of chain.outlets) await writeOutlet(this.diary, item.draft, outlet, label);
+    await this.save(item, { kind: "added", placeId, name: chain.name });
+    return placeId;
+  }
+
+  private async write(item: PendingItem, candidate: ResolvedPlace, chain?: ResolvedChain): Promise<string> {
+    const label = chain ? chainFor(await this.diary.listItems(), chain.name) : undefined;
+    const placeId = await writeResolved(this.diary, item.draft, candidate, label);
     await this.save(item, { kind: "added", placeId, name: candidate.name });
     return placeId;
   }
@@ -179,8 +206,13 @@ export class PendingQueue {
   }
 }
 
+/** What the person can pick from: the matches, then a chain's other outlets. */
+export function choicesOf(state: { candidates: ResolvedPlace[]; chain?: ResolvedChain }): ResolvedPlace[] {
+  return [...state.candidates, ...(state.chain?.outlets ?? [])];
+}
+
 /** The place facts for a match, with the person's own link and category choice kept. */
-export function factsFromCandidate(draft: PendingDraft, c: ResolvedPlace): PlacePayload {
+export function factsFromCandidate(draft: PendingDraft, c: ResolvedPlace, chain?: PlaceChain): PlacePayload {
   const category = draft.category ?? c.category;
   const facts: PlacePayload = {
     name: c.name,
@@ -191,15 +223,17 @@ export function factsFromCandidate(draft: PendingDraft, c: ResolvedPlace): Place
   if (c.address) facts.address = c.address;
   if (c.cuisine) facts.cuisine = c.cuisine;
   if (c.signatureDish && isFood(category)) facts.signatureDish = { ...c.signatureDish };
+  if (chain) facts.chain = { ...chain };
   return facts;
 }
 
 /**
  * Writes a found place with the draft's status, tags and note. If the diary already has the
  * place (same source link), the opinions go on it instead and its facts are left alone.
+ * `chain` labels it as an outlet; `allOutlets` makes the note about every outlet.
  */
-export async function writeResolved(w: DiaryWriter, draft: PendingDraft, c: ResolvedPlace): Promise<string> {
-  const facts = factsFromCandidate(draft, c);
+export async function writeResolved(w: DiaryWriter, draft: PendingDraft, c: ResolvedPlace, chain?: PlaceChain, allOutlets = false): Promise<string> {
+  const facts = factsFromCandidate(draft, c, chain);
   if (!readPayload("place", facts as unknown as JsonValue)) throw new Error("The match doesn't fit a place");
 
   const existing = await findCataloguePlace(w, facts.sourceLinks);
@@ -211,6 +245,7 @@ export async function writeResolved(w: DiaryWriter, draft: PendingDraft, c: Reso
       tagIds: draft.tagIds,
       newTags: draft.newTags,
       comment: draft.comment,
+      ...(allOutlets ? { commentAllOutlets: true } : {}),
       ...boardsOf(draft),
     });
   }
@@ -221,9 +256,24 @@ export async function writeResolved(w: DiaryWriter, draft: PendingDraft, c: Reso
     tagIds: draft.tagIds,
     newTags: draft.newTags,
     comment: draft.comment,
+    ...(allOutlets ? { commentAllOutlets: true } : {}),
     ...boardsOf(draft),
   });
   return placeId;
+}
+
+/**
+ * Writes another outlet of a chain as a catalogue place, with no opinions: the chain's
+ * status and tags cover it. An outlet the catalogue already has is left as it is.
+ */
+export async function writeOutlet(w: DiaryWriter, draft: PendingDraft, c: ResolvedPlace, chain: PlaceChain): Promise<string> {
+  // The person's link is for the match, not this outlet.
+  const { link: _link, ...rest } = draft;
+  const facts = factsFromCandidate(rest, c, chain);
+  if (!readPayload("place", facts as unknown as JsonValue)) throw new Error("An outlet doesn't fit a place");
+  const existing = await findCataloguePlace(w, facts.sourceLinks);
+  if (existing) return existing;
+  return (await w.write({ type: "place", placeId: null, payload: facts as unknown as JsonValue })).id;
 }
 
 const boardsOf = (draft: PendingDraft) => ({

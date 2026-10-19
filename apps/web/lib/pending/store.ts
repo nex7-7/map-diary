@@ -1,4 +1,4 @@
-import type { ResolvedPlace } from "@map-diary/crypto";
+import type { ResolvedChain, ResolvedPlace } from "@map-diary/crypto";
 import type { TagDefPayload } from "../places/payloads";
 import type { Category, Status } from "../places/types";
 
@@ -32,8 +32,11 @@ export type PendingState =
   /** Not sent yet (offline, or the queue was full); sent on the next poll. */
   | { kind: "unsent" }
   | { kind: "waiting"; jobId: string; publicKey: Uint8Array; secretKey: Uint8Array; expiresAt: number }
-  /** Several matches came back; the person picks one in the Inbox. */
-  | { kind: "choose"; candidates: ResolvedPlace[] }
+  /**
+   * Several matches came back, or the match is one outlet of a chain: the person picks one
+   * in the Inbox, or (for a chain) adds every outlet.
+   */
+  | { kind: "choose"; candidates: ResolvedPlace[]; chain?: ResolvedChain }
   | { kind: "failed"; reason: FailReason }
   /** Found and written to the diary; shown in the Inbox for a few days. */
   | { kind: "added"; placeId: string; name: string };

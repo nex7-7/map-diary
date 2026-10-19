@@ -19,7 +19,8 @@ export function PlaceCard({ item, snapshot, onClose, onSetStatus }: Props) {
   const style = categoryStyle(place.category);
   const me = snapshot.me.id;
   const myStatus = place.opinions.find((o) => o.kind === "status" && o.authorId === me);
-  const area = place.address?.split(",").pop()?.trim();
+  const outlets = place.outlets?.length ?? 1;
+  const area = outlets > 1 ? `${outlets} locations` : place.address?.split(",").pop()?.trim();
   const notes = place.opinions.filter((o) => o.kind !== "status");
   const authors = [...new Set(notes.map((o) => o.authorId))].map((id) =>
     id === me ? "you" : (snapshot.people.find((p) => p.id === id)?.name ?? "someone"),

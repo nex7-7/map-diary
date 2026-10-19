@@ -51,6 +51,10 @@ same logic.
 interface ResolverResult {
   v: 1;
   candidates: ResolvedPlace[]; // 1 to 5; more than one means the person picks in the Inbox
+  chain?: {                    // only when the match is one outlet of a chain
+    name: string;              // ≤ 200, e.g. "The Bombay Cartel"
+    outlets: ResolvedPlace[];  // the chain's other outlets in Mumbai, ≤ 40, checked like candidates
+  };
 }
 
 interface ResolvedPlace {
@@ -63,6 +67,12 @@ interface ResolvedPlace {
   sourceLinks: string[];                          // https only, ≤ 5
 }
 ```
+
+**Chains:** when `chain` is set the device always asks in the Inbox, even for one match:
+"Add all N" writes every outlet as its own catalogue place labelled with the chain, with
+the person's status, tags and note on the outlet they linked; "only this one" writes that
+outlet alone, still labelled, so outlets added later join it. An outlet the catalogue already
+has (same source link) is not added twice. Devices that predate `chain` ignore it.
 
 **Signature dish** (default until Snehil writes the definition): the dish the place is
 best known for, at its current menu price for one serving, in whole rupees.

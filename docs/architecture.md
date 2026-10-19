@@ -109,6 +109,7 @@ Places hold shared facts, people attach opinions to them, and every opinion is p
 - A tag opinion can only go to boards where its tag definition is also visible; the app warns and offers to widen the definition.
 - **Facts:** written once by the first resolution. After that, only the admin can edit them. Duplicate places are blocked by a keyed hash of the normalised source link, which the server can check without reading the place.
 - Dropped pins are private places and never enter the shared catalogue.
+- **Chains:** each outlet of a chain is its own catalogue place (own pin, address, links and duplicate check), and its facts carry the chain's id and name. The app folds a chain's outlets into one place page with a row per location, one list entry, and a pin per outlet. Status and tags count for the whole chain (one status per person); a comment is about one outlet or all of them. Boards work as for any place. The resolver returns a chain's other outlets and the Inbox asks whether to add all of them or only one. Only the admin can add an existing place to a chain (Edit details → Part of a chain).
 - **Categories:** Restaurant, Café/Bar, Movies, Recreation, Beach, plus custom ones.
 - **Wallet bleeder:** food and drink only. The signature dish and its menu price in ₹, with no tiers. The definition of "signature dish" is still to be written.
 

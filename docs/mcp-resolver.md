@@ -70,28 +70,44 @@ connector. Use no other connector, and do not save anything about these places t
    District or other link, or a plain name. If expandedUrl is present, it is the full Google
    Maps URL behind a short link; its coordinates and name are the best evidence. Search
    the web for anything else. A plain name means a place in Mumbai.
-3. Answer each job with submit_resolution, one call per job:
-   - candidates: 1 to 5 places. Give one when you are sure. Give up to 5 when a name
-     matches several places (for example branches of a chain); I pick one later.
+3. Check whether the place is one outlet of a chain. On its Zomato page, scroll down to the
+   Direction box: a link such as "See all 3 The Bombay Cartel outlets in Mumbai" means it is.
+   Open that link and note every outlet listed (name, area and address, and its own Zomato
+   link). For a place that is not on Zomato, use Google Maps or the place's own site to find
+   its other Mumbai outlets. Ignore "See all N outlets in <mall or compound>": that lists
+   other places in the same building, not the chain.
+4. Find the wallet bleeder (restaurant and cafe-bar only): open the place's Menu tab on
+   Zomato and pick the Food menu (not Bar or Beverages; for a café or bar whose menu is
+   mostly drinks, its main menu). Read through its pages to the main dishes, find the dish
+   the place is best known for (Zomato's "Top dishes" and "People say this place is known
+   for" help pick it), and read that dish's price for one serving off the menu. If the Food
+   menu won't open, try the menu on Swiggy, District or the place's own site. Leave the
+   dish out if you cannot read a real price; never use the "cost for two".
+5. Answer each job with submit_resolution, one call per job:
+   - candidates: 1 to 5 places. Give one when you are sure; for a link, that is the outlet
+     the link is for. Give up to 5 only when a plain name could mean several unrelated
+     places; I pick one later.
    - name: as the place writes it.
    - category: restaurant, cafe-bar, movies, recreation or beach. Bars, pubs, cafés,
      bakeries and dessert shops are cafe-bar.
    - location: lat and lng of the place itself, from Google Maps or the expanded URL.
      They must be inside Mumbai (lat 18.85 to 19.35, lng 72.75 to 73.15).
-   - address: short, area and city.
+   - address: short, area and city, e.g. "Kamala Mills, Lower Parel, Mumbai".
    - cuisine: for food and drink only, e.g. "Parsi" or "South Indian".
-   - signatureDish: restaurant and cafe-bar only. The dish the place is best known for,
-     with its current menu price for one serving, in whole rupees (no ranges, no "for
-     two" prices). Prefer the menu on Zomato, Swiggy, District or the place's own site.
-     Leave it out if you cannot find a real price.
+   - signatureDish: from step 4, with priceInr in whole rupees (no ranges).
    - sourceLinks: the https pages you used, at most 5.
+   - chain: only for a chain from step 3. name is the chain's name, and outlets lists every
+     other outlet in Mumbai (not the one in candidates), each with the same fields as a
+     candidate: its own location, address and Zomato link in sourceLinks. Use the same
+     signatureDish for each outlet unless its menu says otherwise. Leave out outlets
+     outside Mumbai or ones you cannot place on the map. At most 40.
    - If you cannot find the place, or it is outside Mumbai, call submit_resolution with
      failed: true instead.
-4. Never invent a fact. Leave out any optional field you could not check.
-5. If submit_resolution returns an error, fix what it names and try once more; if it says
+6. Never invent a fact. Leave out any optional field you could not check.
+7. If submit_resolution returns an error, fix what it names and try once more; if it says
    the job no longer exists or was already answered, move on.
-6. End with one line per job: the query, then "resolved", "resolved with N choices" or
-   "failed".
+8. End with one line per job: the query, then "resolved", "resolved with N choices",
+   "resolved, chain of N outlets" or "failed".
 ```
 
 ## Testing by hand

@@ -124,7 +124,9 @@ export function PlacesMap({ listed, here, selectedId, onSelect, onLongPress }: P
     const map = mapRef.current;
     const place = listed.find((l) => l.place.id === selectedId)?.place;
     if (!map || !place) return;
-    if (!map.getBounds().contains([place.location.lng, place.location.lat])) {
+    // A chain is in view when any of its outlets is.
+    const bounds = map.getBounds();
+    if (!(place.outlets ?? [place]).some((o) => bounds.contains([o.location.lng, o.location.lat]))) {
       map.easeTo({ center: [place.location.lng, place.location.lat], zoom: Math.max(map.getZoom(), 14) });
     }
     // Only when the selection changes, not on every filter change.

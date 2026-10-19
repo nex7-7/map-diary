@@ -1,6 +1,7 @@
 import type { JsonValue } from "@map-diary/crypto";
 import { readPayload, type PlacePayload } from "../places/payloads";
-import type { Category, LngLat } from "../places/types";
+import { normaliseChainName } from "../places/chains";
+import type { Category, LngLat, PlaceChain } from "../places/types";
 
 /** Categories that get a wallet bleeder (signature dish and price). */
 const FOOD: readonly Category[] = ["restaurant", "cafe-bar"];
@@ -19,12 +20,19 @@ export interface FactsForm {
   dishName: string;
   dishPrice: string;
   sourceLinks: string[];
+  /** The chain the place had; kept unless `chainName` changes it. */
+  chain?: PlaceChain;
+  /** The chain's name as typed; empty takes the place out of its chain. */
+  chainName?: string;
 }
 
 export type FactsResult = { ok: true; facts: PlacePayload } | { ok: false; message: string };
 
-/** Turns the form into a place payload, checked by the same reader every device uses. */
-export function buildFacts(form: FactsForm): FactsResult {
+/**
+ * Turns the form into a place payload, checked by the same reader every device uses.
+ * `chainFor` finds or makes the chain for a newly typed chain name.
+ */
+export function buildFacts(form: FactsForm, chainFor?: (name: string) => PlaceChain): FactsResult {
   const name = form.name.trim();
   if (!name) return { ok: false, message: "Give the place a name" };
   if (!form.location) return { ok: false, message: "Put the place on the map" };
@@ -48,6 +56,15 @@ export function buildFacts(form: FactsForm): FactsResult {
     facts.signatureDish = { name: dish.slice(0, 80), priceInr: Math.round(priceInr) };
   }
 
+  const chainName = form.chainName?.trim();
+  if (chainName === undefined) {
+    if (form.chain) facts.chain = form.chain;
+  } else if (chainName) {
+    const same = form.chain && normaliseChainName(form.chain.name) === normaliseChainName(chainName);
+    const chain = same ? form.chain : chainFor?.(chainName);
+    if (chain) facts.chain = chain;
+  }
+
   if (!readPayload("place", facts as unknown as JsonValue)) return { ok: false, message: "Those details don't fit a place" };
   return { ok: true, facts };
 }
@@ -62,6 +79,8 @@ export function formFromFacts(facts: PlacePayload): FactsForm {
     dishName: facts.signatureDish?.name ?? "",
     dishPrice: facts.signatureDish ? String(facts.signatureDish.priceInr) : "",
     sourceLinks: facts.sourceLinks,
+    ...(facts.chain ? { chain: facts.chain } : {}),
+    chainName: facts.chain?.name ?? "",
   };
 }
 

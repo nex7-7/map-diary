@@ -8,7 +8,7 @@ import { DiaryShell } from "@/app/_shell/diary-shell";
 import { buttonClass, Icon, Tile, type IconName } from "@/lib/ui";
 import b from "./inbox.module.css";
 import { DeviceGate, type Diary } from "@/lib/device";
-import { usePending, type FailReason, type PendingItem, type PendingQueue } from "@/lib/pending";
+import { choicesOf, usePending, type FailReason, type PendingItem, type PendingQueue } from "@/lib/pending";
 import { categoryStyle, STATUS_LABELS } from "@/lib/places/categories";
 
 /** While the Inbox is open it checks for results this often. */
@@ -172,6 +172,7 @@ function RoundIcon({ icon, tone }: { icon: IconName; tone: "sea" | "danger" | "v
 
 function ChooseRow({ item, queue, run }: { item: PendingItem; queue: PendingQueue; run: (a: () => Promise<unknown>) => void }) {
   if (item.state.kind !== "choose") return null;
+  if (item.state.chain) return <ChainRow item={item} queue={queue} run={run} />;
   return (
     <li className={`${styles.item} ${b.choose}`}>
       <p className="heading-s">
@@ -199,13 +200,50 @@ function ChooseRow({ item, queue, run }: { item: PendingItem; queue: PendingQueu
   );
 }
 
-function Candidate({ place }: { place: ResolvedPlace }) {
+/** A match that is one outlet of a chain: add every outlet, or only one. */
+function ChainRow({ item, queue, run }: { item: PendingItem; queue: PendingQueue; run: (a: () => Promise<unknown>) => void }) {
+  if (item.state.kind !== "choose" || !item.state.chain) return null;
+  const { chain } = item.state;
+  const choices = choicesOf(item.state);
+  const matches = item.state.candidates.length;
+  return (
+    <li className={`${styles.item} ${b.choose}`}>
+      <p className="heading-s">
+        {chain.name} has {choices.length} outlets in Mumbai
+      </p>
+      {item.draft.link && item.draft.link !== item.draft.label && <p className={`sub ${b.link}`}>{item.draft.link}</p>}
+      <div className={styles.row}>
+        <button type="button" className={buttonClass({ size: "m" })} onClick={() => run(() => queue.addAll(item.id))}>
+          Add all {choices.length}
+        </button>
+      </div>
+      <p className="sub">Or add only one:</p>
+      <ul className={b.candidates}>
+        {choices.map((c, n) => (
+          <li key={n}>
+            <button type="button" className={b.candidate} onClick={() => run(() => queue.choose(item.id, n))}>
+              <Candidate place={c} note={n < matches ? (item.draft.link ? "The one you linked" : "Best match") : undefined} />
+            </button>
+          </li>
+        ))}
+      </ul>
+      <div className={styles.row}>
+        <button type="button" className={styles.textbutton} onClick={() => run(() => queue.dismiss(item.id))}>
+          Remove
+        </button>
+      </div>
+    </li>
+  );
+}
+
+function Candidate({ place, note }: { place: ResolvedPlace; note?: string | undefined }) {
   const style = categoryStyle(place.category);
   return (
     <>
       <Tile>{style.emoji}</Tile>
       <span className={b.candidateText}>
         <span className={b.name}>{place.name}</span>
+        {note && <span className="sub">{note}</span>}
         <span className="sub">{[style.label, place.cuisine, place.address].filter(Boolean).join(" · ")}</span>
         {place.signatureDish && (
           <span className="sub">
