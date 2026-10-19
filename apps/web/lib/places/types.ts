@@ -62,6 +62,8 @@ interface OpinionBase {
    * posted to master. Filled in by `applyBoardRules`.
    */
   shownOn: string[];
+  /** Written by the author's Claude assistant: shown as "<name> via Claude". */
+  viaClaude?: boolean;
   createdAt: string;
   updatedAt: string;
 }

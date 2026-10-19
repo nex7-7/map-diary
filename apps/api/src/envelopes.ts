@@ -9,7 +9,7 @@ import {
   type EnvelopeType,
   type WrappedContentKey,
 } from "@map-diary/crypto";
-import { readBody, requireDevice, type AuthedEnv } from "./auth";
+import { readBody, requireDevice, type AuthedDevice, type AuthedEnv } from "./auth";
 import { MAX_LINK_HASHES, isLinkHash, masterBoard } from "./boards";
 import { bytes, fail, isB64, isId, isMillis, isObject, isPositiveInt } from "./http";
 
@@ -21,7 +21,7 @@ const DEFAULT_PULL = 200;
 const MAX_PULL = 500;
 
 /** `placeId` names the catalogue place that already has the link, for `duplicate_place`. */
-type Rejection = { id: string | null; reason: string; placeId?: string };
+export type Rejection = { id: string | null; reason: string; placeId?: string };
 
 /**
  * Link hashes sent beside place envelopes (outside the signed envelope, since only the
@@ -89,14 +89,33 @@ envelopes.post("/envelopes", readBody, requireDevice, async (c) => {
   if (!Array.isArray(list) || list.length === 0 || list.length > MAX_PUSH) return fail(c, 400, "bad_request");
   const linkHashes = parseLinkHashes(isObject(body) ? body.linkHashes : undefined);
   if (!linkHashes) return fail(c, 400, "bad_request");
-  const device = c.var.device;
-  const db = c.env.DB;
+  const outcome = await pushEnvelopes(c.env.DB, c.var.device, list, linkHashes);
+  return outcome ? c.json(outcome) : fail(c, 401, "unauthenticated");
+});
 
+export interface PushOutcome {
+  accepted: string[];
+  unchanged: string[];
+  rejected: Rejection[];
+}
+
+/**
+ * Checks and stores envelopes written by one device: the signature, the author, board rights
+ * and key versions, the catalogue rules and last-write-wins. The sync API and the Claude
+ * assistant's write tools both go through it, so they follow the same rules. Null when the
+ * device is unknown.
+ */
+export async function pushEnvelopes(
+  db: D1Database,
+  device: AuthedDevice,
+  list: readonly unknown[],
+  linkHashes: ReadonlyMap<string, readonly string[]>,
+): Promise<PushOutcome | null> {
   const signer = await db
     .prepare("SELECT sign_public_key FROM devices WHERE id = ?")
     .bind(device.id)
     .first<{ sign_public_key: unknown }>();
-  if (!signer) return fail(c, 401, "unauthenticated");
+  if (!signer) return null;
   const signPublicKey = bytes(signer.sign_public_key);
 
   const rejected: Rejection[] = [];
@@ -252,8 +271,8 @@ envelopes.post("/envelopes", readBody, requireDevice, async (c) => {
   ]);
   if (statements.length > 0) await db.batch(statements);
 
-  return c.json({ accepted: accepted.map((e) => e.id), unchanged, rejected });
-});
+  return { accepted: accepted.map((e) => e.id), unchanged, rejected };
+}
 
 /**
  * Deletes the account's own envelopes. The row stays as a tombstone with its ciphertext
@@ -267,10 +286,14 @@ envelopes.post("/envelopes/delete", readBody, requireDevice, async (c) => {
   if (!Array.isArray(ids) || ids.length === 0 || ids.length > MAX_PUSH || !ids.every(isId)) {
     return fail(c, 400, "bad_request");
   }
-  const db = c.env.DB;
+  const { accountId, isAdmin } = c.var.device;
+  return c.json({ deleted: await deleteEnvelopes(c.env.DB, accountId, isAdmin, ids) });
+});
+
+/** Tombstones the account's own envelopes among `ids`; returns the ids it deleted. */
+export async function deleteEnvelopes(db: D1Database, accountId: string, isAdmin: boolean, ids: readonly string[]): Promise<string[]> {
   const now = Date.now();
   const unique = [...new Set(ids)];
-  const { accountId, isAdmin } = c.var.device;
   const results = await db.batch(
     unique.flatMap((id) => [
       db
@@ -296,8 +319,8 @@ envelopes.post("/envelopes/delete", readBody, requireDevice, async (c) => {
     ]),
   );
   const deleted = unique.filter((_, i) => (results[i * 3]?.meta.changes ?? 0) > 0);
-  return c.json({ deleted });
-});
+  return deleted;
+}
 
 /**
  * Every change since `since` on any board the account is a member of, in seq order.
@@ -358,7 +381,7 @@ envelopes.get("/sync", readBody, requireDevice, async (c) => {
   const signerIds = JSON.stringify([...new Set(live.map((r) => r.device_id))]);
 
   type BoardRow = { envelope_id: string; board_id: string; key_version: number; nonce: unknown; wrapped_key: unknown };
-  type DeviceRow = { id: string; account_id: string; sign_public_key: unknown; revoked_at: number | null };
+  type DeviceRow = { id: string; account_id: string; kind: string; sign_public_key: unknown; revoked_at: number | null };
   const [boardRows, deviceRows] =
     live.length === 0
       ? [[], []]
@@ -373,7 +396,7 @@ envelopes.get("/sync", readBody, requireDevice, async (c) => {
             .then((r) => r.results),
           db
             .prepare(
-              `SELECT id, account_id, sign_public_key, revoked_at FROM devices
+              `SELECT id, account_id, kind, sign_public_key, revoked_at FROM devices
                 WHERE id IN (SELECT value FROM json_each(?))`,
             )
             .bind(signerIds)
@@ -440,7 +463,7 @@ envelopes.get("/sync", readBody, requireDevice, async (c) => {
     devices: Object.fromEntries(
       deviceRows.map((d) => [
         d.id,
-        { accountId: d.account_id, signPublicKey: toBase64(bytes(d.sign_public_key)), revokedAt: d.revoked_at },
+        { accountId: d.account_id, kind: d.kind, signPublicKey: toBase64(bytes(d.sign_public_key)), revokedAt: d.revoked_at },
       ]),
     ),
     cursor: page.at(-1)?.seq ?? since,

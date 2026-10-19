@@ -1,7 +1,8 @@
 import { Hono, type Context } from "hono";
 import { MAX_CANDIDATES, MUMBAI_BOUNDS, RESOLVER_CATEGORIES, type ResolutionProblem } from "@map-diary/crypto";
 import { readBody, type SignedEnv } from "./auth";
-import { fail, isObject, type JsonObject } from "./http";
+import { fail, type JsonObject } from "./http";
+import { answerRpc, toolText } from "./mcp-rpc";
 import { requireResolver, submitResolution, takePendingJobs, tokensMatch } from "./resolver";
 
 /**
@@ -9,7 +10,7 @@ import { requireResolver, submitResolution, takePendingJobs, tokensMatch } from 
  * a custom connector. Two tools, `get_pending_jobs` and `submit_resolution`, run the
  * same code as the REST resolver routes. Streamable HTTP, stateless: every POST carries
  * one JSON-RPC message (or a batch) and gets a plain JSON reply; there are no sessions
- * and no server-sent streams. See docs/mcp-resolver.md.
+ * and no server-sent streams (see mcp-rpc.ts). See docs/mcp-resolver.md.
  *
  * Auth is RESOLVER_TOKEN, either as a Bearer header (`/api/mcp`) or in the path
  * (`/api/mcp/<token>`), because claude.ai custom connectors take a URL but no headers.
@@ -17,8 +18,6 @@ import { requireResolver, submitResolution, takePendingJobs, tokensMatch } from 
  */
 
 const SERVER_INFO = { name: "map-diary-resolver", version: "1.0.0" };
-/** Newest first; an unknown requested version gets the newest. */
-const PROTOCOL_VERSIONS = ["2025-11-25", "2025-06-18", "2025-03-26", "2024-11-05"];
 const DEFAULT_LIMIT = 10;
 const MAX_LIMIT = 50;
 
@@ -107,7 +106,7 @@ const TOOLS = [
 ] as const;
 
 /** What a check failure means, in words a model can act on. */
-const PROBLEMS: Record<ResolutionProblem, string> = {
+export const PROBLEMS: Record<ResolutionProblem, string> = {
   bad_shape: "The answer has the wrong shape. Send candidates as an array of place objects, or failed: true.",
   no_candidates: "candidates is empty. Send at least one, or failed: true.",
   too_many_candidates: `Send at most ${MAX_CANDIDATES} candidates.`,
@@ -123,19 +122,6 @@ const JOB_ERRORS: Record<string, string> = {
   not_found: "No such job; it may have expired or been deleted by the person who asked.",
   not_pending: "This job has already been answered or has failed.",
 };
-
-type Id = string | number | null;
-type Reply = JsonObject;
-
-const result = (id: Id, value: unknown): Reply => ({ jsonrpc: "2.0", id, result: value });
-const error = (id: Id, code: number, message: string): Reply => ({ jsonrpc: "2.0", id, error: { code, message } });
-
-function toolText(value: unknown, isError = false) {
-  return {
-    content: [{ type: "text", text: typeof value === "string" ? value : JSON.stringify(value) }],
-    ...(isError ? { isError: true } : { structuredContent: value }),
-  };
-}
 
 async function callTool(db: D1Database, name: unknown, args: JsonObject) {
   const now = Date.now();
@@ -158,51 +144,14 @@ async function callTool(db: D1Database, name: unknown, args: JsonObject) {
   return null;
 }
 
-/** Handles one JSON-RPC message; null for notifications and stray responses. */
-async function handleMessage(db: D1Database, msg: unknown): Promise<Reply | null> {
-  if (!isObject(msg) || msg.jsonrpc !== "2.0") return error(null, -32600, "Invalid Request");
-  const isRequest = "id" in msg && (typeof msg.id === "string" || typeof msg.id === "number");
-  if (typeof msg.method !== "string") return isRequest ? error(msg.id as Id, -32600, "Invalid Request") : null;
-  if (!isRequest) return null; // notifications/initialized, cancellations and the like need no answer
-  const id = msg.id as Id;
-  const params = isObject(msg.params) ? msg.params : {};
-
-  switch (msg.method) {
-    case "initialize": {
-      const asked = params.protocolVersion;
-      const protocolVersion =
-        typeof asked === "string" && PROTOCOL_VERSIONS.includes(asked) ? asked : PROTOCOL_VERSIONS[0];
-      return result(id, {
-        protocolVersion,
-        capabilities: { tools: { listChanged: false } },
-        serverInfo: SERVER_INFO,
-        instructions: INSTRUCTIONS,
-      });
-    }
-    case "ping":
-      return result(id, {});
-    case "tools/list":
-      return result(id, { tools: TOOLS });
-    case "tools/call": {
-      const args = isObject(params.arguments) ? params.arguments : {};
-      const out = await callTool(db, params.name, args);
-      return out ? result(id, out) : error(id, -32602, "Unknown tool");
-    }
-    default:
-      return error(id, -32601, "Method not found");
-  }
-}
-
-async function handle(c: Context<SignedEnv>) {
-  const body = c.var.body;
+function handle(c: Context<SignedEnv>) {
   const db = c.env.DB;
-  if (Array.isArray(body)) {
-    if (body.length === 0) return c.json(error(null, -32600, "Invalid Request"), 400);
-    const replies = (await Promise.all(body.map((m) => handleMessage(db, m)))).filter((r): r is Reply => r !== null);
-    return replies.length ? c.json(replies) : c.body(null, 202);
-  }
-  const reply = await handleMessage(db, body);
-  return reply ? c.json(reply) : c.body(null, 202);
+  return answerRpc(c, c.var.body, {
+    info: SERVER_INFO,
+    instructions: INSTRUCTIONS,
+    tools: TOOLS,
+    callTool: (name, args) => callTool(db, name, args),
+  });
 }
 
 export const mcp = new Hono<SignedEnv>();

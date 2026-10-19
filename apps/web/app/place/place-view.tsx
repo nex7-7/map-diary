@@ -261,8 +261,9 @@ export function PlaceView({ diary, placeId }: { diary: Diary; placeId: string })
   );
 }
 
-function personName(snapshot: DiarySnapshot, me: string, id: string): string {
-  return id === me ? "You" : (snapshot.people.find((p) => p.id === id)?.name ?? "Someone");
+function personName(snapshot: DiarySnapshot, me: string, o: Opinion): string {
+  const name = o.authorId === me ? "You" : (snapshot.people.find((p) => p.id === o.authorId)?.name ?? "Someone");
+  return o.viaClaude ? `${name} via Claude` : name;
 }
 
 function Others<O extends Opinion>({ snapshot, me, opinions, render }: { snapshot: DiarySnapshot; me: string; opinions: O[]; render: (o: O) => string }) {
@@ -271,7 +272,7 @@ function Others<O extends Opinion>({ snapshot, me, opinions, render }: { snapsho
     <ul className={styles.list}>
       {opinions.map((o) => (
         <li key={o.id} className={styles.note}>
-          <strong>{personName(snapshot, me, o.authorId)}</strong> {render(o)}{" "}
+          <strong>{personName(snapshot, me, o)}</strong> {render(o)}{" "}
           {o.boards.map((b) => (
             <span key={b} className={styles.badge}>
               {boardName(snapshot, b)}
@@ -323,7 +324,7 @@ function CommentRow({ comment, snapshot, mine, onEdit, onDelete }: CommentRowPro
           <p className={styles.itemtext}>{comment.text}</p>
           <div className={styles.row}>
             <span className={styles.note}>
-              {personName(snapshot, me, comment.authorId)} · {new Date(comment.createdAt).toLocaleDateString("en-IN", { day: "numeric", month: "short" })}
+              {personName(snapshot, me, comment)} · {new Date(comment.createdAt).toLocaleDateString("en-IN", { day: "numeric", month: "short" })}
             </span>
             {comment.boards.map((b) => (
               <span key={b} className={styles.badge}>

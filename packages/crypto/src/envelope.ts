@@ -219,7 +219,6 @@ export function verifyEnvelope(envelope: Envelope, signerPublicKey: Uint8Array):
 
 /** Verifies, then decrypts with the first board key this device holds. */
 export function openEnvelope(envelope: Envelope, options: OpenOptions): OpenedEnvelope {
-  const sodium = getSodium();
   if (envelope.v !== ENVELOPE_VERSION) {
     throw new CryptoError("unsupported_version", `Unsupported envelope version ${String(envelope.v)}`);
   }
@@ -232,42 +231,14 @@ export function openEnvelope(envelope: Envelope, options: OpenOptions): OpenedEn
     const boardKey = options.boardKey(board.boardId, board.keyVersion);
     if (!boardKey) continue;
     triedAKey = true;
-
-    let contentKey: Uint8Array;
-    try {
-      contentKey = sodium.crypto_aead_xchacha20poly1305_ietf_decrypt(
-        null,
-        fromBase64(board.wrappedKey),
-        wrapAad(envelope.id, board.boardId, board.keyVersion),
-        fromBase64(board.nonce),
-        boardKey,
-      );
-    } catch {
-      // A wrong or stale key for this board; another board may still work.
-      continue;
-    }
-
-    let plaintext: Uint8Array;
-    try {
-      plaintext = sodium.crypto_aead_xchacha20poly1305_ietf_decrypt(
-        null,
-        fromBase64(envelope.ciphertext),
-        contentAad(envelope),
-        fromBase64(envelope.nonce),
-        contentKey,
-      );
-    } catch {
-      throw new CryptoError("decrypt_failed", "Could not decrypt the envelope payload");
-    } finally {
-      sodium.memzero(contentKey);
-    }
-
-    let payload: JsonValue;
-    try {
-      payload = JSON.parse(fromUtf8(plaintext)) as JsonValue;
-    } catch {
-      throw new CryptoError("bad_payload", "Envelope payload is not valid JSON");
-    }
+    const wrap = { ...board, nonce: fromBase64(board.nonce), wrappedKey: fromBase64(board.wrappedKey) };
+    const contentKey = unwrapContentKey(envelope.id, wrap, boardKey);
+    // A wrong or stale key for this board; another board may still work.
+    if (!contentKey) continue;
+    const payload = decryptPayload(
+      { ...envelope, nonce: fromBase64(envelope.nonce), ciphertext: fromBase64(envelope.ciphertext) },
+      contentKey,
+    );
     return { envelope, payload, boardId: board.boardId };
   }
 
@@ -275,4 +246,77 @@ export function openEnvelope(envelope: Envelope, options: OpenOptions): OpenedEn
     throw new CryptoError("decrypt_failed", "Could not unwrap the content key with any held board key");
   }
   throw new CryptoError("no_board_key", "This device holds no key for any of the envelope's boards");
+}
+
+/** An envelope's encrypted fields as raw bytes, the way D1 stores them. */
+export interface StoredEnvelope {
+  v: number;
+  id: string;
+  type: string;
+  authorId: string;
+  placeId: string | null;
+  createdAt: number;
+  nonce: Uint8Array;
+  ciphertext: Uint8Array;
+}
+
+/** One board's wrap of an envelope's content key, as raw bytes. */
+export interface StoredWrap {
+  boardId: string;
+  keyVersion: number;
+  nonce: Uint8Array;
+  wrappedKey: Uint8Array;
+}
+
+/**
+ * Decrypts a stored envelope through one board's wrap, without checking the signature and
+ * without base64. Only for a reader that trusts where the bytes came from: the Worker reads
+ * for the Claude assistant envelopes whose signatures it checked when they were pushed, and
+ * skips both the Ed25519 check and base64 to stay inside the Workers CPU limit.
+ */
+export function decryptStoredEnvelope(envelope: StoredEnvelope, wrap: StoredWrap, boardKey: Uint8Array): JsonValue {
+  if (envelope.v !== ENVELOPE_VERSION) {
+    throw new CryptoError("unsupported_version", `Unsupported envelope version ${String(envelope.v)}`);
+  }
+  const contentKey = unwrapContentKey(envelope.id, wrap, boardKey);
+  if (!contentKey) throw new CryptoError("decrypt_failed", "Could not unwrap the content key with this board key");
+  return decryptPayload(envelope, contentKey);
+}
+
+function unwrapContentKey(envelopeId: string, wrap: StoredWrap, boardKey: Uint8Array): Uint8Array | null {
+  try {
+    return getSodium().crypto_aead_xchacha20poly1305_ietf_decrypt(
+      null,
+      wrap.wrappedKey,
+      wrapAad(envelopeId, wrap.boardId, wrap.keyVersion),
+      wrap.nonce,
+      boardKey,
+    );
+  } catch {
+    return null;
+  }
+}
+
+/** Decrypts the payload with its content key, then wipes the key. */
+function decryptPayload(envelope: StoredEnvelope, contentKey: Uint8Array): JsonValue {
+  const sodium = getSodium();
+  let plaintext: Uint8Array;
+  try {
+    plaintext = sodium.crypto_aead_xchacha20poly1305_ietf_decrypt(
+      null,
+      envelope.ciphertext,
+      contentAad({ ...envelope, v: ENVELOPE_VERSION, type: envelope.type as EnvelopeType }),
+      envelope.nonce,
+      contentKey,
+    );
+  } catch {
+    throw new CryptoError("decrypt_failed", "Could not decrypt the envelope payload");
+  } finally {
+    sodium.memzero(contentKey);
+  }
+  try {
+    return JSON.parse(fromUtf8(plaintext)) as JsonValue;
+  } catch {
+    throw new CryptoError("bad_payload", "Envelope payload is not valid JSON");
+  }
 }
