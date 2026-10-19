@@ -88,7 +88,7 @@ export function snapshotFromItems(
   const tags: TagDefinition[] = [];
   const opinions: { placeId: string; opinion: Opinion }[] = [];
   const authors = new Set<string>([accountId]);
-  const profiles = new Map<string, { name: string; updatedAt: number }>();
+  const profiles = displayNames(items);
 
   for (const item of items) {
     const base = {
@@ -104,12 +104,6 @@ export function snapshotFromItems(
       case "private_place": {
         const p = readPayload(item.type, item.payload);
         if (p) places.set(item.id, { ...p, id: item.id, isPrivate: item.type === "private_place", boards: item.boardIds, opinions: [] });
-        break;
-      }
-      case "profile": {
-        const p = readPayload("profile", item.payload);
-        const prior = profiles.get(item.authorId);
-        if (p && (!prior || item.updatedAt > prior.updatedAt)) profiles.set(item.authorId, { name: p.name, updatedAt: item.updatedAt });
         break;
       }
       case "tag_def": {
@@ -162,11 +156,23 @@ export function snapshotFromItems(
   for (const p of snapshot.places) for (const o of p.opinions) authors.add(o.authorId);
   let unnamed = 0;
   const people = [...authors].map((id): Person => {
-    const name = profiles.get(id)?.name;
+    const name = profiles.get(id);
     if (id === accountId) return { id, name: name ?? "Me" };
     return { id, name: name ?? `Friend ${++unnamed}` };
   });
   return { ...snapshot, me: people[0]!, people };
+}
+
+/** Each account's display name: the newest valid `profile` item it wrote. */
+export function displayNames(items: readonly StoredItem[]): Map<string, string> {
+  const latest = new Map<string, { name: string; updatedAt: number }>();
+  for (const item of items) {
+    if (item.type !== "profile") continue;
+    const p = readPayload("profile", item.payload);
+    const prior = latest.get(item.authorId);
+    if (p && (!prior || item.updatedAt > prior.updatedAt)) latest.set(item.authorId, { name: p.name, updatedAt: item.updatedAt });
+  }
+  return new Map([...latest].map(([id, v]) => [id, v.name]));
 }
 
 function latestStatus(items: readonly StoredItem[]): StoredItem | undefined {
