@@ -11,6 +11,7 @@ import {
   findDuplicate,
   defineTag,
   setDisplayName,
+  setProfile,
   setStatus,
   unapplyTag,
   type DiaryWriter,
@@ -275,6 +276,28 @@ describe("opinions on someone else's place", () => {
     const profiles = [...d.items.values()].filter((i) => i.type === "profile");
     expect(profiles).toHaveLength(1);
     expect(profiles[0]).toMatchObject({ boardIds: ["board-master"], payload: { name: "Snehil S." } });
+  });
+
+  it("saves a picture with the name, keeps it on a rename and drops it on request", async () => {
+    const d = new FakeDiary();
+    const photo = { kind: "photo", dataUrl: "data:image/jpeg;base64,/9j/4AAQ" } as const;
+    await setProfile(d, { name: "Riya", avatar: photo }, "board-master");
+    await setDisplayName(d, "Riya K.", "board-master");
+    const profile = () => [...d.items.values()].find((i) => i.type === "profile")?.payload;
+    expect(profile()).toEqual({ name: "Riya K.", avatar: photo });
+    await setProfile(d, { name: "Riya K.", avatar: { kind: "emoji", emoji: "🌊", tone: 2 } }, "board-master");
+    expect(profile()).toEqual({ name: "Riya K.", avatar: { kind: "emoji", emoji: "🌊", tone: 2 } });
+    await setProfile(d, { name: "Riya K.", avatar: null }, "board-master");
+    expect(profile()).toEqual({ name: "Riya K." });
+  });
+
+  it("refuses a picture that is not a small raster photo or an emoji", async () => {
+    const d = new FakeDiary();
+    const svg = { kind: "photo", dataUrl: "data:image/svg+xml;base64,PHN2Zz4=" } as const;
+    await expect(setProfile(d, { name: "Riya", avatar: svg }, "board-master")).rejects.toBeInstanceOf(EntryError);
+    const big = { kind: "photo", dataUrl: `data:image/jpeg;base64,${"A".repeat(30_000)}` } as const;
+    await expect(setProfile(d, { name: "Riya", avatar: big }, "board-master")).rejects.toBeInstanceOf(EntryError);
+    await expect(setProfile(d, { name: "Riya", avatar: { kind: "emoji", emoji: "abc", tone: 0 } }, "board-master")).rejects.toBeInstanceOf(EntryError);
   });
 });
 

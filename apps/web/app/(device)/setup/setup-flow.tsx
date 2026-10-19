@@ -70,7 +70,8 @@ export function SetupFlow({ inviteCode }: { inviteCode?: string }) {
     setError(null);
     try {
       await adoptDevice(await setup.complete(api));
-      router.push("/");
+      // A friend who just joined picks their name and picture next.
+      router.push(invited ? "/welcome" : "/");
     } catch (err) {
       setError(errorMessage(err));
       setBusy(false);

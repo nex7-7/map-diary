@@ -1,16 +1,16 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useItems } from "@/app/_entries/use-items";
 import { AccountPage, Avatar, IconTile, accountStyles as s } from "@/app/_account/parts";
+import { ProfileEditor } from "@/app/_account/profile-editor";
 import { listDevices, type Diary } from "@/lib/device";
-import { setDisplayName } from "@/lib/entries/actions";
 import { useGroups } from "@/lib/groups";
-import { DISPLAY_NAME_MAX } from "@/lib/places/payloads";
-import { Badge, Button, Icon, type IconName } from "@/lib/ui";
+import { profilesOf } from "@/lib/places/items-source";
+import { Badge, Icon, type IconName } from "@/lib/ui";
 
-/** `/profile`, the You tab: your name, and the screens about your account. */
+/** `/profile`, the You tab: your name and picture, and the screens about your account. */
 export function ProfilePage() {
   return (
     <AccountPage current="you" title="" back={false}>
@@ -20,7 +20,10 @@ export function ProfilePage() {
 }
 
 function You({ diary }: { diary: Diary }) {
-  const { loaded, snapshot, canChooseBoards } = useItems(diary);
+  const { loaded, items, snapshot, canChooseBoards } = useItems(diary);
+  const profiles = useMemo(() => profilesOf(items), [items]);
+  const mine = profiles.get(diary.device.accountId);
+  const taken = [...profiles].filter(([id]) => id !== diary.device.accountId).map(([, p]) => p.name);
   const { groups } = useGroups(diary);
   const [devices, setDevices] = useState<{ count: number; claude: boolean } | null>(null);
   useEffect(() => {
@@ -55,7 +58,7 @@ function You({ diary }: { diary: Diary }) {
   return (
     <>
       <div className={s.rowTitle} style={{ gap: 14, flexWrap: "nowrap" }}>
-        <Avatar big id={diary.device.accountId} name={name || "You"} />
+        <Avatar big id={diary.device.accountId} name={name || "You"} avatar={mine?.avatar} />
         <div className={s.rowText}>
           <h1 className="display">{name || "You"}</h1>
           {isAdmin && (
@@ -84,64 +87,17 @@ function You({ diary }: { diary: Diary }) {
         ))}
       </nav>
 
-      {loaded && <NameForm diary={diary} current={name} masterId={master?.id} masterName={master?.name} />}
+      {loaded &&
+        (master ? (
+          <section className={s.card}>
+            <h2 className="heading-s">Name and picture</h2>
+            <ProfileEditor diary={diary} masterId={master.id} current={mine} takenNames={taken} />
+          </section>
+        ) : (
+          <p className="sub" style={{ margin: 0 }}>
+            You can set a name and picture once the Public board is ready. Until then friends see you as “Friend”.
+          </p>
+        ))}
     </>
-  );
-}
-
-function NameForm({ diary, current, masterId, masterName }: { diary: Diary; current: string; masterId: string | undefined; masterName: string | undefined }) {
-  const [draft, setDraft] = useState<string | null>(null);
-  const [state, setState] = useState<{ kind: "idle" } | { kind: "saved"; name: string } | { kind: "error"; message: string }>({ kind: "idle" });
-  const value = draft ?? current;
-
-  if (!masterId) {
-    return (
-      <p className="sub" style={{ margin: 0 }}>
-        You can set a name once the Public board is ready. Until then friends see you as “Friend”.
-      </p>
-    );
-  }
-  return (
-    <form
-      className={s.sec}
-      onSubmit={(e) => {
-        e.preventDefault();
-        setState({ kind: "idle" });
-        setDisplayName(diary, value, masterId)
-          .then((name) => {
-            setDraft(null);
-            setState({ kind: "saved", name });
-          })
-          .catch((err: unknown) => setState({ kind: "error", message: err instanceof Error ? err.message : "Could not save" }));
-      }}
-    >
-      <label className="overline" htmlFor="your-name">
-        Your name
-      </label>
-      <div className={s.inline}>
-        <input
-          id="your-name"
-          className={`${s.input} ${s.onSurface}`}
-          autoComplete="nickname"
-          maxLength={DISPLAY_NAME_MAX}
-          value={value}
-          onChange={(e) => setDraft(e.target.value)}
-        />
-        <Button type="submit" size="m" variant="secondary" disabled={!value.trim() || value.trim() === current}>
-          Save
-        </Button>
-      </div>
-      <p className={s.hint}>Everyone on the app sees this next to your opinions. It is encrypted on the {masterName ?? "Public"} board.</p>
-      {state.kind === "saved" && (
-        <p className={s.okText} role="status">
-          Saved. Friends see you as {state.name}.
-        </p>
-      )}
-      {state.kind === "error" && (
-        <p className={s.error} role="alert">
-          {state.message}
-        </p>
-      )}
-    </form>
   );
 }
