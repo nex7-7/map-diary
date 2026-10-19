@@ -190,12 +190,14 @@ The resolver interface is generic, so another AI or a script could replace Claud
 **2. Personal assistant (me only)**
 
 - **Scope:** the master board and my Personal board. Never any group board.
-- Claude is a registered device on my account. It holds the master key and my personal keys, but no group keys, so group data is cryptographically out of reach.
-- Its device key is stored encrypted and unlockable only with the secret in my connector credentials.
-- **Tools:** search and list places, add a place, add tags and comments, mark visited, resolve pending items.
-- The Worker decrypts during a call, answers, and keeps nothing. While a call runs, the Worker and Anthropic see that plaintext.
-- Items Claude creates are signed as "Snehil via Claude".
-- Revoking Claude deletes its device key and rotates the master key and my personal key.
+- Claude is a registered device on my account (kind `claude`). Unlike my other devices it never gets my account keys, since those open every board I am in, groups included. Instead the master and Personal board keys (every version) are wrapped directly to its device key, so group data is cryptographically out of reach.
+- **Connecting:** on one of my devices, Devices → Connect Claude creates the Claude device keys in the browser, wraps the master and Personal keys to it, and makes a random connector secret. The device's secret keys are encrypted with a key derived from that secret and stored on the Worker with a hash of the secret; the secret is shown once, pasted into the connector's request header, and forgotten by the browser. The server alone cannot unlock the Claude device.
+- **Per call:** the connector sends the secret; the Worker finds the device by its hash, unlocks its keys, decrypts what the tool needs, answers, and keeps nothing. While a call runs, the Worker and Anthropic see that plaintext. Signatures are checked when envelopes are pushed, so reads only decrypt.
+- **Keeping up with rotations:** when the master or my Personal key rotates (a revoke, a member removed), whichever of my devices syncs next wraps the new version to the Claude device. Until then Claude reads only older items and refuses writes with a plain "open the app once" message.
+- **Guardrails on the Worker:** a `claude` device is refused account keys, group board keys, admin actions, and editing place facts it did not create. It has its own MCP endpoint and connector, separate from the resolver.
+- **Tools:** search and list places, get a place with its visible tags and comments, list tags, add a place (Claude looks it up itself and the Worker checks the facts like a resolver result, including the duplicate link check), set Visited or Want to, add tags and comments. New opinions default to the Personal board, as everywhere. Pending items live only on the device that made them, so they stay with the resolver connector.
+- Items Claude creates are signed by the Claude device and shown as "Snehil via Claude".
+- Revoking Claude uses the normal revoke: its device row and encrypted keys are deleted, and the master and Personal keys rotate.
 
 ## Android app and proximity alerts
 
@@ -232,6 +234,7 @@ The sideloaded Android app is the only place proximity alerts exist, and the ser
 - **Free-tier changes:** Cloudflare could change limits. Mitigation: D1 exports to a plain SQLite file.
 - **Android battery killers:** OEM power savers can silently stop alerts.
 - **Crypto bugs:** mitigated by using libsodium, never custom primitives.
+- **Worker CPU limit:** the free tier allows about 10 ms of CPU per request, and assistant calls decrypt on the Worker. Mitigation: decrypt only (no signature checks on read), only the boards and items a tool needs, and measure with real data before relying on it.
 
 **Out of scope for now:** proximity alerts on iOS and the web; push notifications of any kind; cities beyond Mumbai; a Play Store listing; self-hosting; moderation.
 
@@ -241,14 +244,14 @@ The sideloaded Android app is the only place proximity alerts exist, and the ser
 
 Each phase ends with something I can use daily.
 
-Status as of 2026-10-19: Phases 1 to 3 are live. Phase 4 steps 1 to 4 (per-person keys, device kinds, device linking, revocation) are live; admin app invites are in progress. Master and group key rotation on revoke arrives with those boards in Phase 5.
+Status as of 2026-10-19: Phases 1 to 4 are live, and rotating the master key when the admin removes a member (PR #23) is merged. Phase 5 is merged: the master board and app invites are live; groups (migration 0008), friends' opinions and PR #23 are waiting to be deployed. Phase 6 is being planned.
 
 1. **Foundation:** Next.js + TypeScript project, API Worker on `map.snehilsinha.com`, D1 envelope schema, R2 with the Mumbai map file.
 2. **Solo diary:** keys and passphrase backup, envelope sync, Add sheet, map and list, dropped pins, Google Maps link parsing, categories, tags, comments, Visited. Personal board only.
 3. **Resolver:** anonymous job queue, Claude scheduled task, signature dish and price, Inbox.
 4. **Accounts and devices:** per-person account keys with board keys wrapped to people, device kinds, QR device linking, Devices screen with revocation and key rotation, admin app invites.
 5. **Sharing:** master key and the master board, groups and invites, tagging and commenting on others' places, member removal with key rotation. The place catalogue moves from the Personal board to the master board, and revoking a device or removing a member also rotates the master and group keys.
-6. **Claude assistant:** connector, Claude device with master and personal access, revocation.
+6. **Claude assistant:** Connect Claude on the Devices screen, a Claude device holding only the master and Personal keys, its own MCP connector with read and write tools, the "via Claude" label, revocation.
 7. **Android app:** Capacitor shell, native share target, geofencing plugin.
 8. **Friends onboarding:** install guide for iPhone, import of my existing notes list.
 
@@ -265,6 +268,7 @@ Status as of 2026-10-19: Phases 1 to 3 are live. Phase 4 steps 1 to 4 (per-perso
 
 - [ ] Confirm scheduled tasks are available on my Pro plan; if not, I trigger the resolver from chat.
 - [ ] How often should the resolver run? (Default in use: every 6 hours.)
+- [ ] Should Claude post to the master board when asked, or only to my Personal board? (Default: either, Personal unless I say otherwise.)
 
 **Technical**
 

@@ -35,4 +35,4 @@ Places hold shared facts (written once; only admin edits). People attach opinion
 
 ## Current phase
 
-Phase 5 — Sharing: master key and master board (place catalogue moves there), groups and group invites, tagging and commenting on others' places, member removal with key rotation. Phases 1–3 are live; Phase 4 (accounts and devices) is live except admin app invites, which are being finished.
+Phase 6 — Claude assistant: a `claude` device on the owner's account that holds only the master and Personal board keys (never account or group keys), Connect Claude on the Devices screen, its own MCP connector whose keys unlock only with the connector secret, read and write tools, revocation. Phases 1–5 are merged; groups, friends' opinions and master key rotation on member removal (PR #23) are waiting to be deployed.
