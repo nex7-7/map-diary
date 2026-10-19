@@ -7,6 +7,9 @@ import { FactsEditor } from "@/app/_entries/facts-editor";
 import { BoardPicker, boardChoices, StatusToggle, TagPicker } from "@/app/_entries/fields";
 import { useItems } from "@/app/_entries/use-items";
 import styles from "@/app/_entries/entries.module.css";
+import { BoardBadge, buttonClass, Icon, StatusDot } from "@/lib/ui";
+import { PlaceMap } from "./place-map";
+import p from "./place.module.css";
 import type { Diary } from "@/lib/device";
 import {
   addComment,
@@ -98,165 +101,207 @@ export function PlaceView({ diary, placeId }: { diary: Diary; placeId: string })
   const comments = of("comment").sort((a, b) => a.createdAt.localeCompare(b.createdAt));
   const mapsUrl = `https://www.google.com/maps/search/?api=1&query=${place.location.lat},${place.location.lng}`;
 
+  const board = (id: string) => snapshot.boards.find((b) => b.id === id);
+  const bleeder = place.signatureDish && (
+    <div className={p.bleeder}>
+      <div>
+        <p className="overline">Wallet bleeder</p>
+        <p className="heading-m">{place.signatureDish.name}</p>
+        <p className="sub">Their signature dish, one serving</p>
+      </div>
+      <span className={p.price}>₹{place.signatureDish.priceInr.toLocaleString("en-IN")}</span>
+    </div>
+  );
+
   if (editing) {
     return (
-      <div className={styles.page}>
-        <h1 className={styles.title}>Edit details</h1>
-        <FactsEditor
-          facts={facts}
-          onCancel={() => setEditing(false)}
-          onSave={async (next) => {
-            await updateFacts(diary, item, next);
-            setEditing(false);
-          }}
-        />
+      <div className={p.plain}>
+        <div className={styles.page}>
+          <h1 className={styles.title}>Edit details</h1>
+          <FactsEditor
+            facts={facts}
+            onCancel={() => setEditing(false)}
+            onSave={async (next) => {
+              await updateFacts(diary, item, next);
+              setEditing(false);
+            }}
+          />
+        </div>
       </div>
     );
   }
 
   return (
-    <div className={styles.page}>
-      <header>
-        <h1 className={styles.title}>
-          <span aria-hidden>{style.emoji}</span> {place.name}
-        </h1>
-        <p className={`${styles.meta} muted`}>
-          {style.label}
-          {place.cuisine && ` · ${place.cuisine}`}
-          {place.address && ` · ${place.address}`}
-          {place.isPrivate && " · Dropped pin"}
-        </p>
-      </header>
+    <div className={p.place}>
+      <aside className={p.side}>
+        <div className={p.hero}>
+          <PlaceMap place={place} kind={myStatus ?? (of("status").length > 0 ? "friend" : "pending")} className={p.map} />
+          <Link href="/?view=list" className={`${p.fab} ${p.backFab}`} aria-label="Back to your places">
+            <Icon name="chevronLeft" />
+          </Link>
+        </div>
+        <div className={p.wideOnly}>{bleeder}</div>
+      </aside>
 
-      {place.signatureDish && (
-        <p className={styles.dish}>
-          Wallet bleeder: {place.signatureDish.name} <strong>₹{place.signatureDish.priceInr.toLocaleString("en-IN")}</strong>
-        </p>
-      )}
-
-      <div className={styles.links}>
-        <a href={mapsUrl} target="_blank" rel="noreferrer noopener">
-          Open in Google Maps
-        </a>
-        {place.sourceLinks.map((url) => (
-          <a key={url} href={url} target="_blank" rel="noreferrer noopener">
-            {hostOf(url)}
-          </a>
-        ))}
-      </div>
-
-      {error && (
-        <p className={styles.error} role="alert">
-          {error}
-        </p>
-      )}
-      {notice && (
-        <p className={styles.note} role="status">
-          {notice}
-        </p>
-      )}
-
-      <section className={styles.section}>
-        <h2>Your status</h2>
-        <BoardPicker
-          boards={choices}
-          value={boards}
-          noPublic={place.isPrivate}
-          onChange={(next) => {
-            setBoardEdit(next);
-            // Moving the status moves the place on the person's list for those boards too.
-            if (myStatus !== null) run(() => setStatus(diary, place.id, myStatus, next));
-          }}
-        />
-        <StatusToggle value={myStatus} onChange={(s: Status) => run(() => setStatus(diary, place.id, s, boards))} />
-        {myStatus === null && <p className={styles.note}>Mark it Want to or Visited to put it on your list.</p>}
-        <Others snapshot={snapshot} me={me} opinions={of("status").filter((o) => o.authorId !== me)} render={(o: StatusOpinion) => (o.status === "visited" ? "visited" : "wants to go")} />
-      </section>
-
-      <section className={styles.section}>
-        <h2>Tags</h2>
-        <TagPicker
-          tags={snapshot.tags}
-          selected={myTagIds}
-          disabled={myStatus === null}
-          onToggle={(tagId) => run(() => (myTagIds.has(tagId) ? unapplyTag(diary, place.id, tagId) : tag(tagId)))}
-          onCreate={(def) => run(async () => applyTag(diary, place.id, await defineTag(diary, def, boards), boards))}
-        />
-        <Others
-          snapshot={snapshot}
-          me={me}
-          opinions={othersTags}
-          render={(o: TagOpinion) => {
-            const t = snapshot.tags.find((x) => x.id === o.tagId);
-            return t ? `${t.emoji} ${t.name}` : "a tag you can't see";
-          }}
-        />
-      </section>
-
-      <section className={styles.section}>
-        <h2>Comments</h2>
-        {comments.length > 0 && (
-          <ul className={styles.list}>
-            {comments.map((c) => (
-              <CommentRow
-                key={c.id}
-                comment={c}
-                snapshot={snapshot}
-                mine={c.authorId === me}
-                onEdit={(text) => run(() => editComment(diary, c.id, place.id, text))}
-                onDelete={() => run(() => removeOpinion(diary, c.id))}
-              />
-            ))}
-          </ul>
-        )}
-        <form
-          className={styles.section}
-          onSubmit={(e) => {
-            e.preventDefault();
-            const text = draft;
-            run(async () => {
-              await addComment(diary, place.id, text, boards);
-              setDraft("");
-            });
-          }}
-        >
-          <textarea
-            className={styles.textarea}
-            aria-label="New comment"
-            placeholder={myStatus === null ? "Set a status first" : "Add a comment"}
-            disabled={myStatus === null}
-            value={draft}
-            onChange={(e) => setDraft(e.target.value)}
-          />
-          <button type="submit" className={styles.secondary} disabled={myStatus === null || !draft.trim()}>
-            Add comment
-          </button>
-        </form>
-      </section>
-
-      {canEdit && (
-        <section className={styles.section}>
-          <h2>Place</h2>
+      <div className={p.main}>
+        <Link href="/" className={`${styles.back} ${p.wideOnly}`}>
+          <Icon name="chevronLeft" size="m" />
+          Places
+        </Link>
+        <header className={p.head}>
+          <p className="overline">
+            <span aria-hidden>{style.emoji}</span>&nbsp; {[style.label, place.cuisine].filter(Boolean).join(" · ")}
+          </p>
+          <h1 className="display-xl">{place.name}</h1>
+          {(place.address || place.isPrivate) && (
+            <p className="sub">
+              {[place.address, place.isPrivate ? "Dropped pin, only on your boards" : undefined].filter(Boolean).join(" · ")}
+            </p>
+          )}
           <div className={styles.row}>
-            <button type="button" className={styles.secondary} onClick={() => setEditing(true)}>
-              Edit details
-            </button>
-            <button
-              type="button"
-              className={styles.danger}
-              onClick={() => {
-                if (!confirm(`Delete ${place.name} and your notes on it?`)) return;
-                run(async () => {
-                  await deletePlace(diary, place.id);
-                  router.push("/");
-                });
-              }}
-            >
-              Delete place
-            </button>
+            <a href={mapsUrl} target="_blank" rel="noreferrer noopener" className={buttonClass({ variant: "secondary", size: "m" })}>
+              <Icon name="external" size="s" />
+              Open in Google Maps
+            </a>
+            {place.sourceLinks.map((url) => (
+              <a key={url} href={url} target="_blank" rel="noreferrer noopener" className={buttonClass({ variant: "secondary", size: "m" })}>
+                <Icon name="link" size="s" />
+                {hostOf(url)}
+              </a>
+            ))}
           </div>
+        </header>
+
+        <div className={p.narrowOnly}>{bleeder}</div>
+
+        {error && (
+          <p className={styles.error} role="alert">
+            {error}
+          </p>
+        )}
+        {notice && (
+          <p className={styles.note} role="status">
+            {notice}
+          </p>
+        )}
+
+        <section className={styles.section}>
+          <h2>Your status</h2>
+          <StatusToggle value={myStatus} onChange={(s: Status) => run(() => setStatus(diary, place.id, s, boards))} />
+          {myStatus === null && <p className={styles.note}>Mark it Want to or Visited to put it on your list.</p>}
+          <span className={styles.label}>Shown on</span>
+          <BoardPicker
+            boards={choices}
+            value={boards}
+            noPublic={place.isPrivate}
+            onChange={(next) => {
+              setBoardEdit(next);
+              // Moving the status moves the place on the person's list for those boards too.
+              if (myStatus !== null) run(() => setStatus(diary, place.id, myStatus, next));
+            }}
+          />
+          <Others snapshot={snapshot} me={me} opinions={of("status").filter((o) => o.authorId !== me)} render={(o: StatusOpinion) => (o.status === "visited" ? "visited" : "wants to go")} />
         </section>
-      )}
+
+        <section className={styles.section}>
+          <h2>Tags</h2>
+          {othersTags.length > 0 && (
+            <div className={styles.chips}>
+              {othersTags.map((o) => {
+                const t = snapshot.tags.find((x) => x.id === o.tagId);
+                return (
+                  <span key={o.id} className={p.tagChip} title={t?.description || undefined}>
+                    {t ? `${t.emoji ? `${t.emoji} ` : ""}${t.name}` : "A tag you can't see"}
+                    <span className="sub">{personName(snapshot, me, o)}</span>
+                    {o.boards.map((id) => {
+                      const b = board(id);
+                      return b ? <BoardBadge key={id} kind={b.kind} name={b.name} /> : null;
+                    })}
+                  </span>
+                );
+              })}
+            </div>
+          )}
+          <TagPicker
+            tags={snapshot.tags}
+            selected={myTagIds}
+            disabled={myStatus === null}
+            onToggle={(tagId) => run(() => (myTagIds.has(tagId) ? unapplyTag(diary, place.id, tagId) : tag(tagId)))}
+            onCreate={(def) => run(async () => applyTag(diary, place.id, await defineTag(diary, def, boards), boards))}
+          />
+        </section>
+
+        <section className={styles.section}>
+          <h2>Comments</h2>
+          {comments.length === 0 && <p className={styles.note}>No comments yet.</p>}
+          {comments.length > 0 && (
+            <ul className={p.comments}>
+              {comments.map((c) => (
+                <CommentRow
+                  key={c.id}
+                  comment={c}
+                  snapshot={snapshot}
+                  mine={c.authorId === me}
+                  onEdit={(text) => run(() => editComment(diary, c.id, place.id, text))}
+                  onDelete={() => run(() => removeOpinion(diary, c.id))}
+                />
+              ))}
+            </ul>
+          )}
+          <form
+            className={p.composer}
+            onSubmit={(e) => {
+              e.preventDefault();
+              const text = draft;
+              run(async () => {
+                await addComment(diary, place.id, text, boards);
+                setDraft("");
+              });
+            }}
+          >
+            <textarea
+              className={styles.textarea}
+              aria-label="New comment"
+              placeholder={myStatus === null ? "Set a status first" : "Add a comment"}
+              disabled={myStatus === null}
+              rows={2}
+              value={draft}
+              onChange={(e) => setDraft(e.target.value)}
+            />
+            <div className={styles.row}>
+              <span className={styles.note}>Goes to {boards.map((id) => board(id)?.name ?? "Personal").join(", ")}</span>
+              <button type="submit" className={buttonClass({ size: "m" })} disabled={myStatus === null || !draft.trim()}>
+                Add comment
+              </button>
+            </div>
+          </form>
+        </section>
+
+        {canEdit && (
+          <section className={styles.section}>
+            <h2>Place</h2>
+            <div className={styles.row}>
+              <button type="button" className={buttonClass({ variant: "secondary", size: "m" })} onClick={() => setEditing(true)}>
+                <Icon name="pencil" size="s" />
+                Edit details
+              </button>
+              <button
+                type="button"
+                className={buttonClass({ variant: "danger", size: "m" })}
+                onClick={() => {
+                  if (!confirm(`Delete ${place.name} and your notes on it?`)) return;
+                  run(async () => {
+                    await deletePlace(diary, place.id);
+                    router.push("/");
+                  });
+                }}
+              >
+                Delete place
+              </button>
+            </div>
+          </section>
+        )}
+      </div>
     </div>
   );
 }
@@ -269,15 +314,14 @@ function personName(snapshot: DiarySnapshot, me: string, o: Opinion): string {
 function Others<O extends Opinion>({ snapshot, me, opinions, render }: { snapshot: DiarySnapshot; me: string; opinions: O[]; render: (o: O) => string }) {
   if (opinions.length === 0) return null;
   return (
-    <ul className={styles.list}>
+    <ul className={p.others}>
       {opinions.map((o) => (
-        <li key={o.id} className={styles.note}>
-          <strong>{personName(snapshot, me, o)}</strong> {render(o)}{" "}
-          {o.boards.map((b) => (
-            <span key={b} className={styles.badge}>
-              {boardName(snapshot, b)}
-            </span>
-          ))}
+        <li key={o.id}>
+          <StatusDot kind={o.kind === "status" ? "friend" : "pending"} small />
+          <span>
+            <strong>{personName(snapshot, me, o)}</strong> {render(o)}
+          </span>
+          <Badges snapshot={snapshot} ids={o.boards} />
         </li>
       ))}
     </ul>
@@ -298,7 +342,7 @@ function CommentRow({ comment, snapshot, mine, onEdit, onDelete }: CommentRowPro
   const me = mine ? comment.authorId : "";
 
   return (
-    <li className={styles.item}>
+    <li className={p.comment}>
       {editing ? (
         <>
           <textarea className={styles.textarea} aria-label="Edit comment" value={text} onChange={(e) => setText(e.target.value)} autoFocus />
@@ -321,18 +365,18 @@ function CommentRow({ comment, snapshot, mine, onEdit, onDelete }: CommentRowPro
         </>
       ) : (
         <>
-          <p className={styles.itemtext}>{comment.text}</p>
-          <div className={styles.row}>
-            <span className={styles.note}>
-              {personName(snapshot, me, comment)} · {new Date(comment.createdAt).toLocaleDateString("en-IN", { day: "numeric", month: "short" })}
-            </span>
-            {comment.boards.map((b) => (
-              <span key={b} className={styles.badge}>
-                {boardName(snapshot, b)}
+          <p className={`quote ${p.commentText}`}>“{comment.text}”</p>
+          <div className={p.byline}>
+            {comment.viaClaude && (
+              <span className={p.claude}>
+                <Icon name="sparkles" size="s" />
               </span>
-            ))}
+            )}
+            <strong className={comment.viaClaude ? p.claude : undefined}>{personName(snapshot, me, comment)}</strong>
+            <span className="sub">· {new Date(comment.createdAt).toLocaleDateString("en-IN", { day: "numeric", month: "short" })}</span>
+            <Badges snapshot={snapshot} ids={comment.boards} />
             {mine && (
-              <>
+              <span className={p.commentActions}>
                 <button type="button" className={styles.textbutton} onClick={() => setEditing(true)}>
                   Edit
                 </button>
@@ -345,12 +389,23 @@ function CommentRow({ comment, snapshot, mine, onEdit, onDelete }: CommentRowPro
                 >
                   Delete
                 </button>
-              </>
+              </span>
             )}
           </div>
         </>
       )}
     </li>
+  );
+}
+
+function Badges({ snapshot, ids }: { snapshot: DiarySnapshot; ids: string[] }) {
+  return (
+    <>
+      {ids.map((id) => {
+        const b = snapshot.boards.find((x) => x.id === id);
+        return b ? <BoardBadge key={id} kind={b.kind} name={b.name} /> : null;
+      })}
+    </>
   );
 }
 

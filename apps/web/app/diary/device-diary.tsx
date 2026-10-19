@@ -1,51 +1,32 @@
 "use client";
 
-import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { useMemo } from "react";
+import { DiaryShell } from "@/app/_shell/diary-shell";
 import { DeviceGate, type Diary } from "@/lib/device";
-import { usePending } from "@/lib/pending";
 import { createItemsSource } from "@/lib/places/items-source";
-import { DiaryView } from "./diary-view";
+import { DiaryView, type DiaryViewMode } from "./diary-view";
+
+/** `?view=list` shows the list on a phone; the map is the default. */
+export function useViewMode(): DiaryViewMode {
+  return useSearchParams().get("view") === "list" ? "list" : "map";
+}
 
 /** The diary over this device's decrypted items, once it is signed in. */
 export function DeviceDiary() {
+  const view = useViewMode();
   return (
     <DeviceGate>
-      {(diary) => <SignedIn diary={diary} />}
+      {(diary) => <SignedIn diary={diary} view={view} />}
     </DeviceGate>
   );
 }
 
-function SignedIn({ diary }: { diary: Diary }) {
+function SignedIn({ diary, view }: { diary: Diary; view: DiaryViewMode }) {
   const source = useMemo(() => createItemsSource(diary), [diary]);
-  const { items } = usePending(diary);
-  // Matches to pick and lookups that failed need the person; waiting ones don't.
-  const needsMe = items.filter((i) => i.state.kind === "choose" || i.state.kind === "failed").length;
-  const waiting = items.filter((i) => i.state.kind === "unsent" || i.state.kind === "waiting").length;
   return (
-    <DiaryView
-      source={source}
-      toolbarExtra={
-        <>
-          <Link href="/inbox" className="inbox-link" aria-label={`Inbox${needsMe ? `, ${needsMe} to check` : waiting ? `, ${waiting} being looked up` : ""}`}>
-            <span aria-hidden>📥</span>
-            <span className="inbox-label">Inbox</span>
-            {needsMe > 0 ? <span className="inbox-count">{needsMe}</span> : waiting > 0 ? <span className="inbox-count quiet">{waiting}</span> : null}
-          </Link>
-          <Link href="/groups" className="inbox-link" aria-label="Groups">
-            <span aria-hidden>👥</span>
-            <span className="inbox-label">Groups</span>
-          </Link>
-          <Link href="/profile" className="inbox-link" aria-label="Your name">
-            <span aria-hidden>👤</span>
-            <span className="inbox-label">Name</span>
-          </Link>
-          <Link href="/devices" className="inbox-link" aria-label="Devices">
-            <span aria-hidden>📱</span>
-            <span className="inbox-label">Devices</span>
-          </Link>
-        </>
-      }
-    />
+    <DiaryShell diary={diary} current={view}>
+      <DiaryView source={source} view={view} />
+    </DiaryShell>
   );
 }
