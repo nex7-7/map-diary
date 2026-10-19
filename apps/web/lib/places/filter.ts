@@ -77,7 +77,8 @@ export function filterPlaces(places: readonly PlaceView[], filters: PlaceFilters
     const status: Status = own?.status ?? (statuses.some((o) => o.status === "visited") ? "visited" : "want");
     const addedAt = statuses.reduce((min, o) => (o.createdAt < min ? o.createdAt : min), statuses[0]!.createdAt);
     const listed: ListedPlace = { place, status, mine: own !== undefined, addedAt };
-    if (here) listed.distanceM = distanceMetres(here, place.location);
+    // A chain is as near as its nearest outlet.
+    if (here) listed.distanceM = Math.min(...(place.outlets ?? [place]).map((o) => distanceMetres(here, o.location)));
     out.push(listed);
   }
   return out;
@@ -99,7 +100,8 @@ export function sortPlaces(listed: readonly ListedPlace[], key: SortKey): Listed
 }
 
 function searchText(place: PlaceView): string {
-  return [place.name, place.address, place.cuisine, place.signatureDish?.name].filter(Boolean).join(" ").toLowerCase();
+  const outlets = place.outlets?.flatMap((o) => [o.name, o.address]) ?? [];
+  return [place.name, place.address, place.cuisine, place.signatureDish?.name, ...outlets].filter(Boolean).join(" ").toLowerCase();
 }
 
 const EARTH_RADIUS_M = 6_371_008.8;

@@ -243,3 +243,43 @@
 .wideOnly:empty {
   display: none !important;
 }
+
+.outlets {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+
+.outlet {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  border-radius: var(--radius-m);
+  border: 1px solid var(--line);
+  background: var(--surface);
+}
+
+.outletFocus {
+  border-color: var(--sea);
+  box-shadow: inset 0 0 0 1px var(--sea);
+}
+
+.outletName {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  font-size: 14.5px;
+  text-align: start;
+  cursor: pointer;
+}
+
+.outletName strong {
+  font-weight: 600;
+}

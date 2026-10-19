@@ -184,14 +184,15 @@ export interface PinProps {
 export function pinsCollection(listed: readonly ListedPlace[], selectedId: string | null): FeatureCollection<Point, PinProps> {
   return {
     type: "FeatureCollection",
-    features: listed.map(({ place, status, mine }) => {
+    features: listed.flatMap(({ place, status, mine }) => {
       // Someone else's status, not mine: drawn in the friends' colour.
       const kind: PinKind = mine ? status : "friend";
       const selected = place.id === selectedId;
       const emoji = categoryStyle(place.category).emoji;
-      return {
-        type: "Feature",
-        geometry: { type: "Point", coordinates: [place.location.lng, place.location.lat] },
+      // A chain gets a pin per outlet, all opening the one place page.
+      return (place.outlets ?? [place]).map((at) => ({
+        type: "Feature" as const,
+        geometry: { type: "Point" as const, coordinates: [at.location.lng, at.location.lat] },
         properties: {
           id: place.id,
           name: place.name,
@@ -200,7 +201,7 @@ export function pinsCollection(listed: readonly ListedPlace[], selectedId: strin
           mine,
           selected,
         },
-      };
+      }));
     }),
   };
 }

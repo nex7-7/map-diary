@@ -1,4 +1,5 @@
 import type { EnvelopeType, JsonValue } from "@map-diary/crypto";
+import { outletIds } from "../places/chains";
 import type { StoredItem } from "../places/items-source";
 import { cleanDisplayName, readPayload, type CommentPayload, type PlacePayload, type ProfilePayload, type TagDefPayload } from "../places/payloads";
 import type { Status } from "../places/types";
@@ -40,6 +41,8 @@ export interface NewPlace {
   /** Tags made in the sheet: defined, then applied. */
   newTags: TagDefPayload[];
   comment: string;
+  /** On a chain: the note is about every outlet. */
+  commentAllOutlets?: boolean;
   /** Where the status goes, and the tags and note unless they pick their own. The place itself goes where the diary puts it. */
   boards?: readonly string[];
   /** Where the tags (and any tags made here) go; the status's boards if missing. */
@@ -62,7 +65,7 @@ export async function addPlace(w: DiaryWriter, input: NewPlace): Promise<string>
   await w.write({ type: "status", placeId: place.id, payload: { status: input.status }, ...on(boards) });
   for (const tagId of new Set([...input.tagIds, ...defined])) await applyTag(w, place.id, tagId, tagBoards);
   const text = input.comment.trim();
-  if (text) await w.write({ type: "comment", placeId: place.id, payload: { text }, ...on(commentBoards) });
+  if (text) await w.write({ type: "comment", placeId: place.id, payload: { text, ...(input.commentAllOutlets ? { allOutlets: true } : {}) }, ...on(commentBoards) });
   return place.id;
 }
 
@@ -72,13 +75,12 @@ export async function addPlace(w: DiaryWriter, input: NewPlace): Promise<string>
  */
 export async function addOpinions(w: DiaryWriter, placeId: string, input: Omit<NewPlace, "kind" | "facts">): Promise<void> {
   const { boards, tagBoards = boards, commentBoards = boards } = input;
-  const items = await w.listItems();
-  const hasStatus = items.some((i) => i.type === "status" && i.placeId === placeId && i.authorId === w.device.accountId);
+  const hasStatus = own(w, await w.listItems(), "status", placeId).length > 0;
   if (!hasStatus) await setStatus(w, placeId, input.status, boards);
   const defined: string[] = [];
   for (const def of input.newTags) defined.push(await defineTag(w, def, tagBoards));
   for (const tagId of new Set([...input.tagIds, ...defined])) await applyTag(w, placeId, tagId, tagBoards);
-  if (input.comment.trim()) await addComment(w, placeId, input.comment, commentBoards);
+  if (input.comment.trim()) await addComment(w, placeId, input.comment, commentBoards, input.commentAllOutlets === true);
 }
 
 const on = (boards: Boards) => (boards && boards.length > 0 ? { boards } : {});
@@ -110,8 +112,10 @@ export function findDuplicate(items: readonly StoredItem[], link: string): Store
   });
 }
 
+/** This person's items of a type on the place, or on any outlet of its chain. */
 function own(w: DiaryWriter, items: readonly StoredItem[], type: EnvelopeType, placeId: string): StoredItem[] {
-  return items.filter((i) => i.type === type && i.placeId === placeId && i.authorId === w.device.accountId);
+  const outlets = outletIds(items, placeId);
+  return items.filter((i) => i.type === type && i.placeId !== null && outlets.includes(i.placeId) && i.authorId === w.device.accountId);
 }
 
 async function requireStatus(w: DiaryWriter, placeId: string): Promise<StoredItem[]> {
@@ -124,12 +128,13 @@ async function requireStatus(w: DiaryWriter, placeId: string): Promise<StoredIte
 
 /**
  * Sets this person's status, editing their existing status item if there is one. Given
- * boards, the status moves to them; otherwise it keeps its own (Personal if new).
+ * boards, the status moves to them; otherwise it keeps its own (Personal if new). A chain
+ * has one status per person, kept on the outlet it was first set on.
  */
 export async function setStatus(w: DiaryWriter, placeId: string, status: Status, boards?: Boards): Promise<void> {
   const mine = own(w, await w.listItems(), "status", placeId);
   const latest = mine.reduce<StoredItem | undefined>((a, b) => (!a || b.updatedAt > a.updatedAt ? b : a), undefined);
-  await w.write({ type: "status", placeId, payload: { status }, ...(latest ? { id: latest.id } : {}), ...on(boards) });
+  await w.write({ type: "status", placeId: latest?.placeId ?? placeId, payload: { status }, ...(latest ? { id: latest.id } : {}), ...on(boards) });
   // A sync race can leave two; keep one.
   for (const extra of mine) if (extra !== latest) await w.remove(extra.id);
 }
@@ -161,7 +166,7 @@ export async function applyTag(
   if (!already) await w.write({ type: "tag", placeId, payload: { tagId }, ...on(wanted) });
 }
 
-/** Removes every tag opinion of this person applying `tagId` to the place. */
+/** Removes every tag opinion of this person applying `tagId` to the place (or any outlet of its chain). */
 export async function unapplyTag(w: DiaryWriter, placeId: string, tagId: string): Promise<void> {
   for (const i of own(w, await w.listItems(), "tag", placeId)) {
     if (readPayload("tag", i.payload)?.tagId === tagId) await w.remove(i.id);
@@ -181,17 +186,21 @@ export async function editTag(w: DiaryWriter, id: string, def: TagDefPayload): P
   await w.write({ type: "tag_def", placeId: null, payload: json(clean), id });
 }
 
-export async function addComment(w: DiaryWriter, placeId: string, text: string, boards?: Boards): Promise<void> {
-  const payload: CommentPayload = { text: text.trim() };
+/** Adds a comment. On a chain, `allOutlets` makes it about every outlet rather than `placeId`'s. */
+export async function addComment(w: DiaryWriter, placeId: string, text: string, boards?: Boards, allOutlets = false): Promise<void> {
+  const payload: CommentPayload = { text: text.trim(), ...(allOutlets ? { allOutlets: true as const } : {}) };
   if (!payload.text) throw new EntryError("A comment needs some text");
   await requireStatus(w, placeId);
   await w.write({ type: "comment", placeId, payload: json(payload), ...on(boards) });
 }
 
+/** Rewrites a comment's text; it stays on its own place and keeps its scope. */
 export async function editComment(w: DiaryWriter, id: string, placeId: string, text: string): Promise<void> {
-  const payload: CommentPayload = { text: text.trim() };
+  const prior = (await w.listItems()).find((i) => i.id === id);
+  const allOutlets = prior && readPayload("comment", prior.payload)?.allOutlets === true;
+  const payload: CommentPayload = { text: text.trim(), ...(allOutlets ? { allOutlets: true as const } : {}) };
   if (!payload.text) throw new EntryError("A comment needs some text");
-  await w.write({ type: "comment", placeId, payload: json(payload), id });
+  await w.write({ type: "comment", placeId: prior?.placeId ?? placeId, payload: json(payload), id });
 }
 
 /** Removes one of this person's own opinions. Nobody can remove someone else's. */

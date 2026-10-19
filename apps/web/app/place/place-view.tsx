@@ -24,13 +24,15 @@ import {
   updateFacts,
 } from "@/lib/entries/actions";
 import { boardName, opinionBoards, tagFit } from "@/lib/places/boards";
+import { chainFor, outletLabel, outletOf, viewOf } from "@/lib/places/chains";
 import { categoryStyle } from "@/lib/places/categories";
 import { readPayload } from "@/lib/places/payloads";
-import type { CommentOpinion, DiarySnapshot, Opinion, Status, StatusOpinion, TagOpinion } from "@/lib/places/types";
+import type { CommentOpinion, DiarySnapshot, Opinion, Outlet, PlaceView as Place, Status, StatusOpinion, TagOpinion } from "@/lib/places/types";
 
 /**
  * One place: its facts, every opinion this device can read with author and board, and the
- * owner's own status, tags and comments.
+ * owner's own status, tags and comments. A chain is one page with a row per location; its
+ * status and tags count for every location, and each comment says which one it is about.
  */
 export function PlaceView({ diary, placeId }: { diary: Diary; placeId: string }) {
   const router = useRouter();
@@ -42,10 +44,16 @@ export function PlaceView({ diary, placeId }: { diary: Diary; placeId: string })
   const [boardEdit, setBoardEdit] = useState<string[] | null>(null);
   const [tagBoardEdit, setTagBoardEdit] = useState<string[] | null>(null);
   const [commentBoardEdit, setCommentBoardEdit] = useState<string[] | null>(null);
+  /** The location in focus on a chain: the map centres on it and its details are the ones edited. */
+  const [focusId, setFocusId] = useState(placeId);
+  /** On a chain: "all", or the location a new comment is about. */
+  const [commentScope, setCommentScope] = useState<string>("all");
 
   const me = diary.device.accountId;
-  const place = snapshot.places.find((p) => p.id === placeId);
-  const item = items.find((i) => i.id === placeId);
+  const place = viewOf(snapshot.places, placeId);
+  const outlets = place?.outlets && place.outlets.length > 1 ? place.outlets : undefined;
+  const focus = (place && outlets && (outletOf(place, focusId) ?? outlets[0])) || undefined;
+  const item = items.find((i) => i.id === (focus?.id ?? place?.id));
 
   if (!loaded) return <p className="muted">Opening…</p>;
   if (!place || !item || (item.type !== "place" && item.type !== "private_place")) {
@@ -108,7 +116,13 @@ export function PlaceView({ diary, placeId }: { diary: Diary; placeId: string })
   const myTagIds = new Set(of("tag").filter((o) => o.authorId === me).map((o) => o.tagId));
   const othersTags = of("tag").filter((o) => o.authorId !== me);
   const comments = of("comment").sort((a, b) => a.createdAt.localeCompare(b.createdAt));
-  const mapsUrl = `https://www.google.com/maps/search/?api=1&query=${place.location.lat},${place.location.lng}`;
+  const at = focus ?? place;
+  const mapsUrl = mapsLink(at);
+  const scopeOf = (c: CommentOpinion): string | undefined => {
+    if (!outlets) return undefined;
+    const outlet = c.allOutlets ? undefined : outlets.find((o) => o.id === c.placeId);
+    return outlet ? outletLabel(place, outlet) : "All locations";
+  };
 
   const board = (id: string) => snapshot.boards.find((b) => b.id === id);
   const bleeder = place.signatureDish && (
@@ -130,6 +144,7 @@ export function PlaceView({ diary, placeId }: { diary: Diary; placeId: string })
           <FactsEditor
             facts={facts}
             onCancel={() => setEditing(false)}
+            {...(item.type === "place" ? { chainFor: (name: string) => chainFor(items, name) } : {})}
             onSave={async (next) => {
               await updateFacts(diary, item, next);
               setEditing(false);
@@ -144,7 +159,7 @@ export function PlaceView({ diary, placeId }: { diary: Diary; placeId: string })
     <div className={p.place}>
       <aside className={p.side}>
         <div className={p.hero}>
-          <PlaceMap place={place} kind={myStatus ?? (of("status").length > 0 ? "friend" : "pending")} className={p.map} />
+          <PlaceMap place={place} focus={at.location} kind={myStatus ?? (of("status").length > 0 ? "friend" : "pending")} className={p.map} />
           <Link href="/?view=list" className={`${p.fab} ${p.backFab}`} aria-label="Back to your places">
             <Icon name="chevronLeft" />
           </Link>
@@ -162,11 +177,16 @@ export function PlaceView({ diary, placeId }: { diary: Diary; placeId: string })
             <span aria-hidden>{style.emoji}</span>&nbsp; {[style.label, place.cuisine].filter(Boolean).join(" · ")}
           </p>
           <h1 className="display-xl">{place.name}</h1>
-          {(place.address || place.isPrivate) && (
-            <p className="sub">
-              {[place.address, place.isPrivate ? "Dropped pin, only on your boards" : undefined].filter(Boolean).join(" · ")}
-            </p>
+          {outlets ? (
+            <p className="sub">{outlets.length} locations</p>
+          ) : (
+            (place.address || place.isPrivate) && (
+              <p className="sub">
+                {[place.address, place.isPrivate ? "Dropped pin, only on your boards" : undefined].filter(Boolean).join(" · ")}
+              </p>
+            )
           )}
+          {!outlets && (
           <div className={styles.row}>
             <a href={mapsUrl} target="_blank" rel="noreferrer noopener" className={buttonClass({ variant: "secondary", size: "m" })}>
               <Icon name="external" size="s" />
@@ -179,7 +199,39 @@ export function PlaceView({ diary, placeId }: { diary: Diary; placeId: string })
               </a>
             ))}
           </div>
+          )}
         </header>
+
+        {outlets && (
+          <section className={styles.section}>
+            <h2>Locations</h2>
+            <ul className={p.outlets}>
+              {outlets.map((o) => (
+                <li key={o.id} className={o.id === at.id ? `${p.outlet} ${p.outletFocus}` : p.outlet}>
+                  <button type="button" className={p.outletName} onClick={() => setFocusId(o.id)} aria-pressed={o.id === at.id}>
+                    <Icon name="pin" size="s" />
+                    <span>
+                      <strong>{outletLabel(place, o)}</strong>
+                      {o.address && <span className="sub"> · {o.address}</span>}
+                    </span>
+                  </button>
+                  <div className={styles.row}>
+                    <a href={mapsLink(o)} target="_blank" rel="noreferrer noopener" className={buttonClass({ variant: "secondary", size: "m" })}>
+                      <Icon name="external" size="s" />
+                      Google Maps
+                    </a>
+                    {o.sourceLinks.map((url) => (
+                      <a key={url} href={url} target="_blank" rel="noreferrer noopener" className={buttonClass({ variant: "secondary", size: "m" })}>
+                        <Icon name="link" size="s" />
+                        {hostOf(url)}
+                      </a>
+                    ))}
+                  </div>
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
 
         <div className={p.narrowOnly}>{bleeder}</div>
 
@@ -254,7 +306,8 @@ export function PlaceView({ diary, placeId }: { diary: Diary; placeId: string })
                   comment={c}
                   snapshot={snapshot}
                   mine={c.authorId === me}
-                  onEdit={(text) => run(() => editComment(diary, c.id, place.id, text))}
+                  scope={scopeOf(c)}
+                  onEdit={(text) => run(() => editComment(diary, c.id, c.placeId ?? place.id, text))}
                   onDelete={() => run(() => removeOpinion(diary, c.id))}
                 />
               ))}
@@ -265,8 +318,9 @@ export function PlaceView({ diary, placeId }: { diary: Diary; placeId: string })
             onSubmit={(e) => {
               e.preventDefault();
               const text = draft;
+              const about = outlets && commentScope !== "all" && outlets.some((o) => o.id === commentScope) ? commentScope : undefined;
               run(async () => {
-                await addComment(diary, place.id, text, commentBoards);
+                await addComment(diary, about ?? place.id, text, commentBoards, outlets !== undefined && about === undefined);
                 setDraft("");
               });
             }}
@@ -280,6 +334,19 @@ export function PlaceView({ diary, placeId }: { diary: Diary; placeId: string })
               value={draft}
               onChange={(e) => setDraft(e.target.value)}
             />
+            {outlets && myStatus !== null && (
+              <label className={styles.row}>
+                <span className={styles.label}>About</span>
+                <select className={styles.input} value={commentScope} onChange={(e) => setCommentScope(e.target.value)}>
+                  <option value="all">All locations</option>
+                  {outlets.map((o) => (
+                    <option key={o.id} value={o.id}>
+                      {outletLabel(place, o)}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
             {myStatus !== null && (
               <FollowBoards what="Comment" boards={choices} statusBoards={boards} value={commentBoardEdit && commentBoards} onChange={setCommentBoardEdit} noPublic={place.isPrivate} />
             )}
@@ -297,20 +364,21 @@ export function PlaceView({ diary, placeId }: { diary: Diary; placeId: string })
             <div className={styles.row}>
               <button type="button" className={buttonClass({ variant: "secondary", size: "m" })} onClick={() => setEditing(true)}>
                 <Icon name="pencil" size="s" />
-                Edit details
+                {focus ? `Edit ${outletLabel(place, focus)}` : "Edit details"}
               </button>
               <button
                 type="button"
                 className={buttonClass({ variant: "danger", size: "m" })}
                 onClick={() => {
-                  if (!confirm(`Delete ${place.name} and your notes on it?`)) return;
+                  const what = focus ? `the ${outletLabel(place, focus)} location of ${place.name}` : place.name;
+                  if (!confirm(`Delete ${what} and your notes on it?`)) return;
                   run(async () => {
-                    await deletePlace(diary, place.id);
+                    await deletePlace(diary, item.id);
                     router.push("/");
                   });
                 }}
               >
-                Delete place
+                {focus ? "Delete this location" : "Delete place"}
               </button>
             </div>
           </section>
@@ -346,11 +414,13 @@ interface CommentRowProps {
   comment: CommentOpinion;
   snapshot: DiarySnapshot;
   mine: boolean;
+  /** On a chain: which location the comment is about, or "All locations". */
+  scope: string | undefined;
   onEdit: (text: string) => void;
   onDelete: () => void;
 }
 
-function CommentRow({ comment, snapshot, mine, onEdit, onDelete }: CommentRowProps) {
+function CommentRow({ comment, snapshot, mine, scope, onEdit, onDelete }: CommentRowProps) {
   const [editing, setEditing] = useState(false);
   const [text, setText] = useState(comment.text);
   const me = mine ? comment.authorId : "";
@@ -388,6 +458,7 @@ function CommentRow({ comment, snapshot, mine, onEdit, onDelete }: CommentRowPro
             )}
             <strong className={comment.viaClaude ? p.claude : undefined}>{personName(snapshot, me, comment)}</strong>
             <span className="sub">· {new Date(comment.createdAt).toLocaleDateString("en-IN", { day: "numeric", month: "short" })}</span>
+            {scope && <span className="sub">· {scope}</span>}
             <Badges snapshot={snapshot} ids={comment.boards} />
             {mine && (
               <span className={p.commentActions}>
@@ -421,6 +492,10 @@ function Badges({ snapshot, ids }: { snapshot: DiarySnapshot; ids: string[] }) {
       })}
     </>
   );
+}
+
+function mapsLink(at: Place | Outlet): string {
+  return `https://www.google.com/maps/search/?api=1&query=${at.location.lat},${at.location.lng}`;
 }
 
 function hostOf(url: string): string {

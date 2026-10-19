@@ -4,6 +4,7 @@ import dynamic from "next/dynamic";
 import { useState } from "react";
 import { buildFacts, formFromFacts, isFood, type FactsForm } from "@/lib/entries/facts";
 import type { PlacePayload } from "@/lib/places/payloads";
+import type { PlaceChain } from "@/lib/places/types";
 import { CategoryPicker } from "./fields";
 import styles from "./entries.module.css";
 
@@ -16,10 +17,12 @@ interface Props {
   facts: PlacePayload;
   onSave: (facts: PlacePayload) => Promise<void>;
   onCancel: () => void;
+  /** For a catalogue place: finds or makes the chain for a typed chain name, and shows the field. */
+  chainFor?: (name: string) => PlaceChain;
 }
 
 /** Edits a place's facts: name, category, pin, address, cuisine, wallet bleeder and links. */
-export function FactsEditor({ facts, onSave, onCancel }: Props) {
+export function FactsEditor({ facts, onSave, onCancel, chainFor }: Props) {
   const [form, setForm] = useState<FactsForm>(() => formFromFacts(facts));
   const [newLink, setNewLink] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -28,7 +31,7 @@ export function FactsEditor({ facts, onSave, onCancel }: Props) {
 
   const save = async () => {
     const links = newLink.trim() ? [...form.sourceLinks, newLink.trim()] : form.sourceLinks;
-    const result = buildFacts({ ...form, sourceLinks: links });
+    const result = buildFacts({ ...form, sourceLinks: links }, chainFor);
     if (!result.ok) {
       setError(result.message);
       return;
@@ -89,6 +92,16 @@ export function FactsEditor({ facts, onSave, onCancel }: Props) {
             />
           </div>
         </div>
+      )}
+      {chainFor && (
+        <Field label="Part of a chain">
+          <input
+            className={styles.input}
+            value={form.chainName ?? ""}
+            onChange={(e) => set({ chainName: e.target.value })}
+            placeholder="Chain name, if it has other outlets (optional)"
+          />
+        </Field>
       )}
       <div className={styles.section}>
         <span className={styles.label}>Links</span>

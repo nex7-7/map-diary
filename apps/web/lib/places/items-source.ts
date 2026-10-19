@@ -1,5 +1,6 @@
 import type { EnvelopeType, JsonValue } from "@map-diary/crypto";
 import { applyBoardRules } from "./boards";
+import { foldChains, outletIds } from "./chains";
 import { readPayload } from "./payloads";
 import type { Board, BoardKind, DiarySnapshot, DiarySource, Opinion, Person, PlaceView, Status, StatusOpinion, TagDefinition } from "./types";
 
@@ -82,9 +83,11 @@ export function createItemsSource(store: ItemStore): DiarySource {
     setStatus: async (placeId: string, status: Status) => {
       const items = await store.listItems();
       const { accountId } = store.device;
-      const own = latestStatus(items.filter((i) => i.type === "status" && i.placeId === placeId && i.authorId === accountId));
-      // The store posts new items to the Personal board; an edit keeps the item's id.
-      await store.write({ type: "status", placeId, payload: { status }, ...(own ? { id: own.id } : {}) });
+      // A chain has one status per person, on whichever outlet it was first set.
+      const outlets = outletIds(items, placeId);
+      const own = latestStatus(items.filter((i) => i.type === "status" && i.placeId !== null && outlets.includes(i.placeId) && i.authorId === accountId));
+      // The store posts new items to the Personal board; an edit keeps the item's id and place.
+      await store.write({ type: "status", placeId: own?.placeId ?? placeId, payload: { status }, ...(own ? { id: own.id } : {}) });
       return load();
     },
   };
@@ -102,6 +105,7 @@ export function snapshotFromItems(
 ): DiarySnapshot {
   const iso = (ms: number) => new Date(ms).toISOString();
   const places = new Map<string, PlaceView>();
+  const created = new Map<string, number>();
   const tags: TagDefinition[] = [];
   const opinions: { placeId: string; opinion: Opinion }[] = [];
   const authors = new Set<string>([accountId]);
@@ -112,6 +116,7 @@ export function snapshotFromItems(
     const base = {
       id: item.id,
       authorId: item.authorId,
+      ...(item.placeId ? { placeId: item.placeId } : {}),
       boards: item.boardIds,
       shownOn: [],
       ...(item.viaClaude ? { viaClaude: true } : {}),
@@ -123,6 +128,7 @@ export function snapshotFromItems(
       case "private_place": {
         const p = readPayload(item.type, item.payload);
         if (p) places.set(item.id, { ...p, id: item.id, isPrivate: item.type === "private_place", boards: item.boardIds, opinions: [] });
+        created.set(item.id, item.createdAt);
         break;
       }
       case "tag_def": {
@@ -142,7 +148,7 @@ export function snapshotFromItems(
       }
       case "comment": {
         const c = readPayload("comment", item.payload);
-        if (c && item.placeId) opinions.push({ placeId: item.placeId, opinion: { ...base, kind: "comment", text: c.text } });
+        if (c && item.placeId) opinions.push({ placeId: item.placeId, opinion: { ...base, kind: "comment", text: c.text, ...(c.allOutlets ? { allOutlets: true } : {}) } });
         break;
       }
     }
@@ -153,8 +159,10 @@ export function snapshotFromItems(
     if (!place) continue;
     place.opinions.push(opinion);
   }
-  // One status per person per place: keep the latest if a sync race left two.
-  for (const place of places.values()) {
+  // A chain's outlets show as one place.
+  const folded = foldChains([...places.values()], (id) => created.get(id) ?? 0);
+  // One status per person per place (or chain): keep the latest if a sync race left two.
+  for (const place of folded) {
     const latest = new Map<string, StatusOpinion>();
     for (const o of place.opinions) {
       if (o.kind !== "status") continue;
@@ -170,7 +178,7 @@ export function snapshotFromItems(
     // A group's board takes the name its members gave it.
     boards: boards.map((b) => (b.kind === "group" && groups.has(b.id) ? { ...b, name: groups.get(b.id)!.name } : b)),
     tags,
-    places: [...places.values()],
+    places: folded,
   });
   // People are the authors of what this device can see, named by their profiles.
   for (const p of snapshot.places) for (const o of p.opinions) authors.add(o.authorId);

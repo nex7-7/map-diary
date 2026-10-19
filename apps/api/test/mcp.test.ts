@@ -112,6 +112,15 @@ describe("MCP resolver endpoint", () => {
     });
   });
 
+  it("passes a chain's other outlets through to the device", async () => {
+    const { id, keys } = await submit("https://www.zomato.com/mumbai/kyani-co-marine-lines");
+    const outlet = { ...candidate, location: { lat: 19.06, lng: 72.83 }, address: "Bandra" };
+    const ok = await callTool("submit_resolution", { jobId: id, candidates: [candidate], chain: { name: "Kyani & Co.", outlets: [outlet] } });
+    expect(ok.structuredContent).toEqual({ jobId: id, status: "resolved" });
+    const job = await (await fetchApi(`/api/resolver/jobs/${id}`)).json<{ sealedResult: string }>();
+    expect(openResolverResult(fromBase64(job.sealedResult), keys).chain).toMatchObject({ name: "Kyani & Co.", outlets: [{ address: "Bandra" }] });
+  });
+
   it("marks a job failed", async () => {
     const { id } = await submit("A place that does not exist");
     const out = await callTool("submit_resolution", { jobId: id, failed: true });

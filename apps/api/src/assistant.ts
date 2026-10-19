@@ -211,6 +211,8 @@ interface Place {
   cuisine?: string;
   signatureDish?: { name: string; priceInr: number };
   sourceLinks: string[];
+  /** The chain this place is one outlet of; the app shows a chain's outlets as one place. */
+  chain?: string;
 }
 interface TagDef {
   name: string;
@@ -239,6 +241,8 @@ function readPlace(payload: JsonValue): Place | undefined {
   if (address) place.address = address;
   if (cuisine) place.cuisine = cuisine;
   if (dish && str(dish.name) && typeof dish.priceInr === "number") place.signatureDish = { name: str(dish.name)!, priceInr: dish.priceInr };
+  const chain = str(obj(p.chain as JsonValue)?.name);
+  if (chain) place.chain = chain;
   return place;
 }
 
@@ -342,6 +346,7 @@ class Tools {
       ...(facts.cuisine ? { cuisine: facts.cuisine } : {}),
       ...(facts.address ? { address: facts.address } : {}),
       ...(facts.signatureDish ? { signatureDish: facts.signatureDish } : {}),
+      ...(facts.chain ? { chain: facts.chain } : {}),
       location: facts.location,
       private: item.type === "private_place",
       myStatus,

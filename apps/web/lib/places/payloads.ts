@@ -1,5 +1,5 @@
 import type { EnvelopeType, JsonValue } from "@map-diary/crypto";
-import { BUILTIN_CATEGORIES, type Category, type LngLat, type SignatureDish, type Status } from "./types";
+import { BUILTIN_CATEGORIES, type Category, type LngLat, type PlaceChain, type SignatureDish, type Status } from "./types";
 
 /**
  * The decrypted payload of each envelope type, and strict readers for them.
@@ -15,7 +15,11 @@ export interface PlacePayload {
   cuisine?: string;
   signatureDish?: SignatureDish;
   sourceLinks: string[];
+  /** Set when the place is one outlet of a chain; outlets with the same chain id are one place page. */
+  chain?: PlaceChain;
 }
+
+export const CHAIN_NAME_MAX = 200;
 
 export interface StatusPayload {
   status: Status;
@@ -33,6 +37,8 @@ export interface TagPayload {
 
 export interface CommentPayload {
   text: string;
+  /** On a chain: about every outlet, not just the one the comment is attached to. */
+  allOutlets?: true;
 }
 
 export interface ProfilePayload {
@@ -104,6 +110,11 @@ function readPlace(p: JsonObject): PlacePayload | undefined {
     const priceInr = num(p.signatureDish.priceInr);
     if (dish && priceInr !== undefined && priceInr >= 0) place.signatureDish = { name: dish, priceInr };
   }
+  if (isObject(p.chain)) {
+    const id = str(p.chain.id);
+    const chainName = str(p.chain.name)?.trim();
+    if (id && /^[A-Za-z0-9_-]{1,64}$/.test(id) && chainName && chainName.length <= CHAIN_NAME_MAX) place.chain = { id, name: chainName };
+  }
   return place;
 }
 
@@ -121,7 +132,8 @@ const readers: { [T in EnvelopeType]: (p: JsonObject) => PayloadByType[T] | unde
   },
   comment: (p) => {
     const text = str(p.text)?.trim();
-    return text ? { text } : undefined;
+    if (!text) return undefined;
+    return p.allOutlets === true ? { text, allOutlets: true } : { text };
   },
   profile: (p) => {
     const name = cleanDisplayName(str(p.name) ?? "");

@@ -25,6 +25,8 @@ const FOOD_CATEGORIES: ReadonlySet<ResolverCategory> = new Set(["restaurant", "c
 export const MUMBAI_BOUNDS = [72.75, 18.85, 73.15, 19.35] as const;
 
 export const MAX_CANDIDATES = 5;
+/** The most other outlets one chain can bring along. */
+export const MAX_OUTLETS = 40;
 const MAX_LINKS = 5;
 /** A plausible menu price in rupees for one serving. */
 const MAX_PRICE_INR = 50_000;
@@ -40,11 +42,22 @@ export interface ResolvedPlace {
   sourceLinks: string[];
 }
 
+/**
+ * A chain the match belongs to: its name and its other outlets in Mumbai (not the match
+ * itself). The person picks between adding every outlet or only the one they asked for.
+ */
+export interface ResolvedChain {
+  name: string;
+  outlets: ResolvedPlace[];
+}
+
 /** What a device reads after opening a resolved job. Failed jobs carry no result. */
 export interface ResolverResult {
   v: typeof RESOLVER_RESULT_VERSION;
   /** One match, or several for the person to pick from in the Inbox. */
   candidates: ResolvedPlace[];
+  /** Set when the match is one outlet of a chain. Devices that predate it ignore it. */
+  chain?: ResolvedChain;
 }
 
 export type ResolutionProblem =
@@ -56,7 +69,9 @@ export type ResolutionProblem =
   | "outside_mumbai"
   | "bad_price"
   | "dish_not_food"
-  | "bad_link";
+  | "bad_link"
+  | "bad_chain"
+  | "too_many_outlets";
 
 export type ParsedResolution = { ok: true; result: ResolverResult } | { ok: false; problem: ResolutionProblem };
 
@@ -130,7 +145,8 @@ function parseCandidate(c: unknown): ResolvedPlace | ResolutionProblem {
 /**
  * Checks a resolver's answer: one to five candidates, each with a name, a known
  * category, coordinates inside Mumbai and, for food and drink only, a signature dish
- * with a whole-rupee price. Text is trimmed and coordinates rounded to six decimals.
+ * with a whole-rupee price, plus an optional chain whose outlets pass the same checks.
+ * Text is trimmed and coordinates rounded to six decimals.
  */
 export function parseResolution(value: unknown): ParsedResolution {
   if (!isObj(value) || !Array.isArray(value.candidates)) return { ok: false, problem: "bad_shape" };
@@ -142,7 +158,28 @@ export function parseResolution(value: unknown): ParsedResolution {
     if (typeof parsed === "string") return { ok: false, problem: parsed };
     candidates.push(parsed);
   }
-  return { ok: true, result: { v: RESOLVER_RESULT_VERSION, candidates } };
+  const result: ResolverResult = { v: RESOLVER_RESULT_VERSION, candidates };
+  if (value.chain !== undefined && value.chain !== null) {
+    const chain = parseChain(value.chain);
+    if (typeof chain === "string") return { ok: false, problem: chain };
+    if (chain) result.chain = chain;
+  }
+  return { ok: true, result };
+}
+
+/** A chain's name and other outlets, each checked like a candidate. No outlets means no chain. */
+function parseChain(c: unknown): ResolvedChain | undefined | ResolutionProblem {
+  if (!isObj(c) || !Array.isArray(c.outlets)) return "bad_chain";
+  const name = text(c.name, 200);
+  if (!name) return "bad_chain";
+  if (c.outlets.length > MAX_OUTLETS) return "too_many_outlets";
+  const outlets: ResolvedPlace[] = [];
+  for (const o of c.outlets) {
+    const parsed = parseCandidate(o);
+    if (typeof parsed === "string") return parsed;
+    outlets.push(parsed);
+  }
+  return outlets.length > 0 ? { name, outlets } : undefined;
 }
 
 /** A one-time keypair for one resolver job. Keep the secret key on the device until the job is done. */

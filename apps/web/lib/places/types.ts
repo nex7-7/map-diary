@@ -37,6 +37,22 @@ export interface SignatureDish {
   priceInr: number;
 }
 
+/** A chain of outlets, named by the resolver; every outlet carries the same id. */
+export interface PlaceChain {
+  id: string;
+  name: string;
+}
+
+/** One outlet of a chain: its own pin, address and links. */
+export interface Outlet {
+  id: string;
+  name: string;
+  location: LngLat;
+  address?: string;
+  sourceLinks: string[];
+  signatureDish?: SignatureDish;
+}
+
 /** Shared facts about a place (catalogue entry or a private dropped pin). */
 export interface PlaceFacts {
   id: string;
@@ -50,11 +66,15 @@ export interface PlaceFacts {
   sourceLinks: string[];
   /** A dropped pin: never in the shared catalogue. */
   isPrivate: boolean;
+  /** The chain this place is an outlet of. */
+  chain?: PlaceChain;
 }
 
 interface OpinionBase {
   id: string;
   authorId: string;
+  /** The place (for a chain, the outlet) the opinion is attached to. */
+  placeId?: string;
   /** Boards this device knows that the opinion is posted to and its author belongs to: its badges. */
   boards: string[];
   /**
@@ -81,6 +101,8 @@ export interface TagOpinion extends OpinionBase {
 export interface CommentOpinion extends OpinionBase {
   kind: "comment";
   text: string;
+  /** On a chain: about every outlet rather than the one it is attached to. */
+  allOutlets?: boolean;
 }
 
 export type Opinion = StatusOpinion | TagOpinion | CommentOpinion;
@@ -94,7 +116,14 @@ export interface TagDefinition {
   boards: string[];
 }
 
+/**
+ * One place page. For a chain, `id` and the facts are its first outlet's, `name` is the
+ * chain's, `outlets` lists every outlet, and `opinions` gathers them all: status and tags
+ * count for the whole chain, comments say which outlet they are about.
+ */
 export interface PlaceView extends PlaceFacts {
+  /** Every outlet of the chain, first one first; absent for a place that is not a chain. */
+  outlets?: Outlet[];
   /** Boards this device knows that the place itself is posted to. */
   boards: string[];
   /** Every opinion on this place this device can read. */

@@ -69,6 +69,37 @@ describe("parseResolution", () => {
   });
 });
 
+describe("chains", () => {
+  const outlet = (lat: number, address: string) => ({ ...britannia, name: "The Bombay Cartel", location: { lat, lng: 72.83 }, address });
+
+  it("keeps a chain's other outlets, checked like candidates", () => {
+    const parsed = parseResolution({ candidates: [britannia], chain: { name: " The Bombay Cartel ", outlets: [outlet(19.1, "Bandra"), outlet(19.2, "Andheri")] } });
+    expect(parsed.ok).toBe(true);
+    if (!parsed.ok) return;
+    expect(parsed.result.chain?.name).toBe("The Bombay Cartel");
+    expect(parsed.result.chain?.outlets.map((o) => o.address)).toEqual(["Bandra", "Andheri"]);
+  });
+
+  it("drops a chain with no other outlets", () => {
+    const parsed = parseResolution({ candidates: [britannia], chain: { name: "Solo", outlets: [] } });
+    expect(parsed.ok && parsed.result.chain).toBe(undefined);
+  });
+
+  it("refuses a bad chain, an outlet outside Mumbai and too many outlets", () => {
+    expect(parseResolution({ candidates: [britannia], chain: { outlets: [outlet(19.1, "Bandra")] } })).toEqual({ ok: false, problem: "bad_chain" });
+    expect(parseResolution({ candidates: [britannia], chain: { name: "X", outlets: [outlet(28.6, "Delhi")] } })).toEqual({ ok: false, problem: "outside_mumbai" });
+    const many = Array.from({ length: 41 }, (_, n) => outlet(19 + n / 1000, `Outlet ${n}`));
+    expect(parseResolution({ candidates: [britannia], chain: { name: "X", outlets: many } })).toEqual({ ok: false, problem: "too_many_outlets" });
+  });
+
+  it("survives sealing", () => {
+    const keys = generateReplyKeys();
+    const parsed = parseResolution({ candidates: [britannia], chain: { name: "The Bombay Cartel", outlets: [outlet(19.1, "Bandra")] } });
+    if (!parsed.ok) throw new Error("expected ok");
+    expect(openResolverResult(sealResolverResult(parsed.result, keys.publicKey), keys)).toEqual(parsed.result);
+  });
+});
+
 describe("sealed results", () => {
   it("opens only with the job's one-time key", () => {
     const keys = generateReplyKeys();
