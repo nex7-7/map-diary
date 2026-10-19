@@ -105,3 +105,11 @@ export {
   type GroupInvite,
   type SealedInvite,
 } from "./group-invite";
+export {
+  generateConnectorSecret,
+  isConnectorSecret,
+  connectorSecretHash,
+  sealClaudeDeviceKeys,
+  openClaudeDeviceKeys,
+  type SealedClaudeKeys,
+} from "./claude";

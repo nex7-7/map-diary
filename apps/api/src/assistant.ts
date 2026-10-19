@@ -4,10 +4,12 @@ import {
   RESOLVER_CATEGORIES,
   parseResolution,
   randomId,
+  wipe,
   type JsonValue,
   type ResolutionProblem,
 } from "@map-diary/crypto";
 import { readBody, type SignedEnv } from "./auth";
+import { unlockClaudeDevice } from "./claude";
 import { MAX_DECRYPTS, Reader, wipeSession, type ClaudeSession, type Item } from "./assistant-read";
 import { OPEN_THE_APP, WriteRefused, boardsOutOfReach, findByLinks, removeItems, writeItems } from "./assistant-write";
 import { fail, isObject, type JsonObject } from "./http";
@@ -26,6 +28,14 @@ import { PROBLEMS } from "./mcp";
 
 /** Finds the Claude device for a connector secret and opens its keys; null if there is none (or it was revoked). */
 export type Unlock = (db: D1Database, secret: string) => Promise<ClaudeSession | null>;
+
+/** Unlocks with the keys Connect Claude stored (claude.ts), keeping only what the tools use. */
+export const unlockStored: Unlock = async (db, secret) => {
+  const u = await unlockClaudeDevice(db, secret);
+  if (!u) return null;
+  wipe(u.identity.boxSecretKey);
+  return { deviceId: u.deviceId, accountId: u.accountId, signSecretKey: u.identity.signSecretKey, boards: u.boards, keys: u.boardKeys };
+};
 
 const SERVER_INFO = { name: "map-diary", version: "1.0.0" };
 const [WEST, SOUTH, EAST, NORTH] = MUMBAI_BOUNDS;

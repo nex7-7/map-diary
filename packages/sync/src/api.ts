@@ -82,7 +82,16 @@ export interface MeResponse {
     createdAt: number;
     lastSeenAt: number | null;
     revokedAt: number | null;
+    /** A Claude device's master and Personal key versions, wrapped straight to it. */
+    boardKeys?: { boardId: string; keyVersion: number }[];
   }[];
+}
+
+/** Registers a Claude device: its public keys, its sealed secret keys and its board keys. */
+export interface ClaudeDeviceBody {
+  device: { id: string; signPublicKey: string; boxPublicKey: string; authorization: string };
+  connector: { secretHash: string; nonce: string; sealedKeys: string };
+  boardKeys: WrappedBoardKey[];
 }
 
 export interface PushResponse {
@@ -303,6 +312,16 @@ export class Api {
 
   putBoardKeys(boardKeys: WrappedBoardKey[], signer: Signer) {
     return this.call<{ stored: number }>("PUT", "/api/board-keys", { boardKeys }, signer);
+  }
+
+  // The Claude assistant's device.
+
+  connectClaude(body: ClaudeDeviceBody, signer: Signer) {
+    return this.call<{ deviceId: string }>("POST", "/api/claude-devices", body, signer);
+  }
+
+  putClaudeBoardKeys(deviceId: string, boardKeys: WrappedBoardKey[], signer: Signer) {
+    return this.call<{ stored: number }>("PUT", `/api/claude-devices/${encodeURIComponent(deviceId)}/board-keys`, { boardKeys }, signer);
   }
 
   // App invites and members: admin only, except the invite status a friend's device checks.

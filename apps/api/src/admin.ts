@@ -242,6 +242,16 @@ admin.post("/members/:id/remove", async (c) => {
         `DELETE FROM pairings WHERE created_by_device_id IN (SELECT id FROM devices WHERE account_id = ?) AND ${removed}`,
       )
       .bind(id, id, now),
+    db
+      .prepare(
+        `DELETE FROM claude_connectors WHERE device_id IN (SELECT id FROM devices WHERE account_id = ?) AND ${removed}`,
+      )
+      .bind(id, id, now),
+    db
+      .prepare(
+        `DELETE FROM device_board_keys WHERE device_id IN (SELECT id FROM devices WHERE account_id = ?) AND ${removed}`,
+      )
+      .bind(id, id, now),
     ...groups.flatMap((g) => leaveGroupStatements(db, g.board_id, id, g.members - 1, now)),
     ...masterStatements,
   ]);

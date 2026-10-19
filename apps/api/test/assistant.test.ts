@@ -1,18 +1,13 @@
-// The Claude assistant's MCP tools, against the real push and read code and a local D1. The
-// Claude device here is a plain row with the owner's master and Personal keys; how those keys
-// are stored and unlocked from the connector secret is the Connect Claude flow's business.
+// The Claude assistant's MCP tools, end to end: the owner connects Claude from their device,
+// then the connector calls the real Worker with its secret, against a local D1.
 import { env, exports } from "cloudflare:workers";
-import { Hono } from "hono";
 import { describe, expect, it } from "vitest";
-import { generateIdentity, randomId, ready, type BoardKey, type JsonValue } from "@map-diary/crypto";
-import { Api, Diary, MemoryStorage, createGroup, masterBoardOf, prepareSetup, type DeviceState } from "@map-diary/sync";
-import { assistantRoutes } from "../src/assistant";
-import type { ClaudeSession } from "../src/assistant-read";
+import { ready, type JsonValue } from "@map-diary/crypto";
+import { Api, Diary, MemoryStorage, connectClaude, createGroup, masterBoardOf, prepareSetup, type DeviceState } from "@map-diary/sync";
 
 await ready();
 
 const ORIGIN = "https://map.snehilsinha.com";
-const SECRET = "test-connector-secret";
 const api = new Api({ origin: ORIGIN, fetch: (r) => exports.default.fetch(r) });
 const placeLinks = (payload: JsonValue) => {
   const links = (payload as { sourceLinks?: unknown }).sourceLinks;
@@ -21,26 +16,18 @@ const placeLinks = (payload: JsonValue) => {
 
 let owner: DeviceState;
 let ownerDiary: Diary;
-let session: () => ClaudeSession;
-const claude = generateIdentity();
-const claudeDeviceId = randomId();
-
-const app = new Hono<{ Bindings: Env }>().basePath("/api").route(
-  "/",
-  assistantRoutes(async (_db, secret) => (secret === SECRET ? session() : null)),
-);
+let secret: string;
+let claudeDeviceId: string;
 
 let rpcId = 0;
-async function rpc(method: string, params: unknown = {}, secret = SECRET) {
-  const res = await app.fetch(
-    new Request(`${ORIGIN}/api/claude/mcp/${secret}`, {
+async function rpc(method: string, params: unknown = {}, auth: { path?: string; bearer?: string } = { path: secret }) {
+  return exports.default.fetch(
+    new Request(`${ORIGIN}/api/claude/mcp${auth.path ? `/${auth.path}` : ""}`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", ...(auth.bearer ? { Authorization: `Bearer ${auth.bearer}` } : {}) },
       body: JSON.stringify({ jsonrpc: "2.0", id: ++rpcId, method, params }),
     }),
-    env,
   );
-  return res;
 }
 
 type Answer = { text: string; isError: boolean; value: Record<string, unknown> };
@@ -51,8 +38,6 @@ async function call(name: string, args: Record<string, unknown> = {}): Promise<A
   return { text: body.result.content[0]!.text, isError: body.result.isError === true, value: body.result.structuredContent ?? {} };
 }
 
-const copy = (k: BoardKey): BoardKey => ({ ...k, key: k.key.slice() });
-
 describe("the Claude assistant's MCP tools", () => {
   let cafeId: string;
 
@@ -62,23 +47,10 @@ describe("the Claude assistant's MCP tools", () => {
     ownerDiary = new Diary(owner, new MemoryStorage(), api, { placeLinks });
     await ownerDiary.sync();
     owner = ownerDiary.device;
-    const master = masterBoardOf(owner)!;
-    expect(master).toBeDefined();
-    await env.DB.prepare(
-      "INSERT INTO devices (id, account_id, kind, sign_public_key, box_public_key, created_at) VALUES (?, ?, 'claude', ?, ?, ?)",
-    )
-      .bind(claudeDeviceId, owner.accountId, claude.signPublicKey, claude.boxPublicKey, Date.now())
-      .run();
-    session = () => ({
-      deviceId: claudeDeviceId,
-      accountId: owner.accountId,
-      signSecretKey: claude.signSecretKey.slice(),
-      boards: [
-        { id: master.id, kind: "master", keyVersion: master.keyVersion },
-        { id: owner.personalBoardId, kind: "personal", keyVersion: 1 },
-      ],
-      keys: owner.boardKeys.filter((k) => k.boardId === master.id || k.boardId === owner.personalBoardId).map(copy),
-    });
+    expect(masterBoardOf(owner)).toBeDefined();
+    const connected = await connectClaude(api, owner);
+    secret = connected.connectorSecret;
+    claudeDeviceId = connected.deviceId;
   });
 
   it("speaks MCP and refuses a wrong secret", async () => {
@@ -94,7 +66,9 @@ describe("the Claude assistant's MCP tools", () => {
       "add_tag",
       "add_comment",
     ]);
-    expect((await rpc("tools/list", {}, "wrong")).status).toBe(401);
+    expect((await rpc("tools/list", {}, { path: "wrong" })).status).toBe(401);
+    expect((await rpc("tools/list", {}, {})).status).toBe(401);
+    expect((await rpc("tools/list", {}, { bearer: secret })).status).toBe(200);
   });
 
   it("adds a checked place to the catalogue, with the status on Personal by default", async () => {
@@ -235,17 +209,18 @@ describe("the Claude assistant's MCP tools", () => {
   });
 
   it("refuses writes until it has the newest key, with a plain message", async () => {
+    // As if another device rotated the master key and no device of the owner has synced since.
     const master = masterBoardOf(owner)!;
-    const current = session;
-    session = () => ({ ...current(), boards: current().boards.map((b) => (b.id === master.id ? { ...b, keyVersion: b.keyVersion + 1 } : b)) });
-    try {
-      const refused = await call("set_status", { placeId: cafeId, status: "want", boards: ["public"] });
-      expect(refused).toMatchObject({ isError: true });
-      expect(refused.text).toMatch(/Open the app once/);
-      // Reading older items still works.
-      expect((await call("get_place", { placeId: cafeId })).isError).toBe(false);
-    } finally {
-      session = current;
-    }
+    await env.DB.prepare("UPDATE boards SET key_version = key_version + 1 WHERE id = ?").bind(master.id).run();
+    const refused = await call("set_status", { placeId: cafeId, status: "want", boards: ["public"] });
+    expect(refused).toMatchObject({ isError: true });
+    expect(refused.text).toMatch(/Open the app once/);
+    // Reading older items still works.
+    expect((await call("get_place", { placeId: cafeId })).isError).toBe(false);
+  });
+
+  it("stops working once the Claude device is revoked", async () => {
+    await env.DB.prepare("UPDATE devices SET revoked_at = ? WHERE id = ?").bind(Date.now(), claudeDeviceId).run();
+    expect((await rpc("tools/list")).status).toBe(401);
   });
 });

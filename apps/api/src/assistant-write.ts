@@ -11,6 +11,7 @@ import {
   type JsonValue,
 } from "@map-diary/crypto";
 import type { ClaudeSession } from "./assistant-read";
+import type { AuthedDevice } from "./auth";
 import { deleteEnvelopes, pushEnvelopes, type Rejection } from "./envelopes";
 
 /**
@@ -45,6 +46,11 @@ const REJECTIONS: Record<string, string> = {
   deleted: "That item was deleted.",
   immutable_field: "That item cannot be changed that way.",
 };
+
+/** The Claude device as the push checks see it: never admin, and limited to master and Personal. */
+function deviceOf(session: ClaudeSession): AuthedDevice {
+  return { id: session.deviceId, accountId: session.accountId, kind: "claude", isAdmin: false };
+}
 
 export interface NewItem {
   type: EnvelopeType;
@@ -111,7 +117,7 @@ export async function writeItems(db: D1Database, session: ClaudeSession, items: 
     linkHashes.set(envelopes[i]!.id, placeLinkHashes(session, links));
   });
 
-  const outcome = await pushEnvelopes(db, { id: session.deviceId, accountId: session.accountId, isAdmin: false }, envelopes, linkHashes);
+  const outcome = await pushEnvelopes(db, deviceOf(session), envelopes, linkHashes);
   if (!outcome) throw new WriteRefused("This Claude connection was removed. Connect Claude again from the Devices screen.");
   const refused: Rejection | undefined = outcome.rejected[0];
   if (refused) throw new WriteRefused(REJECTIONS[refused.reason] ?? `Refused: ${refused.reason}.`, refused.placeId);
@@ -119,7 +125,7 @@ export async function writeItems(db: D1Database, session: ClaudeSession, items: 
 }
 
 export async function removeItems(db: D1Database, session: ClaudeSession, ids: readonly string[]): Promise<void> {
-  if (ids.length > 0) await deleteEnvelopes(db, session.accountId, false, ids);
+  if (ids.length > 0) await deleteEnvelopes(db, deviceOf(session), ids);
 }
 
 /**

@@ -1,10 +1,12 @@
 "use client";
 
 import {
+  connectClaude,
   revokeDevice,
   setPassphrase,
   startPairing,
   type AccountSecret,
+  type ConnectedClaude,
   type Diary,
   type OpenPairing,
 } from "@map-diary/sync";
@@ -59,4 +61,14 @@ export function addDevice(diary: Diary): Promise<OpenPairing> {
 export async function removeDevice(diary: Diary, deviceId: string, secret: AccountSecret): Promise<void> {
   const next = await revokeDevice(api, diary.device, deviceId, secret);
   await adoptDevice(next);
+}
+
+/**
+ * Connects Claude: a device on this account that holds only the master and Personal keys.
+ * Syncs first so the keys it wraps for Claude are the current ones. The returned secret is
+ * shown once for the Claude connector; nothing on this device keeps it.
+ */
+export async function connectClaudeDevice(diary: Diary): Promise<ConnectedClaude> {
+  await diary.sync();
+  return connectClaude(api, diary.device);
 }

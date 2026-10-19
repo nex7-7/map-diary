@@ -6,11 +6,12 @@ import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { PairingError, type OpenPairing, type PairingCheck } from "@map-diary/sync";
 import entries from "@/app/_entries/entries.module.css";
 import { PASSPHRASE_MIN_LENGTH } from "@map-diary/sync";
-import { errorMessage, pairingErrorMessage, revokeErrorMessage } from "@/app/(device)/messages";
+import { claudeErrorMessage, errorMessage, pairingErrorMessage, revokeErrorMessage } from "@/app/(device)/messages";
 import {
   DeviceGate,
   addDevice,
   choosePassphrase,
+  connectClaudeDevice,
   listDevices,
   removeDevice,
   type AccountOverview,
@@ -107,6 +108,7 @@ function Devices({ diary }: { diary: Diary }) {
           Add a device
         </button>
       )}
+      {devices && !loadFailed && !devices.some((d) => d.kind === "claude") && <ConnectClaude diary={diary} onDone={load} />}
       {overview && !loadFailed && <Passphrase diary={diary} hasPassphrase={overview.hasPassphrase} onDone={load} />}
       {overview?.isAdmin && (
         <Link className="muted" href="/admin">
@@ -114,6 +116,82 @@ function Devices({ diary }: { diary: Diary }) {
         </Link>
       )}
     </div>
+  );
+}
+
+/**
+ * Connects Claude as a device that can read and write only the Public and Personal boards,
+ * never a group. The connector secret is shown once; this device does not keep it.
+ */
+function ConnectClaude({ diary, onDone }: { diary: Diary; onDone: () => void }) {
+  const [open, setOpen] = useState(false);
+  const [secret, setSecret] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function connect() {
+    setBusy(true);
+    setError(null);
+    try {
+      setSecret((await connectClaudeDevice(diary)).connectorSecret);
+    } catch (err) {
+      setError(claudeErrorMessage(err));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function done() {
+    setSecret(null);
+    setOpen(false);
+    setCopied(false);
+    onDone();
+  }
+
+  if (secret) {
+    return (
+      <>
+        <p>Claude is connected. Paste this secret into the Claude connector. It is shown only once.</p>
+        <p className={styles.code} style={{ wordBreak: "break-all", userSelect: "all" }}>
+          {secret}
+        </p>
+        <button
+          className={styles.secondary}
+          type="button"
+          onClick={() => void navigator.clipboard.writeText(secret).then(() => setCopied(true))}
+        >
+          {copied ? "Copied" : "Copy secret"}
+        </button>
+        <button className={styles.button} type="button" onClick={done}>
+          Done
+        </button>
+      </>
+    );
+  }
+
+  if (!open) {
+    return (
+      <button className={styles.secondary} type="button" onClick={() => setOpen(true)}>
+        Connect Claude
+      </button>
+    );
+  }
+
+  return (
+    <>
+      <p>
+        Claude gets its own device that can read and add to your Public and Personal boards, never your groups.
+        Its items show as yours via Claude. You can remove it here at any time.
+      </p>
+      {error && <p className={styles.error}>{error}</p>}
+      <button className={styles.button} type="button" disabled={busy} onClick={() => void connect()}>
+        {busy ? "Connecting…" : "Connect Claude"}
+      </button>
+      <button className={styles.secondary} type="button" disabled={busy} onClick={() => setOpen(false)}>
+        Cancel
+      </button>
+    </>
   );
 }
 

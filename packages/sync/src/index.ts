@@ -10,6 +10,7 @@ export {
   type VersionKey,
   type BoardMember,
   type BoardSummary,
+  type ClaudeDeviceBody,
   type WrappedBoardKey,
   type GroupMember,
   type GroupView,
@@ -67,6 +68,7 @@ export {
   type InviteErrorCode,
   type NewAppInvite,
 } from "./invites";
+export { ClaudeError, connectClaude, topUpClaudeKeys, type ClaudeErrorCode, type ConnectedClaude } from "./claude";
 export { RevokeError, revokeDevice, type AccountSecret, type RevokeErrorCode } from "./revoke";
 export type { DeviceKind } from "@map-diary/crypto";
 export { MemoryStorage, type DiaryItem, type DiaryStorage } from "./storage";
