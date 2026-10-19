@@ -11,11 +11,13 @@ const fetchApi = (path: string, init?: RequestInit) =>
 
 let nextId = 1;
 
-/** One JSON-RPC call to the MCP endpoint, with the token in the path. */
-async function rpc(method: string, params?: unknown, path = `/api/mcp/${TOKEN}`) {
+const AUTH = { Authorization: `Bearer ${TOKEN}` };
+
+/** One JSON-RPC call to the MCP endpoint, with the token as a Bearer header. */
+async function rpc(method: string, params?: unknown, path = "/api/mcp", auth: Record<string, string> = AUTH) {
   const res = await fetchApi(path, {
     method: "POST",
-    headers: { "Content-Type": "application/json", Accept: "application/json, text/event-stream" },
+    headers: { "Content-Type": "application/json", Accept: "application/json, text/event-stream", ...auth },
     body: JSON.stringify({ jsonrpc: "2.0", id: nextId++, method, ...(params ? { params } : {}) }),
   });
   return res;
@@ -65,9 +67,9 @@ describe("MCP resolver endpoint", () => {
     const odd = await (await rpc("initialize", { protocolVersion: "1999-01-01" })).json<{ result: { protocolVersion: string } }>();
     expect(odd.result.protocolVersion).toBe("2025-11-25");
 
-    const note = await fetchApi(`/api/mcp/${TOKEN}`, {
+    const note = await fetchApi("/api/mcp", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", ...AUTH },
       body: JSON.stringify({ jsonrpc: "2.0", method: "notifications/initialized" }),
     });
     expect(note.status).toBe(202);
@@ -117,22 +119,23 @@ describe("MCP resolver endpoint", () => {
     expect((await callTool("submit_resolution", { jobId: "nope", failed: true })).content[0]!.text).toMatch(/No such job/);
   });
 
-  it("needs the token, in the path or as a Bearer header", async () => {
-    expect((await rpc("tools/list", undefined, "/api/mcp/wrong-token")).status).toBe(401);
-    expect((await rpc("tools/list", undefined, "/api/mcp")).status).toBe(401);
+  it("needs the token as a Bearer header, never in the URL", async () => {
+    expect((await rpc("tools/list", undefined, "/api/mcp", { Authorization: "Bearer wrong-token" })).status).toBe(401);
+    expect((await rpc("tools/list", undefined, "/api/mcp", {})).status).toBe(401);
+    expect((await rpc("tools/list", undefined, `/api/mcp/${TOKEN}`, {})).status).not.toBe(200);
     const withHeader = await fetchApi("/api/mcp", {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${TOKEN}` },
       body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "ping" }),
     });
     expect(await withHeader.json()).toEqual({ jsonrpc: "2.0", id: 1, result: {} });
-    expect((await fetchApi(`/api/mcp/${TOKEN}`)).status).toBe(405);
+    expect((await fetchApi("/api/mcp")).status).toBe(405);
   });
 
   it("answers a batch", async () => {
-    const res = await fetchApi(`/api/mcp/${TOKEN}`, {
+    const res = await fetchApi("/api/mcp", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", ...AUTH },
       body: JSON.stringify([
         { jsonrpc: "2.0", id: "a", method: "ping" },
         { jsonrpc: "2.0", method: "notifications/initialized" },
