@@ -35,4 +35,4 @@ Places hold shared facts (written once; only admin edits). People attach opinion
 
 ## Current phase
 
-Phase 1 — Foundation: project scaffold, API Worker on `map.snehilsinha.com`, D1 envelope schema, R2 bucket with the Mumbai map file.
+Phase 5 — Sharing: master key and master board (place catalogue moves there), groups and group invites, tagging and commenting on others' places, member removal with key rotation. Phases 1–3 are live; Phase 4 (accounts and devices) is live except admin app invites, which are being finished.
