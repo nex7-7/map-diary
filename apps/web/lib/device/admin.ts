@@ -34,8 +34,10 @@ export function members(diary: Diary): Promise<MemberView[]> {
   return listMembers(api, diary.device);
 }
 
-export function removeFromApp(diary: Diary, accountId: string): Promise<void> {
-  return removeMember(api, diary.device, accountId);
+/** Removes someone, then syncs so this device collects the new Public key straight away. */
+export async function removeFromApp(diary: Diary, accountId: string): Promise<void> {
+  await removeMember(api, diary.device, accountId);
+  void diary.sync();
 }
 
 const NOTES_KEY = "map-diary:invite-notes";

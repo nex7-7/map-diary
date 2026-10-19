@@ -423,7 +423,32 @@ describe("device setup, sign-in and sync", () => {
     await expect(removeMember(api, phone, phone.accountId)).rejects.toMatchObject({ code: "server" });
     await expect(removeMember(api, friend, phone.accountId)).rejects.toMatchObject({ code: "forbidden" });
 
+    const signer = { deviceId: phone.deviceId, signSecretKey: phone.identity.signSecretKey };
+    const before = (await api.me(signer)).boards.find((b) => b.kind === "master")!;
+    // The Worker refuses a removal whose new Public key leaves out a member who stays, or has none.
+    await expect(api.removeMember(friend.accountId, undefined, signer)).rejects.toMatchObject({ status: 400 });
+    await expect(
+      api.removeMember(
+        friend.accountId,
+        { masterKeyVersion: before.keyVersion + 1, masterKeys: [{ accountId: friend.accountId, accountKeyVersion: 1, wrappedKey: "AAAA" }] },
+        signer,
+      ),
+    ).rejects.toMatchObject({ status: 409, code: "stale" });
+
     await removeMember(api, phone, friend.accountId);
+    // The Public board moved to a new key that only the members who stay hold.
+    const after = (await api.me(signer)).boards.find((b) => b.kind === "master")!;
+    expect(after.keyVersion).toBe(before.keyVersion + 1);
+    const wraps = await env.DB.prepare("SELECT account_id FROM board_keys WHERE board_id = ? AND key_version = ?")
+      .bind(after.id, after.keyVersion)
+      .all<{ account_id: string }>();
+    expect(wraps.results.map((r) => r.account_id)).toEqual([phone.accountId]);
+    const admin = diaryOf(phone);
+    await admin.sync();
+    expect(admin.getStatus()).toMatchObject({ phase: "idle", error: null });
+    expect(writeKey(admin.device, after.id)?.version).toBe(after.keyVersion);
+    phone = admin.device;
+
     const d = diaryOf(friend);
     await d.sync();
     expect(d.getStatus().error).toBe("device_revoked");

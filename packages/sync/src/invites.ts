@@ -1,6 +1,8 @@
 import {
   appInviteBoxKeys,
   appInviteId,
+  fromBase64,
+  generateBoardKey,
   generateInviteCode,
   normaliseInviteCode,
   ready,
@@ -93,9 +95,30 @@ export async function listMembers(api: Api, device: DeviceState): Promise<Member
   return (await attempt(() => api.listMembers(signerOf(device)))).members;
 }
 
-/** Removes someone from the app; every device of theirs is refused from then on. */
+/**
+ * Removes someone from the app; every device of theirs is refused from then on. In the same
+ * call the master (Public) board moves to a fresh key, made here and wrapped for every member
+ * who stays (this admin included), so the removed person's keys open nothing posted later.
+ * The admin's diary picks its copy up on the next sync.
+ */
 export async function removeMember(api: Api, device: DeviceState, accountId: string): Promise<void> {
-  await attempt(() => api.removeMember(accountId, signerOf(device)));
+  await ready();
+  const signer = signerOf(device);
+  await attempt(async () => {
+    const me = await api.me(signer);
+    const master = me.boards.find((b) => b.kind === "master");
+    if (!master) return api.removeMember(accountId, undefined, signer);
+    const next = generateBoardKey(master.id, master.keyVersion + 1);
+    const { members } = await api.boardMembers(master.id, signer);
+    const masterKeys = members
+      .filter((m) => m.accountId !== accountId)
+      .map((m) => ({
+        accountId: m.accountId,
+        accountKeyVersion: m.boxKeyVersion,
+        wrappedKey: toBase64(wrapKeyForMember(next.key, fromBase64(m.boxPublicKey))),
+      }));
+    return api.removeMember(accountId, { masterKeyVersion: next.version, masterKeys }, signer);
+  });
 }
 
 export type InviteCheck = { state: AppInviteState | "bad_code" | "unknown"; expiresAt?: number };
