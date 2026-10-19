@@ -27,6 +27,7 @@ const PHONE_TABS: Item[] = [
 const DESKTOP_NAV: Item[] = [
   { key: "map", href: "/", label: "Places", icon: "map" },
   { key: "inbox", href: "/inbox", label: "Inbox", icon: "inbox" },
+  { key: "you", href: "/profile", label: "You", icon: "user" },
   { key: "groups", href: "/groups", label: "Groups", icon: "users" },
   { key: "devices", href: "/devices", label: "Devices", icon: "phone" },
   { key: "admin", href: "/admin", label: "Admin", icon: "shield" },
@@ -34,8 +35,8 @@ const DESKTOP_NAV: Item[] = [
 
 /** Screens reached from You on a phone light up You there. */
 const PHONE_KEY: Record<NavKey, NavKey> = { map: "map", list: "list", inbox: "inbox", you: "you", groups: "you", devices: "you", admin: "you" };
-/** On a desktop the list and map are one screen, and You is Devices. */
-const DESKTOP_KEY: Record<NavKey, NavKey> = { map: "map", list: "map", inbox: "inbox", you: "devices", groups: "groups", devices: "devices", admin: "admin" };
+/** On a desktop the list and map are one screen. */
+const DESKTOP_KEY: Record<NavKey, NavKey> = { map: "map", list: "map", inbox: "inbox", you: "you", groups: "groups", devices: "devices", admin: "admin" };
 
 export interface NavProps {
   current: NavKey;
