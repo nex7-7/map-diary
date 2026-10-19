@@ -101,7 +101,7 @@ describe("the Claude assistant's device", () => {
     await expect(api.openPairing("x", s)).rejects.toMatchObject(refused);
     await expect(api.putBoardKeys([], s)).rejects.toMatchObject(refused);
     await expect(
-      api.revokeDevice(phone.deviceId, { boxPublicKey: "", boxKeyVersion: 2, boardKeys: [], deviceKeys: [], memberKeys: [] }, s),
+      api.revokeDevice(phone.deviceId, { boxPublicKey: "", boxKeyVersion: 2, boxKeySignature: "", boardKeys: [], deviceKeys: [], memberKeys: [] }, s),
     ).rejects.toMatchObject(refused);
     await expect(api.putClaudeBoardKeys(claude.deviceId, [], s)).rejects.toMatchObject(refused);
   });

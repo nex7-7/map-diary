@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { KEY_BACKUP_VERSION, fromBase64, toBase64, type KeyBackup } from "@map-diary/crypto";
+import { KEY_BACKUP_VERSION, fromBase64, toBase64, verifyKeyBackup, type KeyBackup } from "@map-diary/crypto";
 import { readBody, requireDevice, type AuthedEnv, type SignedEnv } from "./auth";
 import { bytes, fail, isB64, isObject, isPositiveInt } from "./http";
 
@@ -95,12 +95,32 @@ backupFetch.post("/key-backup/fetch", readBody, async (c) => {
 
 export const backupWrite = new Hono<AuthedEnv>();
 
-/** Replaces the account's backup, for example after a passphrase change or a new group key. */
+/**
+ * Replaces the account's backup, for example after a passphrase change. The account key signs
+ * it: devices do not hold that key (it is derived from the recovery seed), so a stolen device
+ * cannot swap the backup and break passphrase sign-in for the owner.
+ */
 backupWrite.put("/key-backup", readBody, requireDevice, async (c) => {
-  const parsed = parseKeyBackupBody(c.var.body);
-  if (!parsed) return fail(c, 400, "bad_request");
+  const body = c.var.body;
+  const parsed = parseKeyBackupBody(body);
+  const signature = isObject(body) ? body.accountSignature : undefined;
+  if (!parsed || !isB64(signature, 100)) return fail(c, 400, "bad_request");
+  const { accountId } = c.var.device;
+  const account = await c.env.DB.prepare("SELECT sign_public_key FROM accounts WHERE id = ?")
+    .bind(accountId)
+    .first<{ sign_public_key: unknown }>();
+  const { backup } = parsed;
+  const signed =
+    account !== null &&
+    account.sign_public_key !== null &&
+    verifyKeyBackup(
+      { accountId, lookup: toBase64(parsed.lookup), salt: backup.salt, nonce: backup.nonce, ciphertext: backup.ciphertext },
+      signature,
+      bytes(account.sign_public_key),
+    );
+  if (!signed) return fail(c, 403, "bad_account_signature");
   try {
-    await upsertKeyBackup(c.env.DB, c.var.device.accountId, parsed, Date.now()).run();
+    await upsertKeyBackup(c.env.DB, accountId, parsed, Date.now()).run();
   } catch {
     // The lookup id is taken by another account (the same passphrase); ask for another.
     return fail(c, 409, "lookup_taken");

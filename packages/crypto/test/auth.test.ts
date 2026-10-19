@@ -5,8 +5,12 @@ import {
   generateAccountKeys,
   generateIdentity,
   ready,
+  signAccountBoxKey,
+  signKeyBackup,
   signRequest,
+  verifyAccountBoxKey,
   verifyDeviceAuthorization,
+  verifyKeyBackup,
   verifyRequest,
   type DeviceToAuthorize,
   type RequestToSign,
@@ -65,6 +69,31 @@ describe("device authorisation", () => {
       ),
     ).toBe(false);
     expect(verifyDeviceAuthorization(toAuthorize, auth, generateAccountKeys().signPublicKey)).toBe(false);
+  });
+});
+
+describe("account key signatures", () => {
+  it("binds a new account box key to the account, version and key", () => {
+    const account = generateAccountKeys();
+    const k = { accountId: "acc1", version: 2, boxPublicKey: generateIdentity().boxPublicKey };
+    const sig = signAccountBoxKey(k, account.signSecretKey);
+    expect(verifyAccountBoxKey(k, sig, account.signPublicKey)).toBe(true);
+    expect(verifyAccountBoxKey({ ...k, version: 3 }, sig, account.signPublicKey)).toBe(false);
+    expect(verifyAccountBoxKey({ ...k, accountId: "acc2" }, sig, account.signPublicKey)).toBe(false);
+    expect(verifyAccountBoxKey({ ...k, boxPublicKey: generateIdentity().boxPublicKey }, sig, account.signPublicKey)).toBe(false);
+    // A device key is not the account key.
+    const device = generateIdentity();
+    expect(verifyAccountBoxKey(k, signAccountBoxKey(k, device.signSecretKey), account.signPublicKey)).toBe(false);
+    expect(verifyAccountBoxKey(k, "not base64!", account.signPublicKey)).toBe(false);
+  });
+
+  it("binds a key backup to the account and its contents", () => {
+    const account = generateAccountKeys();
+    const b = { accountId: "acc1", lookup: "AAAA", salt: "BBBB", nonce: "CCCC", ciphertext: "DDDD" };
+    const sig = signKeyBackup(b, account.signSecretKey);
+    expect(verifyKeyBackup(b, sig, account.signPublicKey)).toBe(true);
+    expect(verifyKeyBackup({ ...b, ciphertext: "EEEE" }, sig, account.signPublicKey)).toBe(false);
+    expect(verifyKeyBackup({ ...b, lookup: "FFFF" }, sig, account.signPublicKey)).toBe(false);
   });
 });
 

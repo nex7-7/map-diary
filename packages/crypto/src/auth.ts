@@ -127,6 +127,63 @@ export function verifyDeviceAuthorization(
 }
 
 /**
+ * The account key's signature on a new account box key. Revoking a device moves the account to
+ * the next box key, which is derived from the recovery seed; devices never hold the account key
+ * (it is derived from the seed too), so this signature proves the revoker had the seed. Without
+ * it a stolen device could pick a box key of its own and lock the owner out of every board.
+ */
+export interface AccountBoxKeyToSign {
+  accountId: string;
+  version: number;
+  boxPublicKey: Uint8Array;
+}
+
+function accountBoxKeyBytes(k: AccountBoxKeyToSign): Uint8Array {
+  return canonicalBytes(["map-diary/account-box-key", REQUEST_AUTH_VERSION, k.accountId, k.version, toBase64(k.boxPublicKey)]);
+}
+
+export function signAccountBoxKey(k: AccountBoxKeyToSign, accountSignSecretKey: Uint8Array): string {
+  return toBase64(getSodium().crypto_sign_detached(accountBoxKeyBytes(k), accountSignSecretKey));
+}
+
+export function verifyAccountBoxKey(k: AccountBoxKeyToSign, signature: string, accountSignPublicKey: Uint8Array): boolean {
+  try {
+    return getSodium().crypto_sign_verify_detached(fromBase64(signature), accountBoxKeyBytes(k), accountSignPublicKey);
+  } catch {
+    return false;
+  }
+}
+
+/** A replacement key backup, as the account key signs it (all fields base64url). */
+export interface KeyBackupToSign {
+  accountId: string;
+  lookup: string;
+  salt: string;
+  nonce: string;
+  ciphertext: string;
+}
+
+function keyBackupBytes(b: KeyBackupToSign): Uint8Array {
+  return canonicalBytes(["map-diary/key-backup-owner", REQUEST_AUTH_VERSION, b.accountId, b.lookup, b.salt, b.nonce, b.ciphertext]);
+}
+
+/**
+ * The account key's signature on a replacement key backup, so only someone with the recovery
+ * seed (not merely a signed-in device) can change how the account signs in.
+ */
+export function signKeyBackup(b: KeyBackupToSign, accountSignSecretKey: Uint8Array): string {
+  return toBase64(getSodium().crypto_sign_detached(keyBackupBytes(b), accountSignSecretKey));
+}
+
+export function verifyKeyBackup(b: KeyBackupToSign, signature: string, accountSignPublicKey: Uint8Array): boolean {
+  try {
+    return getSodium().crypto_sign_verify_detached(fromBase64(signature), keyBackupBytes(b), accountSignPublicKey);
+  } catch {
+    return false;
+  }
+}
+
+/**
  * The id a new device uses to fetch the key backup knowing only the passphrase.
  * Argon2id with a fixed, app-wide salt, so it is deterministic; guessing it is as hard as
  * guessing the passphrase, which keeps backups from being downloadable by account id.

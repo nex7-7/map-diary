@@ -2,11 +2,14 @@
 import { env, exports } from "cloudflare:workers";
 import { describe, expect, it } from "vitest";
 import {
+  deriveAccount,
   generateBoardKey,
   generateIdentity,
   pairingId,
+  parseRecoveryPhrase,
   randomId,
   ready,
+  signAccountBoxKey,
   toBase64,
   wrapKeyForMember,
   type BoardKey,
@@ -277,18 +280,26 @@ describe("device setup, sign-in and sync", () => {
     await expect(revokeDevice(api, phone, phone.deviceId, { passphrase: NEW })).rejects.toMatchObject({ code: "server" });
 
     const before = phone.accountBox.version;
+    const phoneSigner = { deviceId: phone.deviceId, signSecretKey: phone.identity.signSecretKey };
+    const seeded = deriveAccount(parseRecoveryPhrase(phrase));
+    const nextBox = seeded.accountBoxKeys(before + 1);
+    const boxKey = { accountId: phone.accountId, version: before + 1, boxPublicKey: nextBox.publicKey };
+    const revokeBody = (signature: string) => ({
+      boxPublicKey: toBase64(nextBox.publicKey),
+      boxKeyVersion: before + 1,
+      boxKeySignature: signature,
+      boardKeys: [],
+      deviceKeys: [{ deviceId: phone.deviceId, sealedKey: "AAAA" }],
+      memberKeys: [],
+    });
+    // A device without the recovery seed cannot sign the new account key, so it cannot revoke:
+    // a stolen phone cannot lock its owner out.
+    await expect(
+      api.revokeDevice(lost.deviceId, revokeBody(signAccountBoxKey(boxKey, phone.identity.signSecretKey)), phoneSigner),
+    ).rejects.toMatchObject({ status: 403, code: "bad_account_signature" });
     // The Worker refuses a rotation that leaves out a remaining device or a board key.
     await expect(
-      api.revokeDevice(
-        lost.deviceId,
-        {
-          boxPublicKey: toBase64(phone.accountBox.publicKey),
-          boxKeyVersion: before + 1,
-          boardKeys: [],
-          deviceKeys: [{ deviceId: phone.deviceId, sealedKey: "AAAA" }],
-        },
-        { deviceId: phone.deviceId, signSecretKey: phone.identity.signSecretKey },
-      ),
+      api.revokeDevice(lost.deviceId, revokeBody(signAccountBoxKey(boxKey, seeded.accountKeys.signSecretKey)), phoneSigner),
     ).rejects.toMatchObject({ status: 409, code: "stale" });
 
     const personalBefore = Math.max(...phone.boardKeys.filter((k) => k.boardId === phone.personalBoardId).map((k) => k.version));
@@ -354,6 +365,8 @@ describe("device setup, sign-in and sync", () => {
     // The invite works once, and the server never sees a key it could open.
     const row = await env.DB.prepare("SELECT master_keys FROM app_invites WHERE id = ?").bind(invite.id).first<{ master_keys: string }>();
     expect(row!.master_keys).not.toContain(toBase64(friend.boardKeys.find((k) => k.boardId !== friend.personalBoardId)!.key));
+    // Once used, it keeps no keys at all.
+    expect(row!.master_keys).toBe("[]");
 
     expect(await checkAppInvite(api, invite.code)).toMatchObject({ state: "used" });
     const again = await prepareSetup({ inviteCode: invite.code });

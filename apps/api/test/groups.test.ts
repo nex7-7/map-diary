@@ -158,8 +158,10 @@ describe("groups", () => {
     expect(byType(items, "status").map((i) => i.payload)).toEqual([{ status: "want" }]);
     expect(byType(items, "group").map((i) => i.payload)).toEqual([{ name: "Bandra lot" }]);
 
-    // One use only.
+    // One use only, and a used invite keeps no keys.
     await expectGroupError(acceptGroupInvite(ravi, api, secret), "invite_not_found");
+    const used = await env.DB.prepare("SELECT length(sealed_keys) AS n FROM invites WHERE id = ?").bind(groupInviteId(secret)).first<{ n: number }>();
+    expect(used!.n).toBe(0);
   });
 
   it("refuses a made-up link and an accept without the token", async () => {

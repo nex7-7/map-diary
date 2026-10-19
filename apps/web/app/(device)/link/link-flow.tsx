@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useSession } from "@/lib/device";
 import styles from "@/lib/device/device.module.css";
 import { JoinDevice } from "../join-device";
@@ -13,8 +13,13 @@ export function LinkFlow() {
   const [code, setCode] = useState<string | null>(null);
   const [homeScreen, setHomeScreen] = useState(false);
 
+  const read = useRef<string | undefined>(undefined);
+
   useEffect(() => {
-    setCode(decodeURIComponent(window.location.hash.slice(1)));
+    read.current ??= decodeURIComponent(window.location.hash.slice(1));
+    setCode(read.current);
+    // Keep the secret out of the address bar and history once read.
+    if (read.current) window.history.replaceState(null, "", window.location.pathname);
     setHomeScreen(needsHomeScreenInstall());
   }, []);
 
