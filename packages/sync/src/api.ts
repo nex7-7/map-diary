@@ -332,8 +332,9 @@ export class Api {
     return this.call<{ members: MemberView[] }>("GET", "/api/members", undefined, signer);
   }
 
-  removeMember(accountId: string, signer: Signer) {
-    return this.call<{ removed: string }>("POST", `/api/members/${encodeURIComponent(accountId)}/remove`, undefined, signer);
+  /** `masterKeys` is the next master key wrapped for every member who stays, the admin included. */
+  removeMember(accountId: string, body: { masterKeyVersion: number; masterKeys: MemberKeyBody[] } | undefined, signer: Signer) {
+    return this.call<{ removed: string }>("POST", `/api/members/${encodeURIComponent(accountId)}/remove`, body, signer);
   }
 
   // Device pairing: the old device opens, reads and approves; the new device joins,
