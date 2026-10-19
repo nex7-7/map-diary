@@ -64,7 +64,7 @@ export interface PairingView {
 }
 
 export interface MeResponse {
-  account: { id: string; isAdmin: boolean; boxPublicKey: string | null; boxKeyVersion: number };
+  account: { id: string; isAdmin: boolean; boxPublicKey: string | null; boxKeyVersion: number; hasPassphrase: boolean };
   deviceId: string;
   boards: {
     id: string;
@@ -86,7 +86,28 @@ export interface MeResponse {
 export interface PushResponse {
   accepted: string[];
   unchanged: string[];
-  rejected: { id: string | null; reason: string }[];
+  /** `placeId` is set for `duplicate_place`: the catalogue place that already has the link. */
+  rejected: { id: string | null; reason: string; placeId?: string }[];
+}
+
+/** A board the account is in, as the Worker reports it. */
+export interface BoardSummary {
+  id: string;
+  kind: string;
+  keyVersion: number;
+}
+
+/** A member of a board and their current account box key, for wrapping a rotated key to them. */
+export interface BoardMember {
+  accountId: string;
+  boxPublicKey: string;
+  boxKeyVersion: number;
+}
+
+/** A rotated shared-board key wrapped to another member's account box key. */
+export interface MemberBoardKey extends WrappedBoardKey {
+  accountId: string;
+  accountKeyVersion: number;
 }
 
 export interface SyncResponse {
@@ -97,6 +118,42 @@ export interface SyncResponse {
   more: boolean;
   /** The account's current box key version; newer than the device's means it must collect the new key. */
   boxKeyVersion: number;
+  /** The account's boards at their current key versions; a newer one means a key to collect. */
+  boards: BoardSummary[];
+}
+
+export type AppInviteState = "open" | "used" | "expired";
+
+/** A board key version wrapped to someone: an invite's keypair, or a new account. */
+export interface VersionKey {
+  keyVersion: number;
+  wrappedKey: string;
+}
+
+export interface AppInviteStatus {
+  state: AppInviteState;
+  expiresAt: number;
+  /** While open: the master board and every master key version, wrapped to the invite's keypair. */
+  masterBoardId?: string;
+  masterKeys?: VersionKey[];
+}
+
+export interface AppInviteView {
+  id: string;
+  createdAt: number;
+  expiresAt: number;
+}
+
+export interface MemberView {
+  id: string;
+  isAdmin: boolean;
+  createdAt: number;
+  removedAt: number | null;
+  /** The app invite this person joined through; null for the admin. */
+  inviteId: string | null;
+  /** Devices still signed in. */
+  devices: number;
+  lastSeenAt: number | null;
 }
 
 export interface RevokeBody {
@@ -104,6 +161,8 @@ export interface RevokeBody {
   boxKeyVersion: number;
   boardKeys: WrappedBoardKey[];
   deviceKeys: { deviceId: string; sealedKey: string }[];
+  /** Rotated shared-board keys for every other member of those boards. */
+  memberKeys: MemberBoardKey[];
 }
 
 export type ResolverJobStatus = "pending" | "resolved" | "failed";
@@ -176,7 +235,12 @@ export class Api {
       account: { id: string; signPublicKey: string; boxPublicKey: string };
       device: DeviceBody;
       personalBoard: { id: string; wrappedKey: string };
-      keyBackup: KeyBackupBody;
+      /** Required for the first (admin) account; optional for invited friends. */
+      keyBackup?: KeyBackupBody;
+      /** The app invite id, for every account after the first. */
+      invite?: string;
+      /** With an invite: every master key version, re-wrapped to the new account's box key. */
+      masterKeys?: VersionKey[];
     },
     signer: Signer,
   ) {
@@ -201,6 +265,37 @@ export class Api {
 
   putBoardKeys(boardKeys: WrappedBoardKey[], signer: Signer) {
     return this.call<{ stored: number }>("PUT", "/api/board-keys", { boardKeys }, signer);
+  }
+
+  // App invites and members: admin only, except the invite status a friend's device checks.
+
+  createAppInvite(id: string, masterKeys: VersionKey[], signer: Signer) {
+    return this.call<{ id: string; expiresAt: number }>("POST", "/api/app-invites", { id, masterKeys }, signer);
+  }
+
+  listAppInvites(signer: Signer) {
+    return this.call<{ invites: AppInviteView[] }>("GET", "/api/app-invites", undefined, signer);
+  }
+
+  cancelAppInvite(id: string, signer: Signer) {
+    return this.call<undefined>("DELETE", `/api/app-invites/${encodeURIComponent(id)}`, undefined, signer);
+  }
+
+  appInviteStatus(id: string) {
+    return this.call<AppInviteStatus>(
+      "GET",
+      `/api/app-invites/${encodeURIComponent(id)}/status`,
+      undefined,
+      null,
+    );
+  }
+
+  listMembers(signer: Signer) {
+    return this.call<{ members: MemberView[] }>("GET", "/api/members", undefined, signer);
+  }
+
+  removeMember(accountId: string, signer: Signer) {
+    return this.call<{ removed: string }>("POST", `/api/members/${encodeURIComponent(accountId)}/remove`, undefined, signer);
   }
 
   // Device pairing: the old device opens, reads and approves; the new device joins,
@@ -249,8 +344,24 @@ export class Api {
     return this.call<{ version: number; sealedKey: string }>("GET", "/api/me/account-key", undefined, signer);
   }
 
-  pushEnvelopes(envelopes: Envelope[], signer: Signer) {
-    return this.call<PushResponse>("POST", "/api/envelopes", { envelopes }, signer);
+  /** `linkHashes` maps a place envelope's id to the keyed hashes of its source links. */
+  pushEnvelopes(envelopes: Envelope[], signer: Signer, linkHashes?: Record<string, string[]>) {
+    const body = linkHashes && Object.keys(linkHashes).length > 0 ? { envelopes, linkHashes } : { envelopes };
+    return this.call<PushResponse>("POST", "/api/envelopes", body, signer);
+  }
+
+  /** Creates the master board with its first key wrapped to the admin's account. Admin only, once. */
+  createMasterBoard(body: { id: string; wrappedKey: string }, signer: Signer) {
+    return this.call<{ id: string; keyVersion: number }>("POST", "/api/boards/master", body, signer);
+  }
+
+  boardMembers(boardId: string, signer: Signer) {
+    return this.call<{ members: BoardMember[] }>("GET", `/api/boards/${encodeURIComponent(boardId)}/members`, undefined, signer);
+  }
+
+  /** Which of these link hashes a catalogue place already has. */
+  checkPlaceLinks(hashes: string[], signer: Signer) {
+    return this.call<{ matches: { hash: string; placeId: string }[] }>("POST", "/api/place-links/check", { hashes }, signer);
   }
 
   deleteEnvelopes(ids: string[], signer: Signer) {

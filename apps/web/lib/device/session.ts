@@ -1,6 +1,7 @@
 "use client";
 
 import { Api, Diary, IdbStorage, type DeviceState } from "@map-diary/sync";
+import { placeLinks } from "../entries/actions";
 import { clearPending } from "../pending/session";
 
 /**
@@ -68,7 +69,7 @@ export function getSession(): Promise<Session> {
     const s = await openStorage();
     const device = await s.loadDevice();
     if (!device) return { state: "signed-out" };
-    const diary = new Diary(device, s, api);
+    const diary = new Diary(device, s, api, { placeLinks });
     startDiary(diary);
     return { state: "ready", diary };
   })();
@@ -87,7 +88,7 @@ export async function adoptDevice(device: DeviceState): Promise<Diary> {
   // Ask the browser not to evict keys and items under storage pressure.
   await navigator.storage?.persist?.().catch(() => false);
   stopTriggers?.();
-  const diary = new Diary(device, s, api);
+  const diary = new Diary(device, s, api, { placeLinks });
   startDiary(diary);
   current = Promise.resolve({ state: "ready", diary });
   notify();

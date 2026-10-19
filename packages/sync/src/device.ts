@@ -24,7 +24,30 @@ export interface DeviceState {
   personalBoardId: string;
   /** Every board key version this device holds. */
   boardKeys: BoardKey[];
+  /**
+   * The boards the account is in, as last fetched; missing on a device stored before
+   * sharing, until its first sync fills it in.
+   */
+  boards?: BoardInfo[];
+  /** Whether the account is the admin, as last fetched. */
+  isAdmin?: boolean;
   createdAt: number;
+}
+
+export type BoardKind = "master" | "group" | "personal";
+
+/** A board the account is in, at the key version new writes must use. */
+export interface BoardInfo {
+  id: string;
+  kind: BoardKind;
+  keyVersion: number;
+}
+
+const BOARD_KINDS: readonly string[] = ["master", "group", "personal"];
+
+/** The boards in a `/me` or `/sync` response, skipping any kind this version does not know. */
+export function boardsFrom(list: readonly { id: string; kind: string; keyVersion: number }[]): BoardInfo[] {
+  return list.filter((b) => BOARD_KINDS.includes(b.kind)).map((b) => ({ id: b.id, kind: b.kind as BoardKind, keyVersion: b.keyVersion }));
 }
 
 /** A stored device from an older format (before board keys were wrapped per account) is not usable. */
