@@ -1,7 +1,7 @@
 import type { EnvelopeType, JsonValue } from "@map-diary/crypto";
 import { applyBoardRules } from "./boards";
 import { readPayload } from "./payloads";
-import type { Board, DiarySnapshot, DiarySource, Opinion, Person, PlaceView, Status, StatusOpinion, TagDefinition } from "./types";
+import type { Board, BoardKind, DiarySnapshot, DiarySource, Opinion, Person, PlaceView, Status, StatusOpinion, TagDefinition } from "./types";
 
 /** A decrypted item as the device store keeps it (the shape of `DiaryItem` in `@map-diary/sync`). */
 export interface StoredItem {
@@ -29,25 +29,37 @@ export interface DeviceBoards {
   readonly personalBoardId: string;
   /** The board keys the device holds; the boards it can read. */
   readonly boardKeys?: readonly { readonly boardId: string }[];
+  /**
+   * The boards this account is in, refreshed on each sync (arrives with groups in
+   * `@map-diary/sync`). `memberIds` is set for groups only; absent means everyone.
+   */
+  readonly boards?: readonly { readonly id: string; readonly kind: BoardKind; readonly memberIds?: readonly string[] }[];
 }
 
 /**
- * Where the device learns each board's kind, name and members. `listBoards` arrives with the
- * master board and groups in `@map-diary/sync`; until then the boards come from the device's keys.
+ * Where the device learns each board's kind, name and members: `listBoards` if the diary
+ * has one, else the device's board list from sync, else (before sharing) its keys.
  */
 export interface BoardDirectory {
   listBoards?(): Promise<Board[]>;
 }
 
+const BOARD_NAMES: Record<BoardKind, string> = { personal: "Personal", master: "Public", group: "Group" };
+
+/** True once the diary can post to boards other than Personal. */
+export function canChooseBoards(store: BoardDirectory & { readonly device: DeviceBoards }): boolean {
+  return typeof store.listBoards === "function" || store.device.boards !== undefined;
+}
+
 /** The boards this device can read. The Personal board is always there, with only its owner. */
 export async function boardsOf(store: BoardDirectory & { readonly device: DeviceBoards }): Promise<Board[]> {
-  const { accountId, personalBoardId, boardKeys = [] } = store.device;
+  const { accountId, personalBoardId, boardKeys = [], boards } = store.device;
   const personal: Board = { id: personalBoardId, kind: "personal", name: "Personal", memberIds: [accountId] };
-  const listed = store.listBoards
+  const listed: Board[] = store.listBoards
     ? await store.listBoards()
-    : [...new Set(boardKeys.map((k) => k.boardId))].map(
-        (id): Board => ({ id, kind: "group", name: "Shared board", memberIds: null }),
-      );
+    : boards
+      ? boards.map((b) => ({ id: b.id, kind: b.kind, name: BOARD_NAMES[b.kind], memberIds: b.kind === "personal" ? [accountId] : b.memberIds ? [...b.memberIds] : null }))
+      : [...new Set(boardKeys.map((k) => k.boardId))].map((id): Board => ({ id, kind: "group", name: "Shared board", memberIds: null }));
   return [personal, ...listed.filter((b) => b.id !== personalBoardId)];
 }
 

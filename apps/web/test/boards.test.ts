@@ -91,6 +91,12 @@ describe("board rules", () => {
       [PERSONAL, "personal"],
       ["b2", "group"],
     ]);
+    const synced = { device: { ...store.device, boards: [
+      { id: PERSONAL, kind: "personal" as const },
+      { id: "board-master", kind: "master" as const },
+      { id: "board-duo", kind: "group" as const, memberIds: [ME, FRIEND] },
+    ] } };
+    expect((await boardsOf(synced)).map((b) => b.memberIds)).toEqual([[ME], null, [ME, FRIEND]]);
     const listed = { ...store, listBoards: async () => boards.slice(1) };
     expect((await boardsOf(listed)).map((b) => b.id)).toEqual(boards.map((b) => b.id));
   });

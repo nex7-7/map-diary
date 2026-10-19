@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import type { Diary, DiaryItem } from "@/lib/device";
-import { boardsOf, snapshotFromItems, type BoardDirectory } from "@/lib/places/items-source";
+import { boardsOf, canChooseBoards, snapshotFromItems, type BoardDirectory } from "@/lib/places/items-source";
 import type { Board, DiarySnapshot } from "@/lib/places/types";
 
 export interface Items {
@@ -36,7 +36,7 @@ export function useItems(diary: Diary): Items {
     () => snapshotFromItems(state.items, diary.device.accountId, diary.device.personalBoardId, state.loaded ? state.boards : undefined),
     [state, diary],
   );
-  return { loaded: state.loaded, items: state.items, snapshot, canChooseBoards: typeof directory.listBoards === "function" };
+  return { loaded: state.loaded, items: state.items, snapshot, canChooseBoards: canChooseBoards(directory) };
 }
 
 /** The place id in the page's fragment (`/place#<id>`), which the browser never sends to the server. */
