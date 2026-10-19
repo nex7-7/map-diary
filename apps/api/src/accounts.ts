@@ -222,7 +222,11 @@ accounts.post("/accounts", readBody, async (c) => {
         ? []
         : [
             db
-              .prepare("UPDATE app_invites SET used_at = ?, used_by_account_id = ? WHERE id = ? AND used_at IS NULL")
+              // The master keys it carried are no use any more; drop them so a leaked link and a
+              // copy of the database together open nothing.
+              .prepare(
+                "UPDATE app_invites SET used_at = ?, used_by_account_id = ?, master_keys = '[]' WHERE id = ? AND used_at IS NULL",
+              )
               .bind(now, accountId, invite),
           ]),
       insertDevice(db, accountId, device, now),

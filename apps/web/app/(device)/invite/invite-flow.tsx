@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState, type FormEvent } from "react";
+import { type FormEvent, useEffect, useRef, useState } from "react";
 import { checkAppInvite, type InviteCheck } from "@map-diary/sync";
 import { api, useSession } from "@/lib/device";
 import styles from "@/lib/device/device.module.css";
@@ -29,8 +29,13 @@ export function InviteFlow() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const read = useRef<string | undefined>(undefined);
+
   useEffect(() => {
-    setLinkCode(decodeURIComponent(window.location.hash.slice(1)));
+    read.current ??= decodeURIComponent(window.location.hash.slice(1));
+    setLinkCode(read.current);
+    // Keep the secret out of the address bar and history once read.
+    if (read.current) window.history.replaceState(null, "", window.location.pathname);
     setHomeScreen(needsHomeScreenInstall());
   }, []);
 

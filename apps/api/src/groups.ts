@@ -372,7 +372,7 @@ groups.post("/invites/:id/accept", readBody, requireDevice, async (c) => {
   const results = await db.batch([
     db
       .prepare(
-        `UPDATE invites SET used_at = ?, used_by_account_id = ?
+        `UPDATE invites SET used_at = ?, used_by_account_id = ?, sealed_keys = X''
           WHERE id = ? AND used_at IS NULL AND expires_at > ? AND secret_hash = ?
             AND (SELECT key_version FROM boards WHERE id = ?) = ?`,
       )

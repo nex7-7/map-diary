@@ -365,6 +365,8 @@ describe("device setup, sign-in and sync", () => {
     // The invite works once, and the server never sees a key it could open.
     const row = await env.DB.prepare("SELECT master_keys FROM app_invites WHERE id = ?").bind(invite.id).first<{ master_keys: string }>();
     expect(row!.master_keys).not.toContain(toBase64(friend.boardKeys.find((k) => k.boardId !== friend.personalBoardId)!.key));
+    // Once used, it keeps no keys at all.
+    expect(row!.master_keys).toBe("[]");
 
     expect(await checkAppInvite(api, invite.code)).toMatchObject({ state: "used" });
     const again = await prepareSetup({ inviteCode: invite.code });
