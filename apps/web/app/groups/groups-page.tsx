@@ -1,10 +1,8 @@
 "use client";
 
-import Link from "next/link";
 import { useState, type FormEvent } from "react";
-import entries from "@/app/_entries/entries.module.css";
-import { DeviceGate, type Diary } from "@/lib/device";
-import styles from "@/lib/device/device.module.css";
+import { AccountPage, Avatar, IconTile, accountStyles as s, day } from "@/app/_account/parts";
+import type { Diary } from "@/lib/device";
 import {
   GROUP_NAME_MAX,
   MAX_GROUP_MEMBERS,
@@ -17,171 +15,239 @@ import {
   useGroups,
   type Group,
 } from "@/lib/groups";
+import { Button, buttonClass, CloseButton, CopyCode, Icon, Sheet } from "@/lib/ui";
 import { groupErrorMessage } from "./messages";
 
 /** `/groups`: the groups this account is in, their members, invites, and leaving. */
 export function GroupsPage() {
   return (
-    <main>
-      <Link href="/" className={entries.back}>
-        ← Diary
-      </Link>
-      <h1 style={{ margin: "12px 0 16px" }}>Groups</h1>
-      <DeviceGate>{(diary) => <Groups diary={diary} />}</DeviceGate>
-    </main>
+    <AccountPage current="groups" title="Groups" sub="Each group has its own key. Only members can read what’s posted to it." wide>
+      {(diary) => <Groups diary={diary} />}
+    </AccountPage>
   );
 }
+
+type Confirm = { kind: "remove"; group: Group; accountId: string; name: string } | { kind: "leave"; group: Group } | null;
 
 function Groups({ diary }: { diary: Diary }) {
   const { groups, failed, reload } = useGroups(diary);
+  const [confirm, setConfirm] = useState<Confirm>(null);
   return (
-    <div style={{ display: "grid", gap: 16 }}>
-      {failed && <p className={styles.error}>Couldn&apos;t load your groups. Check your connection and reload.</p>}
-      {groups === null ? (
-        <p className="muted">Loading…</p>
-      ) : groups.length === 0 ? (
-        <p className="muted">You&apos;re not in any group yet. Make one, or open an invite link a friend sent you.</p>
-      ) : (
-        groups.map((g) => <GroupCard key={g.id} diary={diary} group={g} onChange={reload} />)
-      )}
-      <CreateGroup diary={diary} onDone={reload} />
-      <PasteInvite />
-    </div>
+    <>
+      {failed && <p className={s.error}>Couldn&apos;t load your groups. Check your connection and reload.</p>}
+      <div className={s.grid2}>
+        <div className={s.stackCol}>
+          {groups === null ? (
+            <p className="sub">Loading…</p>
+          ) : groups.length === 0 ? (
+            <p className="sub" style={{ margin: 0 }}>
+              You&apos;re not in any group yet. Make one, or open an invite link a friend sent you.
+            </p>
+          ) : (
+            groups.map((g, i) => (
+              <GroupCard key={g.id} diary={diary} group={g} startOpen={i === 0} onChange={reload} onConfirm={setConfirm} />
+            ))
+          )}
+        </div>
+        <div className={s.stackCol}>
+          <CreateGroup diary={diary} onDone={reload} />
+          <PasteInvite />
+        </div>
+      </div>
+      <Sheet open={confirm !== null} onClose={() => setConfirm(null)} label={confirm?.kind === "leave" ? "Leave a group" : "Remove a member"}>
+        {confirm && (
+          <ConfirmSheet
+            diary={diary}
+            confirm={confirm}
+            onCancel={() => setConfirm(null)}
+            onDone={() => {
+              setConfirm(null);
+              reload();
+            }}
+          />
+        )}
+      </Sheet>
+    </>
   );
 }
 
-function GroupCard({ diary, group, onChange }: { diary: Diary; group: Group; onChange: () => void }) {
+function GroupCard({
+  diary,
+  group,
+  startOpen,
+  onChange,
+  onConfirm,
+}: {
+  diary: Diary;
+  group: Group;
+  startOpen: boolean;
+  onChange: () => void;
+  onConfirm: (c: Confirm) => void;
+}) {
   const me = diary.device.accountId;
+  const [open, setOpen] = useState(startOpen);
   const [invite, setInvite] = useState<{ link: string; expiresAt: number } | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [confirm, setConfirm] = useState<{ kind: "remove"; accountId: string } | { kind: "leave" } | null>(null);
   const [renaming, setRenaming] = useState(false);
   const full = group.members.length >= MAX_GROUP_MEMBERS;
+  const name = group.name || "Unnamed group";
+  // You first, then everyone else as the Worker lists them.
+  const members = [...group.members].sort((a, b) => Number(b.accountId === me) - Number(a.accountId === me));
 
-  async function run(action: () => Promise<unknown>) {
+  async function run(action: () => Promise<unknown>): Promise<boolean> {
     setBusy(true);
     setError(null);
     try {
       await action();
-      setConfirm(null);
       onChange();
+      return true;
     } catch (err) {
       setError(groupErrorMessage(err));
+      return false;
     } finally {
       setBusy(false);
     }
   }
 
-  const whatsapp = invite
-    ? `https://wa.me/?text=${encodeURIComponent(`Join "${group.name}" on our Mumbai map: ${invite.link}`)}`
-    : null;
+  const whatsapp = invite ? `https://wa.me/?text=${encodeURIComponent(`Join "${group.name}" on our Mumbai map: ${invite.link}`)}` : null;
 
   return (
-    <section className={styles.card}>
+    <section className={s.card}>
       {renaming ? (
         <RenameGroup
           initial={group.name}
           onCancel={() => setRenaming(false)}
-          onSave={(name) => run(() => renameGroupTo(diary, group, name)).then(() => setRenaming(false))}
+          onSave={(n) => void run(() => renameGroupTo(diary, group, n)).then((ok) => ok && setRenaming(false))}
         />
       ) : (
-        <h2 style={{ margin: 0 }}>
-          {group.name || "Unnamed group"}{" "}
-          <button className={entries.secondary} type="button" onClick={() => setRenaming(true)}>
-            Rename
-          </button>
-        </h2>
+        <div className={s.rowTitle} style={{ flexWrap: "nowrap" }}>
+          <div className={s.rowText}>
+            <h2 className="heading-m">{name}</h2>
+            <span className="sub">
+              {group.members.length} of {MAX_GROUP_MEMBERS} members
+            </span>
+          </div>
+          <span className={s.faces}>
+            {members.slice(0, 5).map((m) => (
+              <Avatar key={m.accountId} id={m.accountId} name={m.name} />
+            ))}
+          </span>
+        </div>
       )}
 
-      <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "grid", gap: 8 }}>
-        {group.members.map((m) => (
-          <li key={m.accountId}>
-            {m.name}
-            {m.accountId !== me &&
-              (confirm?.kind === "remove" && confirm.accountId === m.accountId ? (
-                <>
-                  <p>
-                    Remove {m.name}? Everything they posted to this group disappears for
-                    everyone, and they won&apos;t see anything new here.
-                  </p>
-                  <button
-                    className={entries.danger}
-                    type="button"
-                    disabled={busy}
-                    onClick={() => void run(() => removeMember(diary, group.id, m.accountId))}
-                  >
-                    {busy ? "Removing…" : "Remove"}
-                  </button>
-                  <button className={entries.secondary} type="button" disabled={busy} onClick={() => setConfirm(null)}>
-                    Keep
-                  </button>
-                </>
-              ) : (
-                <>
-                  {" "}
-                  <button
-                    className={entries.secondary}
-                    type="button"
-                    onClick={() => setConfirm({ kind: "remove", accountId: m.accountId })}
-                  >
-                    Remove
-                  </button>
-                </>
-              ))}
-          </li>
-        ))}
-      </ul>
-
-      {invite ? (
+      {open ? (
         <>
-          <p>
-            Send this link to one friend. It works once and expires on{" "}
-            {new Date(invite.expiresAt).toLocaleDateString("en-IN", { day: "numeric", month: "short" })}. They need to be
-            on the app already.
-          </p>
-          <input className={entries.input} readOnly value={invite.link} onFocus={(e) => e.currentTarget.select()} />
-          {whatsapp && (
-            <a className={styles.button} href={whatsapp} target="_blank" rel="noreferrer">
-              Send on WhatsApp
-            </a>
+          <ul className={s.list}>
+            {members.map((m) => {
+              const you = m.accountId === me;
+              return (
+                <li key={m.accountId} className={s.row} style={{ padding: "10px 0" }}>
+                  <Avatar id={m.accountId} name={m.name} />
+                  <span className={s.rowText}>
+                    <span className={s.plainName}>{m.name}</span>
+                  </span>
+                  {you ? (
+                    <Button variant="ghost" size="m" className={s.dangerText} onClick={() => onConfirm({ kind: "leave", group })}>
+                      Leave
+                    </Button>
+                  ) : (
+                    <Button variant="ghost" size="m" onClick={() => onConfirm({ kind: "remove", group, accountId: m.accountId, name: m.name })}>
+                      Remove
+                    </Button>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
+
+          {invite ? (
+            <div className={s.card} style={{ background: "var(--paper)" }}>
+              <p style={{ margin: 0 }}>
+                Send this link to one friend who’s already on the app. It works once, until {day(invite.expiresAt)}.
+              </p>
+              <CopyCode label="invite link" value={invite.link} />
+              <div className={s.buttons}>
+                {whatsapp && (
+                  <a className={buttonClass({ size: "m" })} href={whatsapp} target="_blank" rel="noreferrer">
+                    <Icon name="share" size="s" />
+                    Send on WhatsApp
+                  </a>
+                )}
+                <Button variant="ghost" size="m" onClick={() => setInvite(null)}>
+                  Done
+                </Button>
+              </div>
+            </div>
+          ) : (
+            !renaming && (
+              <div className={s.buttons}>
+                <Button
+                  size="m"
+                  disabled={busy || full || !group.name}
+                  onClick={() => void run(async () => setInvite(await inviteLink(diary, group)))}
+                >
+                  <Icon name="link" size="s" />
+                  {full ? `Full (${MAX_GROUP_MEMBERS} people)` : busy ? "Making a link…" : "Invite someone"}
+                </Button>
+                <Button variant="ghost" size="m" onClick={() => setRenaming(true)}>
+                  <Icon name="pencil" size="s" />
+                  Rename
+                </Button>
+              </div>
+            )
           )}
-          <button
-            className={styles.secondary}
-            type="button"
-            onClick={() => void navigator.clipboard?.writeText(invite.link).catch(() => undefined)}
-          >
-            Copy link
-          </button>
         </>
       ) : (
-        <button
-          className={styles.button}
-          type="button"
-          disabled={busy || full || !group.name}
-          onClick={() => void run(async () => setInvite(await inviteLink(diary, group)))}
-        >
-          {full ? `Full (${MAX_GROUP_MEMBERS} people)` : "Invite someone"}
+        <button type="button" className={s.iconButton} style={{ justifySelf: "start", color: "var(--sea)", fontWeight: 500, gap: 4, display: "inline-flex" }} onClick={() => setOpen(true)} aria-expanded={false}>
+          Show members
+          <Icon name="chevronDown" size="s" />
         </button>
       )}
-
-      {confirm?.kind === "leave" ? (
-        <>
-          <p>Leave {group.name || "this group"}? Everything you posted to it disappears for everyone in it.</p>
-          <button className={entries.danger} type="button" disabled={busy} onClick={() => void run(() => leave(diary, group.id))}>
-            {busy ? "Leaving…" : "Leave"}
-          </button>
-          <button className={entries.secondary} type="button" disabled={busy} onClick={() => setConfirm(null)}>
-            Stay
-          </button>
-        </>
-      ) : (
-        <button className={styles.secondary} type="button" onClick={() => setConfirm({ kind: "leave" })}>
-          Leave group
-        </button>
-      )}
-      {error && <p className={styles.error}>{error}</p>}
+      {error && <p className={s.error}>{error}</p>}
     </section>
+  );
+}
+
+function ConfirmSheet({ diary, confirm, onCancel, onDone }: { diary: Diary; confirm: NonNullable<Confirm>; onCancel: () => void; onDone: () => void }) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const group = confirm.group.name || "this group";
+  const leaving = confirm.kind === "leave";
+
+  async function go() {
+    setBusy(true);
+    setError(null);
+    try {
+      if (confirm.kind === "leave") await leave(diary, confirm.group.id);
+      else await removeMember(diary, confirm.group.id, confirm.accountId);
+      onDone();
+    } catch (err) {
+      setError(groupErrorMessage(err));
+      setBusy(false);
+    }
+  }
+
+  return (
+    <>
+      <div className={s.sheetTop}>
+        <IconTile name="users" tone="danger" large />
+        <CloseButton onClick={onCancel} />
+      </div>
+      <h2 className="heading-m">{leaving ? `Leave ${group}?` : `Remove ${confirm.name} from ${group}?`}</h2>
+      <p style={{ margin: 0, color: "var(--ink-2)" }}>
+        {leaving
+          ? "Everything you posted to it disappears for everyone in it, and the group gets a new key."
+          : `Everything ${confirm.name} posted to this group disappears for everyone, and the group gets a new key so they can’t see anything new.`}
+      </p>
+      {error && <p className={s.error}>{error}</p>}
+      <Button variant="danger" block disabled={busy} onClick={() => void go()}>
+        {busy ? (leaving ? "Leaving…" : "Removing…") : leaving ? "Leave group" : "Remove"}
+      </Button>
+      <Button variant="ghost" block disabled={busy} onClick={onCancel}>
+        {leaving ? "Stay" : "Keep them"}
+      </Button>
+    </>
   );
 }
 
@@ -189,18 +255,19 @@ function RenameGroup({ initial, onSave, onCancel }: { initial: string; onSave: (
   const [name, setName] = useState(initial);
   return (
     <form
+      className={s.inline}
       onSubmit={(e) => {
         e.preventDefault();
         if (name.trim()) onSave(name);
       }}
     >
-      <input className={entries.input} value={name} maxLength={GROUP_NAME_MAX} onChange={(e) => setName(e.target.value)} autoFocus />
-      <button className={entries.primary} type="submit" disabled={!name.trim()}>
+      <input className={s.input} aria-label="Group name" value={name} maxLength={GROUP_NAME_MAX} onChange={(e) => setName(e.target.value)} autoFocus />
+      <Button type="submit" size="m" disabled={!name.trim()}>
         Save
-      </button>
-      <button className={entries.secondary} type="button" onClick={onCancel}>
+      </Button>
+      <Button variant="ghost" size="m" onClick={onCancel}>
         Cancel
-      </button>
+      </Button>
     </form>
   );
 }
@@ -227,22 +294,24 @@ function CreateGroup({ diary, onDone }: { diary: Diary; onDone: () => void }) {
   }
 
   return (
-    <form className={styles.card} onSubmit={(e) => void submit(e)}>
-      <label className={entries.label} htmlFor="group-name">
-        New group
+    <form className={s.sec} onSubmit={(e) => void submit(e)}>
+      <label className="overline" htmlFor="group-name">
+        Make a group
       </label>
-      <input
-        id="group-name"
-        className={entries.input}
-        value={name}
-        maxLength={GROUP_NAME_MAX}
-        placeholder="Name, like Bandra lot"
-        onChange={(e) => setName(e.target.value)}
-      />
-      <button className={styles.button} type="submit" disabled={busy || !name.trim()}>
-        {busy ? "Making…" : "Make group"}
-      </button>
-      {error && <p className={styles.error}>{error}</p>}
+      <div className={s.inline}>
+        <input
+          id="group-name"
+          className={`${s.input} ${s.onSurface}`}
+          value={name}
+          maxLength={GROUP_NAME_MAX}
+          placeholder="Name, like Bandra lot"
+          onChange={(e) => setName(e.target.value)}
+        />
+        <Button type="submit" size="m" disabled={busy || !name.trim()}>
+          {busy ? "Making…" : "Make group"}
+        </Button>
+      </div>
+      {error && <p className={s.error}>{error}</p>}
     </form>
   );
 }
@@ -253,25 +322,27 @@ function PasteInvite() {
   const secret = inviteSecretFrom(text);
   return (
     <form
-      className={styles.card}
+      className={s.sec}
       onSubmit={(e) => {
         e.preventDefault();
         if (secret) window.location.assign(`/join#${secret}`);
       }}
     >
-      <label className={entries.label} htmlFor="invite-link">
-        Got an invite link?
+      <label className="overline" htmlFor="invite-link">
+        Got an invite?
       </label>
-      <input
-        id="invite-link"
-        className={entries.input}
-        value={text}
-        placeholder="Paste it here"
-        onChange={(e) => setText(e.target.value)}
-      />
-      <button className={styles.button} type="submit" disabled={!secret}>
-        Open invite
-      </button>
+      <div className={s.inline}>
+        <input
+          id="invite-link"
+          className={`${s.input} ${s.onSurface}`}
+          value={text}
+          placeholder="Paste the link here"
+          onChange={(e) => setText(e.target.value)}
+        />
+        <Button type="submit" size="m" disabled={!secret}>
+          Open
+        </Button>
+      </div>
     </form>
   );
 }

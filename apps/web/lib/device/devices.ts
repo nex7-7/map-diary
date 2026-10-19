@@ -10,11 +10,14 @@ import {
   type Diary,
   type OpenPairing,
 } from "@map-diary/sync";
+import { deviceNames, forgetDeviceName, guessDeviceName, nameDevice } from "./names";
 import { adoptDevice, api } from "./session";
 
 export interface ListedDevice {
   id: string;
   kind: string;
+  /** The name the person gave it; for this device, a guess from its browser until then. */
+  name: string | null;
   createdAt: number;
   lastSeenAt: number | null;
   current: boolean;
@@ -34,11 +37,25 @@ export interface AccountOverview {
 
 /** The account's devices that are still signed in, and what the account has set up. */
 export async function listDevices(diary: Diary): Promise<AccountOverview> {
-  const me = await api.me(signerOf(diary));
+  const [me, names] = await Promise.all([api.me(signerOf(diary)), deviceNames(diary)]);
+  const self = diary.device.deviceId;
+  // This device names itself once, from its browser, so the others can tell it apart.
+  if (!names.has(self)) {
+    const guess = guessDeviceName(navigator.userAgent, diary.device.kind);
+    names.set(self, guess);
+    void nameDevice(diary, self, guess).catch(() => undefined);
+  }
   return {
     devices: me.devices
       .filter((d) => d.revokedAt === null)
-      .map((d) => ({ id: d.id, kind: d.kind, createdAt: d.createdAt, lastSeenAt: d.lastSeenAt, current: d.id === diary.device.deviceId })),
+      .map((d) => ({
+        id: d.id,
+        kind: d.kind,
+        name: names.get(d.id) ?? null,
+        createdAt: d.createdAt,
+        lastSeenAt: d.lastSeenAt,
+        current: d.id === self,
+      })),
     isAdmin: me.account.isAdmin,
     hasPassphrase: me.account.hasPassphrase,
   };
@@ -61,6 +78,12 @@ export function addDevice(diary: Diary): Promise<OpenPairing> {
 export async function removeDevice(diary: Diary, deviceId: string, secret: AccountSecret): Promise<void> {
   const next = await revokeDevice(api, diary.device, deviceId, secret);
   await adoptDevice(next);
+  await forgetDeviceName(diary, deviceId).catch(() => undefined);
+}
+
+/** Renames one of the account's devices. Returns the name as saved. */
+export function renameDevice(diary: Diary, deviceId: string, name: string): Promise<string> {
+  return nameDevice(diary, deviceId, name);
 }
 
 /**

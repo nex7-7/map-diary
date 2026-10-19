@@ -1,13 +1,13 @@
 import type { Metadata } from "next";
+import { FlowPage } from "../flow-page";
 import { SetupFlow } from "./setup-flow";
 
 export const metadata: Metadata = { title: "Set up · Mumbai Places Diary" };
 
 export default function SetupPage() {
   return (
-    <main>
-      <h1>Set up your diary</h1>
+    <FlowPage title="Set up the diary">
       <SetupFlow />
-    </main>
+    </FlowPage>
   );
 }

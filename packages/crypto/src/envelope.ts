@@ -16,6 +16,8 @@ export const ENVELOPE_TYPES = [
   "profile",
   /** A group's name, posted to the group's own board. */
   "group",
+  /** A name for one of the author's devices, on their Personal board. */
+  "device_name",
 ] as const;
 
 export type EnvelopeType = (typeof ENVELOPE_TYPES)[number];

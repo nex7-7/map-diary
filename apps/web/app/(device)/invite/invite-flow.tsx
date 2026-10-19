@@ -77,7 +77,7 @@ export function InviteFlow() {
       <div className={styles.card}>
         <InstallWarning />
         <p>
-          Once the diary is on your Home Screen, open it from there, tap <strong>Got an invite code?</strong> and type
+          Once the diary is on your Home Screen, open it from there, tap <strong>I have an invite</strong> and type
           this code:
         </p>
         <p className={styles.code}>{linkCode}</p>

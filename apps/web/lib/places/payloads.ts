@@ -47,6 +47,14 @@ export interface GroupPayload {
   name: string;
 }
 
+/** What the person calls one of their devices, on their Personal board. */
+export interface DeviceNamePayload {
+  deviceId: string;
+  name: string;
+}
+
+export const DEVICE_NAME_MAX = 40;
+
 export interface PayloadByType {
   place: PlacePayload;
   private_place: PlacePayload;
@@ -56,6 +64,7 @@ export interface PayloadByType {
   comment: CommentPayload;
   profile: ProfilePayload;
   group: GroupPayload;
+  device_name: DeviceNamePayload;
 }
 
 type JsonObject = { [key: string]: JsonValue };
@@ -122,11 +131,21 @@ const readers: { [T in EnvelopeType]: (p: JsonObject) => PayloadByType[T] | unde
     const name = str(p.name)?.trim();
     return name ? { name } : undefined;
   },
+  device_name: (p) => {
+    const deviceId = str(p.deviceId);
+    const name = cleanDeviceName(str(p.name) ?? "");
+    return deviceId && name ? { deviceId, name } : undefined;
+  },
 };
 
 /** Trims a display name, drops control characters and caps its length. */
 export function cleanDisplayName(name: string): string {
   return [...name.replace(/[\p{Cc}\p{Cf}]/gu, "").trim()].slice(0, DISPLAY_NAME_MAX).join("").trim();
+}
+
+/** Trims a device name, drops control characters and caps its length. */
+export function cleanDeviceName(name: string): string {
+  return [...name.replace(/[\p{Cc}\p{Cf}]/gu, "").trim()].slice(0, DEVICE_NAME_MAX).join("").trim();
 }
 
 export function readPayload<T extends EnvelopeType>(type: T, payload: JsonValue): PayloadByType[T] | undefined {
