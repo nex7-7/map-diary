@@ -30,15 +30,6 @@ export function FilterChip({
   );
 }
 
-/** A horizontally scrolling row of chips. */
-export function ChipRow({ label, children }: { label: string; children: ReactNode }) {
-  return (
-    <div className={s.chips} role="group" aria-label={label}>
-      {children}
-    </div>
-  );
-}
-
 /** Want to or Visited, as a pressable pill. */
 export function StatusChip({ status, on, onClick, disabled }: { status: Status; on: boolean; onClick?: () => void; disabled?: boolean }) {
   return (

@@ -1,7 +1,9 @@
 "use client";
 
 import { useState } from "react";
+import { oneEmoji } from "@/lib/entries/emoji";
 import { customCategory } from "@/lib/entries/facts";
+import { pickBoard } from "@/lib/places/boards";
 import { CATEGORY_STYLES, categoryStyle } from "@/lib/places/categories";
 import type { TagDefPayload } from "@/lib/places/payloads";
 import { BUILTIN_CATEGORIES, type Category, type Status } from "@/lib/places/types";
@@ -128,9 +130,10 @@ export function TagPicker({ tags, selected, onToggle, onCreate, disabled }: TagP
           <input
             className={styles.input}
             aria-label="Emoji"
+            style={{ textAlign: "center" }}
             placeholder="🌶️"
             value={def.emoji}
-            onChange={(e) => setDef({ ...def, emoji: e.target.value })}
+            onChange={(e) => setDef({ ...def, emoji: oneEmoji(e.target.value) })}
           />
           <input
             className={styles.input}
@@ -177,30 +180,28 @@ const BOARD_HINTS: Record<BoardChoice["kind"], string> = {
 };
 
 /**
- * Where an opinion goes: one or more boards, Personal unless the person picks otherwise.
- * `noPublic` greys out the Public board, for a dropped pin, which never leaves its owner's
- * boards.
+ * Where an opinion goes: Personal, Public, or one or more groups; Personal unless the person
+ * picks otherwise. `noPublic` greys out the Public board, for a dropped pin, which never
+ * leaves its owner's boards.
  */
 export function BoardPicker({
   boards,
   value,
   onChange,
   noPublic,
+  label = "Who can read it",
 }: {
   boards: readonly BoardChoice[];
   value: readonly string[];
   onChange: (ids: string[]) => void;
   noPublic?: boolean;
+  label?: string;
 }) {
   const picked = boards.filter((b) => value.includes(b.id));
-  const toggle = (id: string) => {
-    const next = value.includes(id) ? value.filter((v) => v !== id) : [...value, id];
-    // Something always stays picked.
-    if (next.length > 0) onChange(next);
-  };
+  const kinds = new Set(picked.map((b) => b.kind));
   return (
     <div className={styles.section}>
-      <div className={styles.chips} role="group" aria-label="Who can read it">
+      <div className={styles.chips} role="group" aria-label={label}>
         {boards.map((b) => {
           const on = value.includes(b.id);
           return (
@@ -210,7 +211,10 @@ export function BoardPicker({
               className={styles.bopt}
               aria-pressed={on}
               disabled={noPublic && b.kind === "master"}
-              onClick={() => toggle(b.id)}
+              onClick={() => {
+                const next = pickBoard(boards, value, b.id);
+                if (next.join() !== value.join()) onChange(next);
+              }}
             >
               <Icon name={BOARD_ICONS[b.kind]} size="m" />
               <span>
@@ -226,8 +230,51 @@ export function BoardPicker({
         {noPublic && boards.some((b) => b.kind === "master")
           ? "A dropped pin stays off the Public board. "
           : ""}
-        {picked.map((b) => BOARD_HINTS[b.kind]).join(" ")}
+        {[...kinds].map((k) => (k === "group" && picked.length > 1 ? "Only those groups can read it." : BOARD_HINTS[k])).join(" ")}
       </p>
+    </div>
+  );
+}
+
+/**
+ * Where tags or a note go: with the status unless the person picks their own boards. `value`
+ * is null while it follows the status.
+ */
+export function FollowBoards({
+  what,
+  boards,
+  statusBoards,
+  value,
+  onChange,
+  noPublic,
+}: {
+  what: string;
+  boards: readonly BoardChoice[];
+  statusBoards: readonly string[];
+  value: readonly string[] | null;
+  onChange: (ids: string[] | null) => void;
+  noPublic?: boolean;
+}) {
+  const [open, setOpen] = useState(false);
+  const shown = value ?? statusBoards;
+  const names = boards.filter((b) => shown.includes(b.id)).map((b) => b.name);
+  return (
+    <div className={styles.section}>
+      <div className={styles.row}>
+        <span className={styles.note}>
+          {what} shown on {names.join(", ") || "Personal"}
+          {value === null ? ", like the status" : ""}
+        </span>
+        <button type="button" className={styles.textbutton} aria-expanded={open} onClick={() => setOpen(!open)}>
+          {open ? "Done" : "Change"}
+        </button>
+        {open && value !== null && (
+          <button type="button" className={styles.textbutton} onClick={() => onChange(null)}>
+            Same as the status
+          </button>
+        )}
+      </div>
+      {open && <BoardPicker boards={boards} value={shown} onChange={onChange} noPublic={noPublic === true} label={`Who can read the ${what.toLowerCase()}`} />}
     </div>
   );
 }

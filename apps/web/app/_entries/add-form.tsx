@@ -10,7 +10,7 @@ import { parseEntry, parseLink, type ParsedEntry } from "@/lib/entries/parse-inp
 import { getPendingQueue, MAX_QUERY_LENGTH, type PendingItem } from "@/lib/pending";
 import type { TagDefPayload } from "@/lib/places/payloads";
 import type { Category, LngLat, Status } from "@/lib/places/types";
-import { BoardPicker, boardChoices, CategoryPicker, StatusToggle, TagPicker, type TagChoice } from "./fields";
+import { BoardPicker, boardChoices, CategoryPicker, FollowBoards, StatusToggle, TagPicker, type TagChoice } from "./fields";
 import { useItems } from "./use-items";
 import styles from "./entries.module.css";
 
@@ -64,6 +64,9 @@ export function AddForm({ diary, initial, onSaved, onQueued, onCancel }: Props) 
   const [newTags, setNewTags] = useState<TagDefPayload[]>(draft?.newTags ?? []);
   const [comment, setComment] = useState(draft?.comment ?? "");
   const [boards, setBoards] = useState<string[]>(draft?.boards ?? [diary.device.personalBoardId]);
+  // Null while the tags or the note follow the status's boards.
+  const [tagBoardsEdit, setTagBoards] = useState<string[] | null>(draft?.tagBoards ?? null);
+  const [noteBoardsEdit, setNoteBoards] = useState<string[] | null>(draft?.commentBoards ?? null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -84,8 +87,14 @@ export function AddForm({ diary, initial, onSaved, onQueued, onCancel }: Props) 
   const choices = boardChoices(snapshot.boards.filter((b) => diary.boards.some((k) => k.id === b.id)));
   const noPublic = kind === "private_place" && !findLater;
   // A dropped pin's opinions stay off the Public board, as the pin itself does.
-  const opinionBoards = noPublic ? boards.filter((id) => choices.find((b) => b.id === id)?.kind !== "master") : boards;
-  const pickedBoards = opinionBoards.length > 0 ? opinionBoards : [diary.device.personalBoardId];
+  const usable = (ids: readonly string[]) => {
+    const kept = noPublic ? ids.filter((id) => choices.find((b) => b.id === id)?.kind !== "master") : [...ids];
+    return kept.length > 0 ? kept : [diary.device.personalBoardId];
+  };
+  const pickedBoards = usable(boards);
+  const tagBoards = tagBoardsEdit ? usable(tagBoardsEdit) : undefined;
+  const noteBoards = noteBoardsEdit ? usable(noteBoardsEdit) : undefined;
+  const ownBoards = { ...(tagBoards ? { tagBoards } : {}), ...(noteBoards ? { commentBoards: noteBoards } : {}) };
   // A typed name is already the name; links and coordinates get a name field to fill or fix.
   const hasLinkOrCoords = parsed.link !== undefined || (parsed.location !== undefined && !parsed.name) || (pinned !== null && !parsed.name);
   const name = nameEdit ?? parsed.name ?? "";
@@ -131,6 +140,7 @@ export function AddForm({ diary, initial, onSaved, onQueued, onCancel }: Props) 
         newTags,
         comment,
         boards: pickedBoards,
+        ...ownBoards,
       });
       onQueued();
     } catch (err) {
@@ -158,7 +168,7 @@ export function AddForm({ diary, initial, onSaved, onQueued, onCancel }: Props) 
     }
     setSaving(true);
     try {
-      const opinions = { status, tagIds: [...selected], newTags, comment, boards: pickedBoards };
+      const opinions = { status, tagIds: [...selected], newTags, comment, boards: pickedBoards, ...ownBoards };
       // Someone may have put it in the catalogue already: add to theirs rather than a copy.
       const existing = kind === "place" ? await findCataloguePlace(diary, result.facts.sourceLinks) : undefined;
       let id: string;
@@ -291,6 +301,7 @@ export function AddForm({ diary, initial, onSaved, onQueued, onCancel }: Props) 
           onToggle={toggleTag}
           onCreate={(def) => setNewTags([...newTags, def])}
         />
+        {selectedAll.size > 0 && <FollowBoards what="Tags" boards={choices} statusBoards={pickedBoards} value={tagBoards ?? null} onChange={setTagBoards} noPublic={noPublic} />}
       </div>
 
       <div className={styles.section}>
@@ -304,6 +315,7 @@ export function AddForm({ diary, initial, onSaved, onQueued, onCancel }: Props) 
           value={comment}
           onChange={(e) => setComment(e.target.value)}
         />
+        {comment.trim() && <FollowBoards what="Note" boards={choices} statusBoards={pickedBoards} value={noteBoards ?? null} onChange={setNoteBoards} noPublic={noPublic} />}
       </div>
 
       <div className={styles.savebar}>

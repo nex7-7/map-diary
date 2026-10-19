@@ -2,6 +2,7 @@ import type { EnvelopeType, JsonValue } from "@map-diary/crypto";
 import type { StoredItem } from "../places/items-source";
 import { cleanDisplayName, readPayload, type CommentPayload, type PlacePayload, type ProfilePayload, type TagDefPayload } from "../places/payloads";
 import type { Status } from "../places/types";
+import { oneEmoji } from "./emoji";
 import { normaliseLink } from "./parse-input";
 
 /**
@@ -39,8 +40,12 @@ export interface NewPlace {
   /** Tags made in the sheet: defined, then applied. */
   newTags: TagDefPayload[];
   comment: string;
-  /** Where the status, tags and note go. The place itself goes where the diary puts it. */
+  /** Where the status goes, and the tags and note unless they pick their own. The place itself goes where the diary puts it. */
   boards?: readonly string[];
+  /** Where the tags (and any tags made here) go; the status's boards if missing. */
+  tagBoards?: readonly string[];
+  /** Where the note goes; the status's boards if missing. */
+  commentBoards?: readonly string[];
 }
 
 // Payload types are plain JSON, but TypeScript cannot see an interface as an index signature.
@@ -48,16 +53,16 @@ const json = (v: object): JsonValue => v as JsonValue;
 
 /** Saves a place with its status, tags and comment. Returns the place's id. */
 export async function addPlace(w: DiaryWriter, input: NewPlace): Promise<string> {
-  const boards = input.boards;
+  const { boards, tagBoards = boards, commentBoards = boards } = input;
   const defined: string[] = [];
-  for (const def of input.newTags) defined.push(await defineTag(w, def, boards));
+  for (const def of input.newTags) defined.push(await defineTag(w, def, tagBoards));
 
   const place = await w.write({ type: input.kind, placeId: null, payload: json(input.facts) });
   // The status goes first: tags and comments need one.
   await w.write({ type: "status", placeId: place.id, payload: { status: input.status }, ...on(boards) });
-  for (const tagId of new Set([...input.tagIds, ...defined])) await applyTag(w, place.id, tagId, boards);
+  for (const tagId of new Set([...input.tagIds, ...defined])) await applyTag(w, place.id, tagId, tagBoards);
   const text = input.comment.trim();
-  if (text) await w.write({ type: "comment", placeId: place.id, payload: { text }, ...on(boards) });
+  if (text) await w.write({ type: "comment", placeId: place.id, payload: { text }, ...on(commentBoards) });
   return place.id;
 }
 
@@ -66,14 +71,14 @@ export async function addPlace(w: DiaryWriter, input: NewPlace): Promise<string>
  * has it), instead of adding a second copy. A status they already have is kept.
  */
 export async function addOpinions(w: DiaryWriter, placeId: string, input: Omit<NewPlace, "kind" | "facts">): Promise<void> {
-  const boards = input.boards;
+  const { boards, tagBoards = boards, commentBoards = boards } = input;
   const items = await w.listItems();
   const hasStatus = items.some((i) => i.type === "status" && i.placeId === placeId && i.authorId === w.device.accountId);
   if (!hasStatus) await setStatus(w, placeId, input.status, boards);
   const defined: string[] = [];
-  for (const def of input.newTags) defined.push(await defineTag(w, def, boards));
-  for (const tagId of new Set([...input.tagIds, ...defined])) await applyTag(w, placeId, tagId, boards);
-  if (input.comment.trim()) await addComment(w, placeId, input.comment, boards);
+  for (const def of input.newTags) defined.push(await defineTag(w, def, tagBoards));
+  for (const tagId of new Set([...input.tagIds, ...defined])) await applyTag(w, placeId, tagId, tagBoards);
+  if (input.comment.trim()) await addComment(w, placeId, input.comment, commentBoards);
 }
 
 const on = (boards: Boards) => (boards && boards.length > 0 ? { boards } : {});
@@ -230,7 +235,7 @@ export async function setDisplayName(w: DiaryWriter, name: string, masterBoardId
 }
 
 function cleanTag(def: TagDefPayload): TagDefPayload {
-  return { name: def.name.trim().slice(0, 40), emoji: def.emoji.trim().slice(0, 16), description: def.description.trim().slice(0, 280) };
+  return { name: def.name.trim().slice(0, 40), emoji: oneEmoji(def.emoji), description: def.description.trim().slice(0, 280) };
 }
 
 /** A write refused for a reason the person can fix; the message is shown as is. */

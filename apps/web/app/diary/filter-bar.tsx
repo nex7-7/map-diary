@@ -4,7 +4,7 @@ import { useState } from "react";
 import { BUILTIN_CATEGORIES, type Category, type DiarySnapshot, type Status } from "@/lib/places/types";
 import { categoryStyle, STATUS_LABELS } from "@/lib/places/categories";
 import { EMPTY_FILTERS, type PlaceFilters } from "@/lib/places/filter";
-import { ChipRow, FilterChip, Icon, StatusDot } from "@/lib/ui";
+import { ChipRow, FilterChip, Icon, Picker, StatusDot } from "@/lib/ui";
 
 interface Props {
   snapshot: DiarySnapshot;
@@ -56,17 +56,13 @@ export function FilterBar({ snapshot, cuisines, filters, onChange }: Props) {
       </label>
 
       <ChipRow label="Board, status and category">
-        <label className={`board-chip${board ? " on" : ""}`}>
-          <select aria-label="Board" value={board} onChange={(e) => set({ boards: e.target.value ? [e.target.value] : [] })}>
-            <option value="">All boards</option>
-            {snapshot.boards.map((b) => (
-              <option key={b.id} value={b.id}>
-                {b.name}
-              </option>
-            ))}
-          </select>
-          <Icon name="chevronDown" size="s" />
-        </label>
+        <Picker
+          label="Board"
+          className={`board-chip${board ? " on" : ""}`}
+          value={board}
+          options={[{ value: "", label: "All boards" }, ...snapshot.boards.map((b) => ({ value: b.id, label: b.name }))]}
+          onChange={(id) => set({ boards: id ? [id] : [] })}
+        />
         {(["want", "visited"] as Status[]).map((s) => (
           <FilterChip key={s} on={filters.statuses.includes(s)} onClick={() => set({ statuses: toggle(filters.statuses, s) })}>
             <StatusDot kind={s} small />

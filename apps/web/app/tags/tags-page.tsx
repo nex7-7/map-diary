@@ -6,6 +6,7 @@ import { useItems } from "@/app/_entries/use-items";
 import styles from "@/app/_entries/entries.module.css";
 import { DeviceGate, type Diary } from "@/lib/device";
 import { defineTag, editTag } from "@/lib/entries/actions";
+import { oneEmoji } from "@/lib/entries/emoji";
 import type { TagDefPayload } from "@/lib/places/payloads";
 import type { TagDefinition } from "@/lib/places/types";
 
@@ -100,7 +101,7 @@ function TagForm(props: { initial?: TagDefPayload; submitLabel: string; onSubmit
         if (!props.initial) setDef(empty);
       }}
     >
-      <input className={styles.input} aria-label="Emoji" placeholder="🌶️" value={def.emoji} onChange={(e) => setDef({ ...def, emoji: e.target.value })} />
+      <input className={styles.input} aria-label="Emoji" placeholder="🌶️" value={def.emoji} onChange={(e) => setDef({ ...def, emoji: oneEmoji(e.target.value) })} />
       <input className={styles.input} aria-label="Tag name" placeholder="Name" value={def.name} onChange={(e) => setDef({ ...def, name: e.target.value })} />
       <input
         className={`${styles.input} ${styles.full}`}

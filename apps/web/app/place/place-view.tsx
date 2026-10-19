@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { FactsEditor } from "@/app/_entries/facts-editor";
-import { BoardPicker, boardChoices, StatusToggle, TagPicker } from "@/app/_entries/fields";
+import { BoardPicker, boardChoices, FollowBoards, StatusToggle, TagPicker } from "@/app/_entries/fields";
 import { useItems } from "@/app/_entries/use-items";
 import styles from "@/app/_entries/entries.module.css";
 import { BoardBadge, buttonClass, Icon, StatusDot } from "@/lib/ui";
@@ -40,6 +40,8 @@ export function PlaceView({ diary, placeId }: { diary: Diary; placeId: string })
   const [notice, setNotice] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
   const [boardEdit, setBoardEdit] = useState<string[] | null>(null);
+  const [tagBoardEdit, setTagBoardEdit] = useState<string[] | null>(null);
+  const [commentBoardEdit, setCommentBoardEdit] = useState<string[] | null>(null);
 
   const me = diary.device.accountId;
   const place = snapshot.places.find((p) => p.id === placeId);
@@ -79,18 +81,25 @@ export function PlaceView({ diary, placeId }: { diary: Diary; placeId: string })
   const picked = (boardEdit ?? myStatusOpinion?.boards ?? [diary.device.personalBoardId]).filter((id) => choices.some((b) => b.id === id));
   const onBoards = picked.filter((id) => !place.isPrivate || choices.find((b) => b.id === id)?.kind !== "master");
   const boards = onBoards.length > 0 ? onBoards : [diary.device.personalBoardId];
+  // Tags and comments go with the status unless the person picks their own boards for them.
+  const usable = (ids: readonly string[] | null) => {
+    const kept = (ids ?? []).filter((id) => choices.some((b) => b.id === id && !(place.isPrivate && b.kind === "master")));
+    return kept.length > 0 ? kept : boards;
+  };
+  const tagBoards = usable(tagBoardEdit);
+  const commentBoards = usable(commentBoardEdit);
 
   /** Applies a tag where its definition is visible, offering to widen the person's own definition. */
   const tag = async (tagId: string) => {
     const def = snapshot.tags.find((t) => t.id === tagId);
-    if (!def) return applyTag(diary, place.id, tagId, boards);
-    const fit = tagFit(def, boards, snapshot);
+    if (!def) return applyTag(diary, place.id, tagId, tagBoards);
+    const fit = tagFit(def, tagBoards, snapshot);
     const visibleOn = (id: string) => fit.fits.includes(id);
-    if (fit.outside.length === 0) return applyTag(diary, place.id, tagId, boards, visibleOn);
+    if (fit.outside.length === 0) return applyTag(diary, place.id, tagId, tagBoards, visibleOn);
     const where = fit.outside.map((id) => boardName(snapshot, id)).join(", ");
     // Applying one's own tag to the wider boards widens its definition to match.
     if (fit.canWiden && confirm(`“${def.name}” isn't visible on ${where}. Show the tag on ${where} too?`)) {
-      return applyTag(diary, place.id, tagId, boards, visibleOn);
+      return applyTag(diary, place.id, tagId, tagBoards, visibleOn);
     }
     if (fit.fits.length === 0) throw new EntryError(`“${def.name}” isn't visible on ${where}, so it can't be applied there.`);
     await applyTag(diary, place.id, tagId, fit.fits, visibleOn);
@@ -227,8 +236,11 @@ export function PlaceView({ diary, placeId }: { diary: Diary; placeId: string })
             selected={myTagIds}
             disabled={myStatus === null}
             onToggle={(tagId) => run(() => (myTagIds.has(tagId) ? unapplyTag(diary, place.id, tagId) : tag(tagId)))}
-            onCreate={(def) => run(async () => applyTag(diary, place.id, await defineTag(diary, def, boards), boards))}
+            onCreate={(def) => run(async () => applyTag(diary, place.id, await defineTag(diary, def, tagBoards), tagBoards))}
           />
+          {myStatus !== null && (
+            <FollowBoards what="Tags" boards={choices} statusBoards={boards} value={tagBoardEdit && tagBoards} onChange={setTagBoardEdit} noPublic={place.isPrivate} />
+          )}
         </section>
 
         <section className={styles.section}>
@@ -254,7 +266,7 @@ export function PlaceView({ diary, placeId }: { diary: Diary; placeId: string })
               e.preventDefault();
               const text = draft;
               run(async () => {
-                await addComment(diary, place.id, text, boards);
+                await addComment(diary, place.id, text, commentBoards);
                 setDraft("");
               });
             }}
@@ -268,8 +280,10 @@ export function PlaceView({ diary, placeId }: { diary: Diary; placeId: string })
               value={draft}
               onChange={(e) => setDraft(e.target.value)}
             />
+            {myStatus !== null && (
+              <FollowBoards what="Comment" boards={choices} statusBoards={boards} value={commentBoardEdit && commentBoards} onChange={setCommentBoardEdit} noPublic={place.isPrivate} />
+            )}
             <div className={styles.row}>
-              <span className={styles.note}>Goes to {boards.map((id) => board(id)?.name ?? "Personal").join(", ")}</span>
               <button type="submit" className={buttonClass({ size: "m" })} disabled={myStatus === null || !draft.trim()}>
                 Add comment
               </button>

@@ -92,29 +92,8 @@
   gap: 6px;
 }
 
-.sort {
-  position: relative;
-  display: inline-flex;
-  align-items: center;
+.diary .sort {
   font-size: 13px;
-  font-weight: 500;
-}
-
-.diary .sort select {
-  appearance: none;
-  border: 0;
-  background: none;
-  padding: 0 16px 0 0;
-  field-sizing: content;
-  font-size: 13px;
-  font-weight: 500;
-  cursor: pointer;
-}
-
-.sort svg {
-  position: absolute;
-  right: 0;
-  pointer-events: none;
 }
 
 /* Filters */
@@ -180,45 +159,22 @@
   line-height: 16px;
 }
 
-/* The board picker is a native select dressed as a chip. */
-.board-chip {
-  position: relative;
+/* The board picker: a chip that opens a menu of boards. */
+.diary .board-chip {
   flex: none;
-  display: inline-flex;
-  align-items: center;
+  gap: 6px;
+  padding: 7px 12px;
   border-radius: 999px;
   background: var(--surface);
   border: 1px solid var(--line);
+  font-size: 13.5px;
+  line-height: 1.2;
 }
 
-.board-chip.on {
+.diary .board-chip.on {
   background: var(--ink);
   color: var(--on-ink);
   border-color: var(--ink);
-}
-
-.diary .board-chip select {
-  appearance: none;
-  border: 0;
-  background: none;
-  color: inherit;
-  padding: 7px 28px 7px 12px;
-  field-sizing: content;
-  font-weight: 500;
-  font-size: 13.5px;
-  line-height: 1.2;
-  cursor: pointer;
-}
-
-.board-chip select option {
-  color: var(--ink);
-  background: var(--surface);
-}
-
-.board-chip svg {
-  position: absolute;
-  right: 10px;
-  pointer-events: none;
 }
 
 .more-filters {

@@ -106,8 +106,53 @@
   background: var(--paper);
 }
 
+.menu button:disabled {
+  color: var(--ink-3);
+  cursor: default;
+}
+
+.menu button:disabled:hover {
+  background: none;
+}
+
 .menu button.danger {
   color: var(--danger);
+}
+
+/* A select drawn in the app's style: trigger plus a menu of choices. */
+.pickButton {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border: 0;
+  background: none;
+  padding: 0;
+  font: inherit;
+  font-weight: 500;
+  color: inherit;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.pickButton:focus:not(:focus-visible) {
+  outline: none;
+}
+
+.pickMenu {
+  position: fixed;
+  right: auto;
+  width: auto;
+  min-width: 170px;
+  z-index: 40;
+}
+
+.pickMenu button {
+  justify-content: space-between;
+  white-space: nowrap;
+}
+
+.pickMenu button[aria-selected="true"] {
+  font-weight: 600;
 }
 
 /* A secret or code shown whole, ready to copy. */

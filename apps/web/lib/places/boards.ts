@@ -90,3 +90,16 @@ export function tagFit(def: TagDefinition, chosen: readonly string[], snapshot: 
 export function boardName(snapshot: DiarySnapshot, id: string): string {
   return snapshot.boards.find((b) => b.id === id)?.name ?? "Board";
 }
+
+/**
+ * The boards picked after a tap on `id`. Personal and Public each stand alone (Public already
+ * reaches the person's own list and every group's), while groups can be picked together.
+ * Something always stays picked.
+ */
+export function pickBoard(boards: readonly Pick<Board, "id" | "kind">[], value: readonly string[], id: string): string[] {
+  const isGroup = (v: string) => boards.find((b) => b.id === v)?.kind === "group";
+  if (!isGroup(id)) return [id];
+  const groups = value.filter(isGroup);
+  const next = groups.includes(id) ? groups.filter((v) => v !== id) : [...groups, id];
+  return next.length > 0 ? next : [...value];
+}
