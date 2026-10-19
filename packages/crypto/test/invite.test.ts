@@ -1,60 +1,44 @@
 import { beforeAll, describe, expect, it } from "vitest";
 import {
-  CryptoError,
+  appInviteBoxKeys,
+  appInviteId,
   generateBoardKey,
-  generateInviteSecret,
-  inviteId,
-  inviteToken,
-  inviteTokenHash,
-  isInviteSecret,
-  openGroupInvite,
+  generateInviteCode,
+  normaliseInviteCode,
   ready,
-  sealGroupInvite,
-  toBase64,
+  unwrapKeyFromMember,
+  wrapKeyForMember,
 } from "../src/index";
 
 beforeAll(async () => {
   await ready();
 });
 
-describe("group invites", () => {
-  it("derives an id and token that differ per secret and from each other", () => {
-    const secret = generateInviteSecret();
-    expect(isInviteSecret(secret)).toBe(true);
-    expect(isInviteSecret("not-a-secret")).toBe(false);
-    expect(inviteId(secret)).toBe(inviteId(secret));
-    expect(inviteId(secret)).not.toBe(inviteId(generateInviteSecret()));
-    expect(inviteToken(secret)).not.toContain(inviteId(secret));
-    expect(toBase64(inviteTokenHash(inviteToken(secret)))).toBe(toBase64(inviteTokenHash(inviteToken(secret))));
+describe("app invites", () => {
+  it("makes a 20-character code that reads back however it is typed", () => {
+    const code = generateInviteCode();
+    expect(code).toMatch(/^([0-9A-HJKMNP-TV-Z]{5}-){3}[0-9A-HJKMNP-TV-Z]{5}$/);
+    expect(normaliseInviteCode(` ${code.toLowerCase().replace(/-/g, " ")} `)).toBe(code);
+    expect(normaliseInviteCode("O0000-00000-00000-0000L")).toBe("00000-00000-00000-00001");
+    expect(normaliseInviteCode("00000-00000-00000-0000")).toBeNull();
+    expect(normaliseInviteCode("00000-00000-00000-0000U")).toBeNull();
   });
 
-  it("carries every key version and the name to whoever holds the link", () => {
-    const secret = generateInviteSecret();
-    const v1 = generateBoardKey("g1", 1);
-    const v2 = generateBoardKey("g1", 2);
-    const sealed = sealGroupInvite(secret, {
-      boardId: "g1",
-      groupName: "Bandra lot",
-      keys: [v1, v2].map((k) => ({ version: k.version, key: k.key })),
-    });
-    const opened = openGroupInvite(secret, sealed);
-    expect(opened.boardId).toBe("g1");
-    expect(opened.groupName).toBe("Bandra lot");
-    expect(opened.keys.map((k) => [k.version, toBase64(k.key)])).toEqual([
-      [1, toBase64(v1.key)],
-      [2, toBase64(v2.key)],
-    ]);
+  it("derives a stable id and key that differ per code and from each other", () => {
+    const code = generateInviteCode();
+    expect(appInviteId(code)).toBe(appInviteId(code.toLowerCase()));
+    expect(appInviteId(code)).not.toBe(appInviteId(generateInviteCode()));
+    expect(appInviteId(code)).toHaveLength(22);
+    expect(appInviteBoxKeys(code).boxPublicKey).toEqual(appInviteBoxKeys(code.replace(/-/g, "")).boxPublicKey);
+    expect(appInviteBoxKeys(code).boxPublicKey).not.toEqual(appInviteBoxKeys(generateInviteCode()).boxPublicKey);
+    expect(() => appInviteId("not a code")).toThrow();
   });
 
-  it("refuses another secret and a tampered invite", () => {
-    const secret = generateInviteSecret();
-    const sealed = sealGroupInvite(secret, {
-      boardId: "g1",
-      groupName: "x",
-      keys: [{ version: 1, key: generateBoardKey("g1").key }],
-    });
-    expect(() => openGroupInvite(generateInviteSecret(), sealed)).toThrow(CryptoError);
-    const flipped = sealed.sealedKeys.startsWith("A") ? "B" + sealed.sealedKeys.slice(1) : "A" + sealed.sealedKeys.slice(1);
-    expect(() => openGroupInvite(secret, { ...sealed, sealedKeys: flipped })).toThrow(CryptoError);
+  it("carries a board key that only the code opens", () => {
+    const code = generateInviteCode();
+    const board = generateBoardKey("master");
+    const wrapped = wrapKeyForMember(board.key, appInviteBoxKeys(code).boxPublicKey);
+    expect(unwrapKeyFromMember(wrapped, appInviteBoxKeys(code.toLowerCase()))).toEqual(board.key);
+    expect(() => unwrapKeyFromMember(wrapped, appInviteBoxKeys(generateInviteCode()))).toThrow();
   });
 });

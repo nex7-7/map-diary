@@ -36,6 +36,10 @@ function SignedIn({ diary }: { diary: Diary }) {
             <span aria-hidden>👥</span>
             <span className="inbox-label">Groups</span>
           </Link>
+          <Link href="/profile" className="inbox-link" aria-label="Your name">
+            <span aria-hidden>👤</span>
+            <span className="inbox-label">Name</span>
+          </Link>
           <Link href="/devices" className="inbox-link" aria-label="Devices">
             <span aria-hidden>📱</span>
             <span className="inbox-label">Devices</span>

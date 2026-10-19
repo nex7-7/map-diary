@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { fromBase64, inviteTokenHash, toBase64 } from "@map-diary/crypto";
+import { fromBase64, groupInviteTokenHash, toBase64 } from "@map-diary/crypto";
 import { readBody, requireDevice, type AuthedEnv } from "./auth";
 import { bytes, fail, isB64, isId, isObject, isPositiveInt } from "./http";
 
@@ -161,6 +161,19 @@ function leaveBoardStatements(db: D1Database, boardId: string, accountId: string
       .bind(boardId, now),
     db.prepare("DELETE FROM board_members WHERE board_id = ? AND account_id = ?").bind(boardId, accountId),
     db.prepare("DELETE FROM board_keys WHERE board_id = ? AND account_id = ?").bind(boardId, accountId),
+  ];
+}
+
+/**
+ * Someone leaves a group (or is removed from the app): their envelopes leave its board, open
+ * invites go, and if anyone remains the group is marked so a remaining member's device moves
+ * it to a new key.
+ */
+export function leaveGroupStatements(db: D1Database, boardId: string, accountId: string, others: number, now: number) {
+  return [
+    ...leaveBoardStatements(db, boardId, accountId, now),
+    db.prepare("DELETE FROM invites WHERE board_id = ? AND used_at IS NULL").bind(boardId),
+    db.prepare("UPDATE boards SET rotation_due_at = ? WHERE id = ? AND ? > 0").bind(now, boardId, others),
   ];
 }
 
@@ -345,7 +358,7 @@ groups.post("/invites/:id/accept", readBody, requireDevice, async (c) => {
   const now = Date.now();
   const row = await liveInvite(db, c.req.param("id"), accountId, now);
   // A wrong token looks the same as no invite.
-  const tokenHash = inviteTokenHash(token);
+  const tokenHash = groupInviteTokenHash(token);
   if (!row || toBase64(bytes(row.secret_hash)) !== toBase64(tokenHash)) return fail(c, 404, "not_found");
   if (row.is_member === 1) return fail(c, 409, "already_member");
   if (row.members >= MAX_GROUP_MEMBERS) return fail(c, 409, "group_full");
@@ -444,14 +457,6 @@ groups.post("/groups/:id/leave", readBody, requireDevice, async (c) => {
   const { accountId } = c.var.device;
   const group = await loadGroup(db, c.req.param("id"), accountId);
   if (!group) return fail(c, 404, "not_found");
-  const now = Date.now();
-  const others = group.members.length - 1;
-  await db.batch([
-    ...leaveBoardStatements(db, group.board.id, accountId, now),
-    db.prepare("DELETE FROM invites WHERE board_id = ? AND used_at IS NULL").bind(group.board.id),
-    db
-      .prepare("UPDATE boards SET rotation_due_at = ? WHERE id = ? AND ? > 0")
-      .bind(now, group.board.id, others),
-  ]);
+  await db.batch(leaveGroupStatements(db, group.board.id, accountId, group.members.length - 1, Date.now()));
   return c.json({ id: group.board.id, left: true });
 });

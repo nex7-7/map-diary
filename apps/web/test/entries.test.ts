@@ -2,11 +2,15 @@ import type { EnvelopeType, JsonValue } from "@map-diary/crypto";
 import { describe, expect, it } from "vitest";
 import {
   addComment,
+  addOpinions,
   addPlace,
   applyTag,
   deletePlace,
   EntryError,
+  findCataloguePlace,
   findDuplicate,
+  defineTag,
+  setDisplayName,
   setStatus,
   unapplyTag,
   type DiaryWriter,
@@ -200,5 +204,129 @@ describe("opinions", () => {
     const id = await addPlace(d, { kind: "place", facts: facts(), status: "want", tagIds: [], newTags: [], comment: "Hi" });
     await deletePlace(d, id);
     expect(d.items.size).toBe(0);
+  });
+});
+
+describe("opinions on someone else's place", () => {
+  const friendsPlace = (d: FakeDiary) => {
+    const place: StoredItem = {
+      id: "p-friend", type: "place", authorId: "acct-friend", placeId: null, createdAt: 1, updatedAt: 1,
+      boardIds: ["board-master"], payload: facts() as unknown as JsonValue,
+    };
+    d.items.set(place.id, place);
+    return place;
+  };
+
+  it("posts tags and comments to the boards chosen", async () => {
+    const d = new FakeDiary();
+    const place = friendsPlace(d);
+    await setStatus(d, place.id, "want");
+    await addComment(d, place.id, "Going Saturday", ["board-master", "board-duo"]);
+    const tagId = await defineTag(d, { name: "Spicy", emoji: "", description: "" }, ["board-duo"]);
+    await applyTag(d, place.id, tagId, ["board-duo"]);
+
+    const all = [...d.items.values()];
+    expect(all.find((i) => i.type === "comment")?.boardIds).toEqual(["board-master", "board-duo"]);
+    expect(all.filter((i) => i.type === "tag").map((i) => i.boardIds)).toEqual([["board-duo"]]);
+    // The friend's place is untouched.
+    expect(d.items.get(place.id)?.authorId).toBe("acct-friend");
+  });
+
+  it("counts a tag as visible where its reader says so", async () => {
+    const d = new FakeDiary();
+    const place = friendsPlace(d);
+    d.items.set("t-friend", {
+      id: "t-friend", type: "tag_def", authorId: "acct-friend", placeId: null, createdAt: 1, updatedAt: 1,
+      boardIds: ["board-master"], payload: { name: "Sunset", emoji: "", description: "" },
+    });
+    await setStatus(d, place.id, "want");
+    // Posted only to master, but every group member can read master, so it fits the group.
+    await expect(applyTag(d, place.id, "t-friend", ["board-duo"])).rejects.toBeInstanceOf(EntryError);
+    await applyTag(d, place.id, "t-friend", ["board-duo"], () => true);
+    expect([...d.items.values()].find((i) => i.type === "tag")?.boardIds).toEqual(["board-duo"]);
+  });
+
+  it("keeps one display name on the master board", async () => {
+    const d = new FakeDiary();
+    await expect(setDisplayName(d, "  \u200b ", "board-master")).rejects.toBeInstanceOf(EntryError);
+    await setDisplayName(d, "Snehil", "board-master");
+    expect(await setDisplayName(d, "  Snehil S.  ", "board-master")).toBe("Snehil S.");
+    const profiles = [...d.items.values()].filter((i) => i.type === "profile");
+    expect(profiles).toHaveLength(1);
+    expect(profiles[0]).toMatchObject({ boardIds: ["board-master"], payload: { name: "Snehil S." } });
+  });
+});
+
+describe("boards", () => {
+  const MASTER = "board-master";
+
+  it("posts the status, tags and note to the boards picked, and widens a tag of one's own", async () => {
+    const d = new FakeDiary();
+    const old = await d.write({ type: "tag_def", placeId: null, payload: { name: "Irani", emoji: "🫖", description: "" } });
+    const id = await addPlace(d, {
+      kind: "place",
+      facts: facts(),
+      status: "visited",
+      tagIds: [old.id],
+      newTags: [{ name: "Cheap", emoji: "🪙", description: "" }],
+      comment: "Berry pulao",
+      boards: [MASTER],
+    });
+    const items = [...d.items.values()];
+    expect(items.filter((i) => i.placeId === id).every((i) => i.boardIds.join() === MASTER)).toBe(true);
+    // The old Personal tag now reads on the Public board too, so the Public tag makes sense.
+    expect(d.items.get(old.id)?.boardIds).toEqual(["board-personal", MASTER]);
+    expect(items.find((i) => i.type === "tag_def" && i.id !== old.id)?.boardIds).toEqual([MASTER]);
+  });
+
+  it("refuses to apply someone else's tag where its definition is not shared", async () => {
+    const d = new FakeDiary();
+    const place = await d.write({ type: "place", placeId: null, payload: facts() as unknown as JsonValue });
+    d.items.set("their-tag", {
+      id: "their-tag",
+      type: "tag_def",
+      authorId: "acct-friend",
+      placeId: null,
+      createdAt: 1,
+      updatedAt: 1,
+      boardIds: ["board-group"],
+      payload: { name: "Sunset", emoji: "🌅", description: "" },
+    });
+    await setStatus(d, place.id, "want", [MASTER]);
+    await expect(applyTag(d, place.id, "their-tag", [MASTER])).rejects.toBeInstanceOf(EntryError);
+    await applyTag(d, place.id, "their-tag", ["board-group"]);
+    expect([...d.items.values()].find((i) => i.type === "tag")?.boardIds).toEqual(["board-group"]);
+  });
+
+  it("moves a status to new boards, and keeps its boards when none are given", async () => {
+    const d = new FakeDiary();
+    const place = await d.write({ type: "place", placeId: null, payload: facts() as unknown as JsonValue });
+    await setStatus(d, place.id, "want");
+    await setStatus(d, place.id, "want", [MASTER]);
+    await setStatus(d, place.id, "visited");
+    const status = [...d.items.values()].find((i) => i.type === "status");
+    expect(status).toMatchObject({ boardIds: [MASTER], payload: { status: "visited" } });
+  });
+
+  it("adds notes to a place the catalogue already has instead of copying it", async () => {
+    const d = new FakeDiary();
+    const existing = await d.write({ type: "place", placeId: null, payload: facts() as unknown as JsonValue });
+    expect(await findCataloguePlace(d, ["https://www.zomato.com/mumbai/kyani/info"])).toBe(existing.id);
+    // Not on this device yet, but the Worker knows it by its link hash.
+    const remote = Object.assign(new FakeDiary(), { findCataloguePlace: async (links: readonly string[]) => (links[0] === "zomato.com/mumbai/kyani/info" ? "p-remote" : null) });
+    expect(await findCataloguePlace(remote, ["https://zomato.com/mumbai/kyani/info?utm_source=x"])).toBe("p-remote");
+    expect(await findCataloguePlace(remote, ["https://zomato.com/mumbai/other"])).toBeUndefined();
+
+    await addOpinions(d, existing.id, { status: "want", tagIds: [], newTags: [], comment: "Me too", boards: [MASTER] });
+    const mine = [...d.items.values()].filter((i) => i.placeId === existing.id);
+    expect(mine.map((i) => i.type).sort()).toEqual(["comment", "status"]);
+  });
+
+  it("names the master board Public", () => {
+    const snap = snapshotFromItems([], "acct-me", "board-personal", [
+      { id: "board-personal", kind: "personal", name: "Personal", memberIds: ["acct-me"] },
+      { id: MASTER, kind: "master", name: "Public", memberIds: null },
+    ]);
+    expect(snap.boards.map((b) => b.name)).toEqual(["Personal", "Public"]);
   });
 });

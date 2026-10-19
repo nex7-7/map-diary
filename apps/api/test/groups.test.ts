@@ -5,8 +5,8 @@ import {
   deriveAccount,
   generateIdentity,
   generateRecoveryPhrase,
-  inviteId,
-  inviteToken,
+  groupInviteId,
+  groupInviteToken,
   randomId,
   ready,
   toBase64,
@@ -92,6 +92,10 @@ async function expectGroupError(p: Promise<unknown>, code: string) {
 }
 
 const byType = (items: DiaryItem[], type: string) => items.filter((i) => i.type === type);
+/** Boards the device holds a key for or knows it is in. */
+const heldBoards = (diary: Diary) => [
+  ...new Set([...diary.device.boardKeys.map((k) => k.boardId), ...(diary.device.boards ?? []).map((b) => b.id)]),
+];
 
 describe("groups", () => {
   let snehil: Diary;
@@ -125,7 +129,6 @@ describe("groups", () => {
       id: groupId,
       kind: "group",
       keyVersion: 1,
-      rotationDue: false,
       memberIds: [snehil.device.accountId],
     });
 
@@ -142,9 +145,9 @@ describe("groups", () => {
     expect(inviteSecretFrom(link)).toBe(secret);
 
     // The Worker never saw the secret or the token, only values derived from it.
-    const invite = await env.DB.prepare("SELECT * FROM invites WHERE id = ?").bind(inviteId(secret)).first();
+    const invite = await env.DB.prepare("SELECT * FROM invites WHERE id = ?").bind(groupInviteId(secret)).first();
     expect(JSON.stringify(invite)).not.toContain(secret);
-    expect(JSON.stringify(invite)).not.toContain(inviteToken(secret));
+    expect(JSON.stringify(invite)).not.toContain(groupInviteToken(secret));
 
     const seen = await readGroupInvite(api, asha.device, secret);
     expect(seen).toMatchObject({ groupId, groupName: "Bandra lot", members: 1, isMember: false });
@@ -164,7 +167,7 @@ describe("groups", () => {
     const { secret } = await createGroupInvite(api, snehil.device, groupId, "Bandra lot");
     const signer = { deviceId: ravi.device.deviceId, signSecretKey: ravi.device.identity.signSecretKey };
     const forged = await api
-      .acceptInvite(inviteId(secret), { token: toBase64(new Uint8Array(32)), keys: [{ keyVersion: 1, wrappedKey: "AAAA" }] }, signer)
+      .acceptInvite(groupInviteId(secret), { token: toBase64(new Uint8Array(32)), keys: [{ keyVersion: 1, wrappedKey: "AAAA" }] }, signer)
       .catch((e: unknown) => e);
     expect(forged).toMatchObject({ status: 404 });
     await acceptGroupInvite(ravi, api, secret);
@@ -214,7 +217,7 @@ describe("groups", () => {
     expect(raviItems.map((i) => i.id)).toContain(ravisBoth.id);
     expect(raviItems.map((i) => i.id)).not.toContain(ravisComment.id);
     expect(raviItems.some((i) => i.authorId !== ravi.device.accountId)).toBe(false);
-    expect(ravi.heldBoards()).not.toContain(groupId);
+    expect(heldBoards(ravi)).not.toContain(groupId);
 
     // New items are sealed under version 2, which Ravi never received.
     const after = await asha.write({ type: "comment", placeId: "place-1", payload: { text: "new" }, boards: [groupId] });
@@ -234,7 +237,7 @@ describe("groups", () => {
     expect((await snehil.listItems()).map((i) => i.id)).toContain(ashasNote.id);
 
     await leaveGroup(asha, api, groupId);
-    expect(asha.heldBoards()).not.toContain(groupId);
+    expect(heldBoards(asha)).not.toContain(groupId);
     const others = (items: DiaryItem[]) => items.filter((i) => i.authorId !== asha.device.accountId);
     expect(others(await asha.listItems()).some((i) => i.boardIds.includes(groupId))).toBe(false);
     await asha.sync();

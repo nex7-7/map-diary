@@ -12,6 +12,9 @@ export const ENVELOPE_TYPES = [
   "tag_def",
   "tag",
   "comment",
+  /** A person's display name, posted to the master board. */
+  "profile",
+  /** A group's name, posted to the group's own board. */
   "group",
 ] as const;
 

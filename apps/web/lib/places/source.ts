@@ -25,7 +25,7 @@ export function createFixtureSource(now: () => Date = () => new Date()): DiarySo
         // New opinions default to the Personal board.
         place.opinions.push({
           id: `o-local-${placeId}`, kind: "status", status, authorId: snapshot.me.id,
-          boards: ["personal"], createdAt: stamp, updatedAt: stamp,
+          boards: ["personal"], shownOn: ["personal"], createdAt: stamp, updatedAt: stamp,
         });
       }
       listeners.forEach((l) => l());

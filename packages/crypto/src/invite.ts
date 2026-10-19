@@ -1,126 +1,74 @@
 import { getSodium } from "./sodium";
 import { CryptoError } from "./errors";
-import { canonicalBytes, fromBase64, fromUtf8, toBase64, utf8 } from "./encoding";
+import { toBase64, utf8 } from "./encoding";
 
 /**
- * Group invites. Any member makes a random secret and shares it as a link with the secret
- * after the `#`, which browsers never send to the server. Everything the Worker stores is
- * derived from that secret:
+ * App invites: the admin's device makes a random code and shares it as a link (after the
+ * `#`, so it never reaches the server) and as text a friend can type into the installed app
+ * (on iPhone a tapped link opens in Safari, whose storage the Home Screen app does not share).
  *
- * - the invite id the Worker files it under,
- * - a hash of the accept token, so only someone holding the link can use it (the id alone
- *   does not give the token),
- * - and the group's keys, encrypted under a key derived from the secret.
- *
- * The secret is 256 bits: a link is pasted, never typed.
+ * The Worker files the invite under an id derived from the code, so it never sees the code
+ * itself. The code is 100 bits: an invite lasts seven days and also carries keys sealed
+ * to a keypair derived from it, so it must hold up to offline guessing, not just online.
  */
-const SECRET_BYTES = 32;
+const GROUPS = 4;
+const GROUP_CHARS = 5;
+const CHARS = GROUPS * GROUP_CHARS;
+const ALPHABET = "0123456789ABCDEFGHJKMNPQRSTVWXYZ";
 const CTX_INVITE = "mdinvite";
 
-/** What an invite carries: the group's name as the inviter knows it, and every key version. */
-export interface GroupInvite {
-  boardId: string;
-  groupName: string;
-  keys: { version: number; key: Uint8Array }[];
+function grouped(text: string): string {
+  const parts: string[] = [];
+  for (let i = 0; i < text.length; i += GROUP_CHARS) parts.push(text.slice(i, i + GROUP_CHARS));
+  return parts.join("-");
 }
 
-/** A sealed invite as the Worker stores it. */
-export interface SealedInvite {
-  /** base64url */
-  nonce: string;
-  /** base64url */
-  sealedKeys: string;
+/** A new invite code, for example `7K3QM-9XT2B-QW4RT-ZP0HK`. */
+export function generateInviteCode(): string {
+  // 13 random bytes give 104 bits; 20 Crockford characters use 100 of them.
+  let bits = 0n;
+  for (const byte of getSodium().randombytes_buf(13)) bits = (bits << 8n) | BigInt(byte);
+  let text = "";
+  for (let i = 0; i < CHARS; i++) {
+    text += ALPHABET[Number(bits & 31n)];
+    bits >>= 5n;
+  }
+  return grouped(text);
 }
 
-/** A new invite secret, base64url. It goes after the `#` in the link. */
-export function generateInviteSecret(): string {
-  return toBase64(getSodium().randombytes_buf(SECRET_BYTES));
+/**
+ * Reads a code as typed or as found in a link: case, spaces and dashes don't matter, and
+ * I, L and O read as 1, 1 and 0. Returns the canonical form, or null if it cannot be one.
+ */
+export function normaliseInviteCode(text: string): string | null {
+  const clean = text
+    .toUpperCase()
+    .replace(/[\s-]/g, "")
+    .replace(/[IL]/g, "1")
+    .replace(/O/g, "0");
+  if (clean.length !== CHARS || [...clean].some((ch) => !ALPHABET.includes(ch))) return null;
+  return grouped(clean);
 }
 
-function subkey(secret: string, id: number): Uint8Array {
+function subkey(code: string, id: number): Uint8Array {
   const sodium = getSodium();
-  let raw: Uint8Array;
-  try {
-    raw = fromBase64(secret.trim());
-  } catch {
-    throw new CryptoError("invalid_input", "Not an invite secret");
-  }
-  if (raw.length !== SECRET_BYTES) throw new CryptoError("invalid_input", "Not an invite secret");
-  return sodium.crypto_kdf_derive_from_key(32, id, CTX_INVITE, raw);
+  const canonical = normaliseInviteCode(code);
+  if (!canonical) throw new CryptoError("invalid_input", "Not an invite code");
+  const master = sodium.crypto_generichash(sodium.crypto_kdf_KEYBYTES, utf8(canonical), utf8("map-diary/invite/v1"));
+  return sodium.crypto_kdf_derive_from_key(32, id, CTX_INVITE, master);
 }
 
-/** Whether a string can be an invite secret, for reading one out of a link. */
-export function isInviteSecret(text: string): boolean {
-  try {
-    subkey(text, 1);
-    return true;
-  } catch {
-    return false;
-  }
+/** The id the Worker files the invite under. Knowing it does not reveal the code. */
+export function appInviteId(code: string): string {
+  return toBase64(subkey(code, 1).subarray(0, 16));
 }
 
-/** The id the Worker files the invite under. Knowing it reveals neither the secret nor the token. */
-export function inviteId(secret: string): string {
-  return toBase64(subkey(secret, 1).subarray(0, 16));
-}
-
-/** Proves to the Worker, on accepting, that the device holds the link. */
-export function inviteToken(secret: string): string {
-  return toBase64(subkey(secret, 2));
-}
-
-/** What the Worker stores to check a token. Run by the inviting device and by the Worker. */
-export function inviteTokenHash(token: string): Uint8Array {
-  return getSodium().crypto_generichash(32, utf8(`map-diary/invite-token/v1:${token}`), null);
-}
-
-function inviteAad(secret: string): Uint8Array {
-  return canonicalBytes(["map-diary/invite", 1, inviteId(secret)]);
-}
-
-/** Encrypts the group's keys and name under a key derived from the secret. */
-export function sealGroupInvite(secret: string, invite: GroupInvite): SealedInvite {
-  const sodium = getSodium();
-  if (invite.keys.length === 0) throw new CryptoError("invalid_input", "An invite needs at least one key");
-  const json = JSON.stringify({
-    v: 1,
-    boardId: invite.boardId,
-    groupName: invite.groupName,
-    keys: invite.keys.map((k) => ({ version: k.version, key: toBase64(k.key) })),
-  });
-  const nonce = sodium.randombytes_buf(sodium.crypto_aead_xchacha20poly1305_ietf_NPUBBYTES);
-  const sealed = sodium.crypto_aead_xchacha20poly1305_ietf_encrypt(utf8(json), inviteAad(secret), null, nonce, subkey(secret, 3));
-  return { nonce: toBase64(nonce), sealedKeys: toBase64(sealed) };
-}
-
-export function openGroupInvite(secret: string, sealed: SealedInvite): GroupInvite {
-  const sodium = getSodium();
-  const bad = () => new CryptoError("decrypt_failed", "Could not open the invite");
-  let raw: unknown;
-  try {
-    const opened = sodium.crypto_aead_xchacha20poly1305_ietf_decrypt(
-      null,
-      fromBase64(sealed.sealedKeys),
-      inviteAad(secret),
-      fromBase64(sealed.nonce),
-      subkey(secret, 3),
-    );
-    raw = JSON.parse(fromUtf8(opened));
-  } catch {
-    throw bad();
-  }
-  if (typeof raw !== "object" || raw === null) throw bad();
-  const { v, boardId, groupName, keys } = raw as Record<string, unknown>;
-  if (v !== 1 || typeof boardId !== "string" || typeof groupName !== "string" || !Array.isArray(keys)) throw bad();
-  const out: GroupInvite["keys"] = [];
-  for (const k of keys as unknown[]) {
-    if (typeof k !== "object" || k === null) throw bad();
-    const { version, key } = k as Record<string, unknown>;
-    if (typeof version !== "number" || !Number.isSafeInteger(version) || version < 1 || typeof key !== "string") throw bad();
-    const bytes = fromBase64(key);
-    if (bytes.length !== sodium.crypto_aead_xchacha20poly1305_ietf_KEYBYTES) throw bad();
-    out.push({ version, key: bytes });
-  }
-  if (out.length === 0) throw bad();
-  return { boardId, groupName, keys: out };
+/**
+ * An X25519 keypair only holders of the code can derive. The admin's device wraps every master
+ * key version to its public key (a sealed box, as for any member), so the invite carries the
+ * Public board to the friend without the server being able to open it.
+ */
+export function appInviteBoxKeys(code: string): { boxPublicKey: Uint8Array; boxSecretKey: Uint8Array } {
+  const pair = getSodium().crypto_box_seed_keypair(subkey(code, 2));
+  return { boxPublicKey: pair.publicKey, boxSecretKey: pair.privateKey };
 }

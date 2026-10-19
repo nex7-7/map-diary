@@ -2,11 +2,11 @@ import {
   CryptoError,
   fromBase64,
   generateBoardKey,
-  generateInviteSecret,
-  inviteId,
-  inviteToken,
-  inviteTokenHash,
-  isInviteSecret,
+  generateGroupInviteSecret,
+  groupInviteId,
+  groupInviteToken,
+  groupInviteTokenHash,
+  isGroupInviteSecret,
   openGroupInvite,
   randomId,
   ready,
@@ -122,7 +122,7 @@ export async function createGroupInvite(
   await ready();
   const keys = device.boardKeys.filter((k) => k.boardId === groupId).sort((a, b) => a.version - b.version);
   if (keys.length === 0) throw new Error("This device has no key for the group");
-  const secret = generateInviteSecret();
+  const secret = generateGroupInviteSecret();
   const sealed = sealGroupInvite(secret, {
     boardId: groupId,
     groupName,
@@ -131,7 +131,7 @@ export async function createGroupInvite(
   try {
     const { expiresAt } = await api.createInvite(
       groupId,
-      { id: inviteId(secret), tokenHash: toBase64(inviteTokenHash(inviteToken(secret))), ...sealed },
+      { id: groupInviteId(secret), tokenHash: toBase64(groupInviteTokenHash(groupInviteToken(secret))), ...sealed },
       signerOf(device),
     );
     return { secret, expiresAt };
@@ -144,7 +144,7 @@ export async function createGroupInvite(
 export function inviteSecretFrom(text: string): string | null {
   const hash = text.indexOf("#");
   const candidate = (hash >= 0 ? text.slice(hash + 1) : text).trim();
-  return isInviteSecret(candidate) ? candidate : null;
+  return isGroupInviteSecret(candidate) ? candidate : null;
 }
 
 export interface OpenedInvite {
@@ -159,9 +159,9 @@ export interface OpenedInvite {
 /** Opens an invite link to show which group it is, without joining. */
 export async function readGroupInvite(api: Api, device: DeviceState, secret: string): Promise<OpenedInvite> {
   await ready();
-  if (!isInviteSecret(secret)) throw new GroupError("invalid_link");
+  if (!isGroupInviteSecret(secret)) throw new GroupError("invalid_link");
   try {
-    const view = await api.readInvite(inviteId(secret), signerOf(device));
+    const view = await api.readInvite(groupInviteId(secret), signerOf(device));
     const invite = openGroupInvite(secret, view);
     // The Worker files the invite under a board; the sealed keys must be for that board.
     if (invite.boardId !== view.boardId) throw new GroupError("invalid_link");
@@ -185,9 +185,9 @@ export async function acceptGroupInvite(diary: Diary, api: Api, secret: string):
   if (invite.isMember) throw new GroupError("already_member");
   try {
     await api.acceptInvite(
-      inviteId(secret),
+      groupInviteId(secret),
       {
-        token: inviteToken(secret),
+        token: groupInviteToken(secret),
         keys: invite.keys.map((k) => ({
           keyVersion: k.version,
           wrappedKey: toBase64(wrapKeyForMember(k.key, device.accountBox.publicKey)),
@@ -248,7 +248,7 @@ export async function removeGroupMember(diary: Diary, api: Api, groupId: string,
       group,
       group.members.filter((m) => m.accountId !== accountId),
     );
-    await api.removeMember(groupId, accountId, { keyVersion: key.version, memberKeys }, signerOf(device));
+    await api.removeGroupMember(groupId, accountId, { keyVersion: key.version, memberKeys }, signerOf(device));
     await diary.adoptBoardKeys([key]);
   } catch (err) {
     throw asGroupError(err);

@@ -17,7 +17,6 @@ import {
   useGroups,
   type Group,
 } from "@/lib/groups";
-import { memberName } from "@/lib/groups/people";
 import { groupErrorMessage } from "./messages";
 
 /** `/groups`: the groups this account is in, their members, invites, and leaving. */
@@ -98,12 +97,12 @@ function GroupCard({ diary, group, onChange }: { diary: Diary; group: Group; onC
       <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "grid", gap: 8 }}>
         {group.members.map((m) => (
           <li key={m.accountId}>
-            {memberName(diary, m.accountId)}
+            {m.name}
             {m.accountId !== me &&
               (confirm?.kind === "remove" && confirm.accountId === m.accountId ? (
                 <>
                   <p>
-                    Remove {memberName(diary, m.accountId)}? Everything they posted to this group disappears for
+                    Remove {m.name}? Everything they posted to this group disappears for
                     everyone, and they won&apos;t see anything new here.
                   </p>
                   <button

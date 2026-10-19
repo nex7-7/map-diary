@@ -1,3 +1,4 @@
+import { applyBoardRules } from "./boards";
 import type { Board, DiarySnapshot, Opinion, Person, PlaceView, TagDefinition } from "./types";
 
 /**
@@ -16,10 +17,10 @@ const people: Person[] = [
 ];
 
 const boards: Board[] = [
-  { id: "personal", kind: "personal", name: "Personal" },
-  { id: "master", kind: "master", name: "Public" },
-  { id: "group:college", kind: "group", name: "College lot" },
-  { id: "group:duo", kind: "group", name: "Riya & me" },
+  { id: "personal", kind: "personal", name: "Personal", memberIds: [me.id] },
+  { id: "master", kind: "master", name: "Public", memberIds: null },
+  { id: "group:college", kind: "group", name: "College lot", memberIds: [me.id, "u-aarav", "u-meera", "u-kabir"] },
+  { id: "group:duo", kind: "group", name: "Riya & me", memberIds: [me.id, "u-riya"] },
 ];
 
 const tags: TagDefinition[] = [
@@ -32,18 +33,22 @@ const tags: TagDefinition[] = [
 let seq = 0;
 const at = (day: number) => new Date(Date.UTC(2026, 8, day, 12)).toISOString();
 const status = (authorId: string, s: "visited" | "want", boards: string[], day: number): Opinion => ({
-  id: `o-${++seq}`, kind: "status", status: s, authorId, boards, createdAt: at(day), updatedAt: at(day),
+  id: `o-${++seq}`, kind: "status", status: s, authorId, boards, shownOn: [], createdAt: at(day), updatedAt: at(day),
 });
 const tag = (authorId: string, tagId: string, boards: string[], day: number): Opinion => ({
-  id: `o-${++seq}`, kind: "tag", tagId, authorId, boards, createdAt: at(day), updatedAt: at(day),
+  id: `o-${++seq}`, kind: "tag", tagId, authorId, boards, shownOn: [], createdAt: at(day), updatedAt: at(day),
 });
 const comment = (authorId: string, text: string, boards: string[], day: number): Opinion => ({
-  id: `o-${++seq}`, kind: "comment", text, authorId, boards, createdAt: at(day), updatedAt: at(day),
+  id: `o-${++seq}`, kind: "comment", text, authorId, boards, shownOn: [], createdAt: at(day), updatedAt: at(day),
 });
 
-const place = (p: Omit<PlaceView, "sourceLinks" | "isPrivate"> & Partial<Pick<PlaceView, "sourceLinks" | "isPrivate">>): PlaceView => ({
+const place = (
+  p: Omit<PlaceView, "sourceLinks" | "isPrivate" | "boards"> & Partial<Pick<PlaceView, "sourceLinks" | "isPrivate" | "boards">>,
+): PlaceView => ({
   sourceLinks: [],
   isPrivate: false,
+  // Catalogue places live on the master board; dropped pins on the boards their owner picks.
+  boards: p.isPrivate ? ["personal"] : ["master"],
   ...p,
 });
 
@@ -113,7 +118,12 @@ const places: PlaceView[] = [
   place({
     id: "p-sgnp", name: "Sanjay Gandhi National Park", category: "recreation",
     location: { lng: 72.9106, lat: 19.2147 }, address: "Borivali East",
-    opinions: [status("u-aarav", "visited", ["master"], 5), comment("u-aarav", "Kanheri caves trail opens at 9.", ["master"], 5)],
+    opinions: [
+      status("u-aarav", "visited", ["master"], 5),
+      comment("u-aarav", "Kanheri caves trail opens at 9.", ["master"], 5),
+      // Riya is not in the college group: this shows on Public only, never on College lot.
+      comment("u-riya", "Hire a cycle at the gate.", ["master"], 7),
+    ],
   }),
   place({
     id: "p-chowpatty", name: "Girgaon Chowpatty", category: "beach",
@@ -142,5 +152,5 @@ const places: PlaceView[] = [
 ];
 
 export function fixtureSnapshot(): DiarySnapshot {
-  return structuredClone({ me, people, boards, tags, places });
+  return applyBoardRules(structuredClone({ me, people, boards, tags, places }));
 }

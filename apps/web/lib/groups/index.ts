@@ -18,7 +18,8 @@ import {
 } from "@map-diary/sync";
 import { api } from "@/lib/device/session";
 import { useDiaryItems } from "@/lib/device/hooks";
-import { readPayload } from "@/lib/places/payloads";
+import { displayNames, groupNames } from "@/lib/places/items-source";
+import { memberName } from "./people";
 
 export { GroupError, inviteSecretFrom, GROUP_NAME_MAX, MAX_GROUP_MEMBERS, type OpenedInvite } from "@map-diary/sync";
 
@@ -28,22 +29,9 @@ export interface Group {
   name: string;
   /** This member's own name item, if they set the current name; renaming rewrites it. */
   ownNameItemId: string | undefined;
-  members: GroupView["members"];
+  /** Members as the Worker lists them, each with how to show them. */
+  members: (GroupView["members"][number] & { name: string })[];
   keyVersion: number;
-}
-
-/** Group names by group id, from the 'group' items on each group's board. */
-export function groupNames(items: readonly DiaryItem[]): Map<string, { name: string; item: DiaryItem }> {
-  const names = new Map<string, { name: string; item: DiaryItem }>();
-  for (const item of items) {
-    if (item.type !== "group") continue;
-    const name = readPayload("group", item.payload)?.name;
-    const groupId = item.boardIds[0];
-    if (!name || !groupId) continue;
-    const prior = names.get(groupId);
-    if (!prior || item.updatedAt > prior.item.updatedAt) names.set(groupId, { name, item });
-  }
-  return names;
 }
 
 /**
@@ -72,13 +60,14 @@ export function useGroups(diary: Diary): { groups: Group[] | null; failed: boole
   const groups = useMemo(() => {
     if (views === null) return null;
     const names = groupNames(items);
+    const people = displayNames(items);
     return views.map((v): Group => {
       const named = names.get(v.id);
       return {
         id: v.id,
         name: named?.name ?? "",
         ownNameItemId: named?.item.authorId === diary.device.accountId ? named.item.id : undefined,
-        members: v.members,
+        members: v.members.map((m) => ({ ...m, name: memberName(m.accountId, diary.device.accountId, people) })),
         keyVersion: v.keyVersion,
       };
     });

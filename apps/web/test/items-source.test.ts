@@ -57,7 +57,7 @@ describe("snapshotFromItems", () => {
     const snap = snapshotFromItems(items, ME, PERSONAL);
 
     expect(snap.me).toEqual({ id: ME, name: "Me" });
-    expect(snap.boards).toEqual([{ id: PERSONAL, kind: "personal", name: "Personal" }]);
+    expect(snap.boards).toEqual([{ id: PERSONAL, kind: "personal", name: "Personal", memberIds: [ME] }]);
     expect(snap.tags.map((t) => t.name)).toEqual(["Spicy"]);
     const k = snap.places.find((p) => p.id === kyani.id)!;
     expect(k.opinions.map((o) => o.kind).sort()).toEqual(["comment", "status", "tag"]);
@@ -69,7 +69,11 @@ describe("snapshotFromItems", () => {
     const older = item("status", { status: "want" }, { placeId: kyani.id, updatedAt: 1 });
     const newer = item("status", { status: "visited" }, { placeId: kyani.id, updatedAt: 2 });
     const friend = item("status", { status: "want" }, { placeId: kyani.id, authorId: "acct-friend", boardIds: ["board-g"] });
-    const snap = snapshotFromItems([kyani, newer, older, friend], ME, PERSONAL);
+    const boards = [
+      { id: PERSONAL, kind: "personal" as const, name: "Personal", memberIds: [ME] },
+      { id: "board-g", kind: "group" as const, name: "Shared board", memberIds: null },
+    ];
+    const snap = snapshotFromItems([kyani, newer, older, friend], ME, PERSONAL, boards);
     const statuses = snap.places[0]!.opinions.filter((o) => o.kind === "status");
     expect(statuses.map((o) => o.id).sort()).toEqual([newer.id, friend.id].sort());
     expect(snap.people.map((p) => p.name)).toEqual(["Me", "Friend 1"]);

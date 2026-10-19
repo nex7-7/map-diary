@@ -35,6 +35,13 @@ export interface CommentPayload {
   text: string;
 }
 
+export interface ProfilePayload {
+  /** How the person appears to everyone on the app. */
+  name: string;
+}
+
+export const DISPLAY_NAME_MAX = 40;
+
 /** A group's name, on the group's own board; the newest one from a member wins. */
 export interface GroupPayload {
   name: string;
@@ -47,6 +54,7 @@ export interface PayloadByType {
   tag_def: TagDefPayload;
   tag: TagPayload;
   comment: CommentPayload;
+  profile: ProfilePayload;
   group: GroupPayload;
 }
 
@@ -106,11 +114,20 @@ const readers: { [T in EnvelopeType]: (p: JsonObject) => PayloadByType[T] | unde
     const text = str(p.text)?.trim();
     return text ? { text } : undefined;
   },
+  profile: (p) => {
+    const name = cleanDisplayName(str(p.name) ?? "");
+    return name ? { name } : undefined;
+  },
   group: (p) => {
     const name = str(p.name)?.trim();
     return name ? { name } : undefined;
   },
 };
+
+/** Trims a display name, drops control characters and caps its length. */
+export function cleanDisplayName(name: string): string {
+  return [...name.replace(/[\p{Cc}\p{Cf}]/gu, "").trim()].slice(0, DISPLAY_NAME_MAX).join("").trim();
+}
 
 export function readPayload<T extends EnvelopeType>(type: T, payload: JsonValue): PayloadByType[T] | undefined {
   return isObject(payload) ? readers[type](payload) : undefined;
