@@ -1,0 +1,525 @@
+/* Shared components. Colours and fonts come from the tokens in app/globals.css. */
+
+:where(.button, .chip, .status, .tab, .add, .nav, .markVisited) {
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+  text-decoration: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.icon {
+  flex: none;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.75;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* Button */
+.button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border-radius: var(--radius-m);
+  padding: 14px 20px;
+  font-weight: 500;
+  font-size: 15px;
+  line-height: 1.2;
+  background: var(--ink);
+  color: var(--on-ink);
+  white-space: nowrap;
+}
+
+.button:disabled,
+.button[aria-disabled="true"] {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.button.m {
+  border-radius: var(--radius-s);
+  padding: 9px 14px;
+  font-size: 13px;
+}
+
+.button.secondary {
+  background: var(--surface);
+  color: var(--ink);
+  border: 1px solid var(--line);
+}
+
+.button.ghost {
+  background: none;
+  color: var(--ink);
+}
+
+.button.danger {
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+
+.button.claude {
+  background: var(--claude);
+  color: var(--on-ink);
+}
+
+.button.block {
+  width: 100%;
+}
+
+/* Filter chip */
+.chip {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 12px;
+  border-radius: 999px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  font-weight: 500;
+  font-size: 13.5px;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+.chip[aria-pressed="true"] {
+  background: var(--ink);
+  color: var(--on-ink);
+  border-color: var(--ink);
+}
+
+.chips {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  padding-bottom: 2px;
+}
+
+.chips::-webkit-scrollbar {
+  display: none;
+}
+
+/* Status dot and status chip */
+.dot {
+  display: inline-block;
+  flex: none;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+}
+
+.dot.small {
+  width: 8px;
+  height: 8px;
+}
+
+.dot.visited {
+  background: var(--visited);
+}
+
+.dot.want {
+  border: 2px solid var(--want);
+}
+
+.dot.small.want {
+  border-width: 1.75px;
+}
+
+.dot.friend {
+  background: var(--group);
+}
+
+.dot.pending {
+  background: var(--ink-3);
+}
+
+.status {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  border-radius: 999px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  font-weight: 500;
+  font-size: 14px;
+  line-height: 1.2;
+  color: var(--ink-2);
+}
+
+.status[aria-pressed="true"] {
+  color: var(--ink);
+}
+
+.status.want[aria-pressed="true"] {
+  background: var(--want-soft);
+  border: 1px solid var(--want);
+  box-shadow: inset 0 0 0 0.5px var(--want);
+}
+
+.status.visited[aria-pressed="true"] {
+  background: var(--visited-soft);
+  border: 1px solid var(--visited);
+  box-shadow: inset 0 0 0 0.5px var(--visited);
+}
+
+.statusGroup {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+/* Board badge */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.3;
+  white-space: nowrap;
+}
+
+.badge.personal {
+  background: var(--surface-2);
+  color: var(--ink-2);
+}
+
+.badge.public {
+  background: var(--sea-soft);
+  color: var(--sea);
+}
+
+.badge.group {
+  background: var(--group-soft);
+  color: var(--group);
+}
+
+.badge.ok {
+  background: var(--visited-soft);
+  color: var(--visited);
+}
+
+.badge.claude {
+  background: var(--claude-soft);
+  color: var(--claude);
+}
+
+.badge.warn {
+  background: var(--want-soft);
+  color: var(--want);
+}
+
+/* Pin: the same marker the map draws, for legends and headers. */
+.pin {
+  flex: none;
+  display: inline-grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  border: 3px solid var(--surface);
+  box-shadow: 0 1px 3px var(--shadow);
+  font-size: 14px;
+  line-height: 1;
+}
+
+.pin.large {
+  width: 44px;
+  height: 44px;
+  font-size: 20px;
+}
+
+.pin.visited {
+  background: var(--visited);
+}
+
+.pin.want {
+  background: var(--want);
+}
+
+.pin.friend {
+  background: var(--group);
+}
+
+.pin.pending {
+  background: var(--ink-3);
+}
+
+/* Emoji tile */
+.tile {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  background: var(--surface-2);
+  font-size: 21px;
+  line-height: 1;
+}
+
+/* Place row */
+.row {
+  position: relative;
+  display: flex;
+  gap: 14px;
+  align-items: flex-start;
+  padding: 14px 16px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--line);
+}
+
+.row[aria-current="true"] {
+  background: var(--surface-2);
+}
+
+.rowMain {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  gap: 14px;
+  align-items: flex-start;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+}
+
+.rowMain::after {
+  /* The whole row is the button, except the trailing action. */
+  content: "";
+  position: absolute;
+  inset: 0;
+}
+
+.rowText {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.rowName {
+  font-family: var(--serif);
+  font-weight: 600;
+  font-size: 18px;
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+}
+
+.rowMeta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  color: var(--ink-2);
+  font-size: 13px;
+}
+
+.rowDish {
+  font-size: 13px;
+}
+
+.rowDish strong {
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.rowAction {
+  position: relative;
+  z-index: 1;
+  align-self: center;
+}
+
+.markVisited {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: 1px solid var(--line);
+  color: var(--ink-2);
+}
+
+.markVisited:hover {
+  color: var(--visited);
+  border-color: var(--visited);
+}
+
+/* Phone tab bar */
+.tabbar {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 30;
+  display: flex;
+  justify-content: space-around;
+  align-items: center;
+  background: var(--surface);
+  border-top: 1px solid var(--line);
+  padding: 8px 8px max(8px, env(safe-area-inset-bottom));
+}
+
+.tab {
+  position: relative;
+  width: 64px;
+  display: grid;
+  justify-items: center;
+  gap: 3px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--ink-3);
+}
+
+.tab[aria-current="page"] {
+  color: var(--ink);
+}
+
+.count {
+  position: absolute;
+  top: -4px;
+  left: 36px;
+  min-width: 18px;
+  padding: 1px 5px;
+  border-radius: 999px;
+  background: var(--want);
+  color: var(--on-ink);
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1.4;
+  text-align: center;
+}
+
+.count.quiet {
+  background: var(--surface-2);
+  color: var(--ink-2);
+}
+
+.add {
+  display: grid;
+  place-items: center;
+  width: 52px;
+  height: 52px;
+  margin-top: -22px;
+  border-radius: 50%;
+  background: var(--ink);
+  color: var(--on-ink);
+  box-shadow: 0 6px 18px var(--shadow);
+}
+
+/* Desktop sidebar */
+.side {
+  position: sticky;
+  top: 0;
+  height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 22px 14px;
+  background: var(--surface);
+  border-right: 1px solid var(--line);
+}
+
+.wordmark {
+  font-family: var(--serif);
+  font-weight: 500;
+  font-size: 22px;
+  line-height: 1.05;
+  letter-spacing: -0.2px;
+  padding: 0 10px 18px;
+}
+
+.wordmark small {
+  display: block;
+  margin-top: 6px;
+  font-family: var(--sans);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.8px;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+
+.sideAdd {
+  margin: 0 2px 14px;
+}
+
+.nav {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 9px 10px;
+  border-radius: var(--radius-s);
+  font-weight: 500;
+  color: var(--ink-2);
+  text-align: left;
+}
+
+.nav:hover {
+  background: var(--paper);
+}
+
+.nav[aria-current="page"] {
+  background: var(--paper);
+  color: var(--ink);
+}
+
+.nav .count {
+  position: static;
+  margin-left: auto;
+  font-size: 11px;
+  padding: 1px 7px;
+}
+
+.navEnd {
+  flex: 1;
+}
+
+/* App shell: sidebar on wide screens, tab bar on phones. */
+.shell {
+  min-height: 100dvh;
+}
+
+.shellMain {
+  min-width: 0;
+  padding-bottom: calc(var(--tabbar-h) + env(safe-area-inset-bottom));
+}
+
+.shell .side {
+  display: none;
+}
+
+@media (min-width: 900px) {
+  .shell {
+    display: grid;
+    grid-template-columns: 232px minmax(0, 1fr);
+  }
+
+  .shell .side {
+    display: flex;
+  }
+
+  .shell .tabbar {
+    display: none;
+  }
+
+  .shellMain {
+    padding-bottom: 0;
+  }
+}
