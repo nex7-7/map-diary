@@ -129,7 +129,10 @@ envelopes.post("/envelopes", readBody, requireDevice, async (c) => {
   const unchanged: string[] = [];
   for (const e of candidates) {
     const prior = existing.get(e.id);
-    if (e.boards.some((b) => allowed.get(b.boardId) !== b.keyVersion)) {
+    if (e.boards.some((b) => (allowed.get(b.boardId) ?? 0) > b.keyVersion)) {
+      // Sealed before its device collected a rotated key; the device re-seals it and retries.
+      rejected.push({ id: e.id, reason: "stale_key" });
+    } else if (e.boards.some((b) => allowed.get(b.boardId) !== b.keyVersion)) {
       rejected.push({ id: e.id, reason: "board_not_allowed" });
     } else if (!prior) {
       accepted.push(e);
@@ -322,6 +325,12 @@ envelopes.get("/sync", readBody, requireDevice, async (c) => {
     signature: toBase64(bytes(r.signature)),
   }));
 
+  // Lets the device notice that another of its account's devices moved the account to new keys.
+  const account = await db
+    .prepare("SELECT box_key_version FROM accounts WHERE id = ?")
+    .bind(c.var.device.accountId)
+    .first<{ box_key_version: number }>();
+
   return c.json({
     envelopes: out,
     deleted: page.filter((r) => r.deleted_at !== null).map((r) => r.id),
@@ -334,5 +343,6 @@ envelopes.get("/sync", readBody, requireDevice, async (c) => {
     ),
     cursor: page.at(-1)?.seq ?? since,
     more,
+    boxKeyVersion: account?.box_key_version ?? 1,
   });
 });

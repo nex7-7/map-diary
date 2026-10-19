@@ -12,15 +12,13 @@ import {
   ready,
   sealAccountTransfer,
   toBase64,
-  unwrapKeyFromMember,
   verifyPairingJoinMac,
-  type BoardKey,
   type DeviceKind,
   type IdentityKeys,
   type PairingJoin,
 } from "@map-diary/crypto";
-import { ApiError, NetworkError, type Api, type MeResponse, type Signer } from "./api";
-import type { DeviceState, StoredAccountBoxKeys } from "./device";
+import { ApiError, NetworkError, type Api, type Signer } from "./api";
+import { openBoardKeys, type DeviceState } from "./device";
 
 /** The path the old device's link opens; the secret follows the `#`. */
 export const LINK_PATH = "/link";
@@ -195,20 +193,4 @@ export async function joinPairing(api: Api, typed: string, kind: DeviceKind = "w
       }
     },
   };
-}
-
-/**
- * Opens the board keys wrapped to this account box key. Wraps made under an older account
- * key version need the recovery seed, which a linked device does not hold; it skips them.
- */
-function openBoardKeys(me: MeResponse, box: StoredAccountBoxKeys): BoardKey[] {
-  const keys: BoardKey[] = [];
-  for (const board of me.boards) {
-    for (const k of board.keys) {
-      if (k.accountKeyVersion !== box.version) continue;
-      const key = unwrapKeyFromMember(fromBase64(k.wrappedKey), { boxPublicKey: box.publicKey, boxSecretKey: box.secretKey });
-      keys.push({ boardId: board.id, version: k.keyVersion, key });
-    }
-  }
-  return keys;
 }

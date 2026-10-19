@@ -4,6 +4,7 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 import type { Diary } from "@map-diary/sync";
 import { useSession } from "./hooks";
+import { wasRemoved } from "./session";
 import styles from "./device.module.css";
 
 /**
@@ -16,7 +17,11 @@ export function DeviceGate({ children }: { children: (diary: Diary) => ReactNode
   if (session.state === "ready") return <>{children(session.diary)}</>;
   return (
     <div className={styles.card}>
-      <p>This device isn&apos;t signed in yet.</p>
+      {wasRemoved() ? (
+        <p>This device was removed from your diary on another device, so its copy was cleared.</p>
+      ) : (
+        <p>This device isn&apos;t signed in yet.</p>
+      )}
       <Link className={styles.button} href="/setup">
         Set up the diary
       </Link>

@@ -1,15 +1,17 @@
 import {
   CryptoError,
   fromBase64,
+  openAccountTransfer,
   openEnvelope,
   ready,
   sealEnvelope,
   type Envelope,
+  type BoardKey,
   type EnvelopeType,
   type JsonValue,
 } from "@map-diary/crypto";
 import { ApiError, NetworkError, type Api, type Signer, type SyncResponse } from "./api";
-import { boardKeyLookup, currentBoardKey, type DeviceState } from "./device";
+import { boardKeyLookup, currentBoardKey, mergeBoardKeys, openBoardKeys, type DeviceState } from "./device";
 import type { DiaryItem, DiaryStorage } from "./storage";
 
 /** The API takes at most this many envelopes or deletions per call. */
@@ -23,7 +25,7 @@ export interface SyncStatus {
   lastSyncedAt: number | null;
   /** Envelopes and deletions still waiting to go up. */
   pending: number;
-  /** Error code of the last failed round, for example `unauthenticated` once this device is revoked. */
+  /** Error code of the last failed round, for example `device_revoked` once another device removed this one. */
   error: string | null;
 }
 
@@ -69,12 +71,25 @@ export class Diary {
   private again = false;
   private timer: ReturnType<typeof setInterval> | null = null;
   private readonly skippedLog: SkippedEnvelope[] = [];
+  /** Items refused for a replaced key version, waiting to be re-sealed. */
+  private readonly stale: string[] = [];
+  /** Set when a pull collected a newer account key, so stale items can be re-sealed. */
+  private keysCollected = false;
+
+  private current: DeviceState;
 
   constructor(
-    readonly device: DeviceState,
+    device: DeviceState,
     private readonly storage: DiaryStorage,
     private readonly api: Api,
-  ) {}
+  ) {
+    this.current = device;
+  }
+
+  /** This device's keys. They change when another device of the account revokes a device. */
+  get device(): DeviceState {
+    return this.current;
+  }
 
   private get signer(): Signer {
     return { deviceId: this.device.deviceId, signSecretKey: this.device.identity.signSecretKey };
@@ -137,6 +152,13 @@ export class Diary {
       updatedAt = Math.max(Date.now(), prior.updatedAt + 1);
     }
 
+    const item = await this.sealLocal(input, board, createdAt, updatedAt);
+    this.emit();
+    void this.sync();
+    return item;
+  }
+
+  private async sealLocal(input: WriteInput, board: BoardKey, createdAt?: number, updatedAt?: number): Promise<DiaryItem> {
     const envelope = sealEnvelope({
       type: input.type,
       authorId: this.device.accountId,
@@ -151,9 +173,36 @@ export class Diary {
     });
     const item = itemFrom(envelope, input.payload);
     await this.storage.writeLocal(item, envelope);
-    this.emit();
-    void this.sync();
     return item;
+  }
+
+  /**
+   * Re-seals this device's items that the Worker refused because they were sealed with a key
+   * version a revocation has since replaced. Runs after a pull has collected the new keys.
+   */
+  private async resealStale(): Promise<void> {
+    const ids = this.stale.splice(0);
+    const board = currentBoardKey(this.device, this.device.personalBoardId);
+    // Without a newer key, sealing again would be refused again.
+    if (!board || !this.keysCollected) {
+      for (const id of ids) this.skip({ id, reason: "stale_key" });
+      return;
+    }
+    this.keysCollected = false;
+    let resealed = false;
+    for (const id of ids) {
+      const item = await this.storage.getItem(id);
+      if (!item || item.authorId !== this.device.accountId) continue;
+      // One past the refused version, so settling that one does not drop this from the outbox.
+      await this.sealLocal(
+        { type: item.type, placeId: item.placeId, payload: item.payload, id: item.id },
+        board,
+        item.createdAt,
+        item.updatedAt + 1,
+      );
+      resealed = true;
+    }
+    if (resealed) this.again = true;
   }
 
   /** Deletes one of this account's items everywhere. */
@@ -206,6 +255,7 @@ export class Diary {
       await this.pushDeletes();
       await this.pushEnvelopes();
       await this.pull();
+      if (this.stale.length > 0) await this.resealStale();
       this.setStatus({ phase: "idle", lastSyncedAt: Date.now(), error: null, pending: await this.countPending() });
     } catch (err) {
       const pending = await this.countPending();
@@ -237,6 +287,10 @@ export class Diary {
       const deletedOnServer: string[] = [];
       for (const r of result.rejected) {
         // Ids only; never the content.
+        if (r.reason === "stale_key" && r.id !== null) {
+          this.stale.push(r.id);
+          continue;
+        }
         this.skip({ id: r.id, reason: r.reason });
         if (r.reason === "deleted" && r.id !== null) deletedOnServer.push(r.id);
       }
@@ -250,12 +304,35 @@ export class Diary {
     let cursor = await this.storage.getCursor();
     for (;;) {
       const page = await this.api.pull(cursor, this.signer);
+      // Another device moved the account to new keys: collect them before opening anything.
+      if (page.boxKeyVersion > this.current.accountBox.version) await this.collectAccountKey();
       const items = this.openPage(page);
       const changed = await this.storage.applyPull({ items, deleted: page.deleted, cursor: page.cursor });
       if (changed.length > 0) this.emit();
       if (!page.more || page.cursor <= cursor) break;
       cursor = page.cursor;
     }
+  }
+
+  /**
+   * Opens the new account box key that the revoking device sealed to this device, then the
+   * board keys wrapped to it, and stores the result.
+   */
+  private async collectAccountKey(): Promise<void> {
+    const { version, sealedKey } = await this.api.accountKey(this.signer);
+    const transfer = openAccountTransfer(sealedKey, this.current.identity);
+    if (transfer.accountId !== this.current.accountId || transfer.accountBox.version !== version) {
+      throw new CryptoError("decrypt_failed", "The account key does not belong to this account");
+    }
+    const me = await this.api.me(this.signer);
+    const device: DeviceState = {
+      ...this.current,
+      accountBox: transfer.accountBox,
+      boardKeys: mergeBoardKeys(this.current.boardKeys, openBoardKeys(me, transfer.accountBox)),
+    };
+    await this.storage.saveDevice(device);
+    this.current = device;
+    this.keysCollected = true;
   }
 
   private openPage(page: SyncResponse): DiaryItem[] {

@@ -95,6 +95,15 @@ export interface SyncResponse {
   devices: Record<string, { accountId: string; signPublicKey: string; revokedAt: number | null }>;
   cursor: number;
   more: boolean;
+  /** The account's current box key version; newer than the device's means it must collect the new key. */
+  boxKeyVersion: number;
+}
+
+export interface RevokeBody {
+  boxPublicKey: string;
+  boxKeyVersion: number;
+  boardKeys: WrappedBoardKey[];
+  deviceKeys: { deviceId: string; sealedKey: string }[];
 }
 
 export type ResolverJobStatus = "pending" | "resolved" | "failed";
@@ -223,6 +232,21 @@ export class Api {
 
   collectPairing(id: string, signer: Signer) {
     return this.call<{ sealedTransfer: string }>("GET", `/api/pairings/${encodeURIComponent(id)}/transfer`, undefined, signer);
+  }
+
+  /** Revokes another device of this account and moves the account to the next box key version. */
+  revokeDevice(id: string, body: RevokeBody, signer: Signer) {
+    return this.call<{ revoked: string; boxKeyVersion: number }>(
+      "POST",
+      `/api/devices/${encodeURIComponent(id)}/revoke`,
+      body,
+      signer,
+    );
+  }
+
+  /** The account box key sealed to this device, at the account's current version. */
+  accountKey(signer: Signer) {
+    return this.call<{ version: number; sealedKey: string }>("GET", "/api/me/account-key", undefined, signer);
   }
 
   pushEnvelopes(envelopes: Envelope[], signer: Signer) {

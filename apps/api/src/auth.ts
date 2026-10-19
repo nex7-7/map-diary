@@ -102,17 +102,25 @@ export const requireDevice = createMiddleware<AuthedEnv>(async (c, next) => {
   if (!headers) return fail(c, 401, "unauthenticated");
 
   const row = await c.env.DB.prepare(
-    `SELECT d.account_id, d.sign_public_key, d.last_seen_at, a.is_admin
+    `SELECT d.account_id, d.sign_public_key, d.last_seen_at, d.revoked_at, a.is_admin
        FROM devices d JOIN accounts a ON a.id = d.account_id
-      WHERE d.id = ? AND d.revoked_at IS NULL AND a.removed_at IS NULL`,
+      WHERE d.id = ? AND a.removed_at IS NULL`,
   )
     .bind(headers.deviceId)
-    .first<{ account_id: string; sign_public_key: unknown; last_seen_at: number | null; is_admin: number }>();
+    .first<{
+      account_id: string;
+      sign_public_key: unknown;
+      last_seen_at: number | null;
+      revoked_at: number | null;
+      is_admin: number;
+    }>();
   if (!row) return fail(c, 401, "unauthenticated");
 
   if (!requestIsSignedBy(c.req.raw, headers, c.var.rawBody, bytes(row.sign_public_key))) {
     return fail(c, 401, "unauthenticated");
   }
+  // Only the holder of the device key learns it was revoked, so it can forget its keys.
+  if (row.revoked_at !== null) return fail(c, 401, "device_revoked");
 
   c.set("device", { id: headers.deviceId, accountId: row.account_id, isAdmin: row.is_admin === 1 });
 

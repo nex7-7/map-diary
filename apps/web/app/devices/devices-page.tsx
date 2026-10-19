@@ -2,11 +2,11 @@
 
 import Link from "next/link";
 import QRCode from "qrcode";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { PairingError, type OpenPairing, type PairingCheck } from "@map-diary/sync";
 import entries from "@/app/_entries/entries.module.css";
-import { pairingErrorMessage } from "@/app/(device)/messages";
-import { DeviceGate, addDevice, listDevices, type Diary, type ListedDevice } from "@/lib/device";
+import { pairingErrorMessage, revokeErrorMessage } from "@/app/(device)/messages";
+import { DeviceGate, addDevice, listDevices, removeDevice, type Diary, type ListedDevice } from "@/lib/device";
 import styles from "@/lib/device/device.module.css";
 
 const POLL_MS = 2000;
@@ -30,6 +30,7 @@ function Devices({ diary }: { diary: Diary }) {
   const [devices, setDevices] = useState<ListedDevice[] | null>(null);
   const [loadFailed, setLoadFailed] = useState(false);
   const [adding, setAdding] = useState(false);
+  const [removing, setRemoving] = useState<string | null>(null);
 
   const load = useCallback(() => {
     listDevices(diary).then(
@@ -63,6 +64,21 @@ function Devices({ diary }: { diary: Diary }) {
                 Added {day(d.createdAt)}
                 {d.lastSeenAt !== null && ` · last used ${day(d.lastSeenAt)}`}
               </span>
+              {!d.current &&
+                (removing === d.id ? (
+                  <RemoveDevice
+                    diary={diary}
+                    device={d}
+                    onDone={() => {
+                      setRemoving(null);
+                      load();
+                    }}
+                  />
+                ) : (
+                  <button className={styles.secondary} type="button" onClick={() => setRemoving(d.id)}>
+                    Remove
+                  </button>
+                ))}
             </li>
           ))}
         </ul>
@@ -190,5 +206,94 @@ function AddDevice({ diary, onDone }: { diary: Diary; onDone: () => void }) {
         Cancel
       </button>
     </>
+  );
+}
+
+/**
+ * Confirms removing a device. The passphrase or recovery phrase is needed because this device
+ * moves the account to new keys derived from it, which the removed device cannot follow.
+ */
+function RemoveDevice({ diary, device, onDone }: { diary: Diary; device: ListedDevice; onDone: () => void }) {
+  const [mode, setMode] = useState<"passphrase" | "phrase">("passphrase");
+  const [value, setValue] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const name = (KIND_LABEL[device.kind] ?? device.kind).toLowerCase();
+
+  async function submit(e: FormEvent) {
+    e.preventDefault();
+    setBusy(true);
+    setError(null);
+    try {
+      await removeDevice(diary, device.id, mode === "passphrase" ? { passphrase: value } : { recoveryPhrase: value });
+      setValue("");
+      onDone();
+    } catch (err) {
+      setError(revokeErrorMessage(err));
+      setBusy(false);
+    }
+  }
+
+  return (
+    <form onSubmit={(e) => void submit(e)} style={{ display: "grid", gap: 12, marginTop: 12 }}>
+      <p>
+        Removing this {name} signs it out at once, and your diary moves to new keys so it can&apos;t read anything
+        new. Use this for a lost or old device.
+      </p>
+      <div className={styles.tabs} role="group" aria-label="Confirm with">
+        <button
+          type="button"
+          className={styles.button}
+          aria-pressed={mode === "passphrase"}
+          onClick={() => {
+            setMode("passphrase");
+            setValue("");
+          }}
+        >
+          Passphrase
+        </button>
+        <button
+          type="button"
+          className={styles.button}
+          aria-pressed={mode === "phrase"}
+          onClick={() => {
+            setMode("phrase");
+            setValue("");
+          }}
+        >
+          Recovery phrase
+        </button>
+      </div>
+      <label className={styles.field}>
+        <span>{mode === "passphrase" ? "Your passphrase" : "Your recovery phrase"}</span>
+        {mode === "passphrase" ? (
+          <input
+            type="password"
+            autoComplete="current-password"
+            required
+            value={value}
+            onChange={(e) => setValue(e.target.value)}
+          />
+        ) : (
+          <textarea
+            rows={2}
+            autoCapitalize="characters"
+            autoComplete="off"
+            autoCorrect="off"
+            spellCheck={false}
+            required
+            value={value}
+            onChange={(e) => setValue(e.target.value)}
+          />
+        )}
+      </label>
+      {error && <p className={styles.error}>{error}</p>}
+      <button className={styles.button} type="submit" disabled={busy || value.length === 0}>
+        {busy ? "Removing…" : `Remove this ${name}`}
+      </button>
+      <button className={styles.secondary} type="button" disabled={busy} onClick={onDone}>
+        Keep it
+      </button>
+    </form>
   );
 }

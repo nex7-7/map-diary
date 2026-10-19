@@ -1,8 +1,10 @@
 import {
   PASSPHRASE_MIN_LENGTH,
   PairingError,
+  RevokeError,
   SetupError,
   type PairingErrorCode,
+  type RevokeErrorCode,
   type SetupErrorCode,
 } from "@map-diary/sync";
 
@@ -41,4 +43,17 @@ const PAIRING_MESSAGES: Record<PairingErrorCode, string> = {
 
 export function pairingErrorMessage(err: unknown): string {
   return err instanceof PairingError ? PAIRING_MESSAGES[err.code] : PAIRING_MESSAGES.server;
+}
+
+const REVOKE_MESSAGES: Record<RevokeErrorCode, string> = {
+  wrong_passphrase: "That passphrase didn't match. Check it and try again.",
+  invalid_recovery_phrase: "That recovery phrase has a typo. Check each group of four.",
+  wrong_account: "That recovery phrase belongs to a different account.",
+  stale: "Your devices changed while this was open. Try again.",
+  offline: "You're offline. Connect and try again.",
+  server: "Something went wrong on the server. Try again in a moment.",
+};
+
+export function revokeErrorMessage(err: unknown): string {
+  return err instanceof RevokeError ? REVOKE_MESSAGES[err.code] : REVOKE_MESSAGES.server;
 }
