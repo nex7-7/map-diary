@@ -21,11 +21,13 @@ import {
   type RecoveredAccount,
   type IdentityKeys,
   type KdfParams,
+  appInviteBoxKeys,
   appInviteId,
   normaliseInviteCode,
 } from "@map-diary/crypto";
 import { ApiError, NetworkError, type Api, type DeviceBody, type KeyBackupBody, type Signer } from "./api";
-import { decodeKeyBundle, encodeKeyBundle, type DeviceState, type KeyBundle, type StoredAccountBoxKeys } from "./device";
+import { ensureMasterBoard } from "./boards";
+import { boardsFrom, decodeKeyBundle, encodeKeyBundle, type DeviceState, type KeyBundle, type StoredAccountBoxKeys } from "./device";
 
 export const PASSPHRASE_MIN_LENGTH = 12;
 
@@ -38,6 +40,7 @@ export type SetupErrorCode =
   | "passphrase_in_use"
   | "bad_invite"
   | "invite_invalid"
+  | "invite_stale"
   | "wrong_account"
   | "offline"
   | "server";
@@ -60,6 +63,7 @@ function asSetupError(err: unknown, notFound: SetupErrorCode = "server"): SetupE
     if (err.code === "registration_closed") return new SetupError("registration_closed");
     if (err.code === "lookup_taken") return new SetupError("passphrase_in_use");
     if (err.code === "invite_invalid") return new SetupError("invite_invalid");
+    if (err.code === "invite_stale") return new SetupError("invite_stale");
     if (err.status === 404 || err.status === 403) return new SetupError(notFound);
   }
   return new SetupError("server");
@@ -131,10 +135,11 @@ export interface PreparedSetup {
 export async function prepareSetup(options: SetupOptions): Promise<PreparedSetup> {
   await ready();
   let invite: string | undefined;
+  let inviteCode: string | undefined;
   if (options.inviteCode !== undefined) {
-    const code = normaliseInviteCode(options.inviteCode);
-    if (!code) throw new SetupError("bad_invite");
-    invite = appInviteId(code);
+    inviteCode = normaliseInviteCode(options.inviteCode) ?? undefined;
+    if (!inviteCode) throw new SetupError("bad_invite");
+    invite = appInviteId(inviteCode);
   }
   const passphrase = options.passphrase || undefined;
   if (passphrase !== undefined || invite === undefined) checkPassphrase(passphrase ?? "");
@@ -170,12 +175,15 @@ export async function prepareSetup(options: SetupOptions): Promise<PreparedSetup
   return {
     recoveryPhrase: phrase,
     async complete(api) {
+      if (inviteCode !== undefined) return completeInvited(api, inviteCode);
       try {
         await api.createAccount(body, signerOf(deviceId, identity));
       } catch (err) {
         throw asSetupError(err);
       }
-      return {
+      // The first account is the admin: it creates the master board straight away. If that
+      // call fails, the diary's first sync tries again.
+      const device: DeviceState = {
         v: 2,
         accountId: account.accountId,
         deviceId,
@@ -184,10 +192,63 @@ export async function prepareSetup(options: SetupOptions): Promise<PreparedSetup
         accountBox,
         personalBoardId: personal.boardId,
         boardKeys: [personal],
+        boards: [{ id: personal.boardId, kind: "personal", keyVersion: 1 }],
+        isAdmin: true,
         createdAt: Date.now(),
       };
+      return ensureMasterBoard(api, device).catch(() => device);
     },
   };
+
+  /**
+   * An invited friend's account: the invite carries every master key version wrapped to a
+   * keypair derived from the code; this device opens them and re-wraps them to the new
+   * account's box key, so the account joins the Public board with its whole history.
+   */
+  async function completeInvited(api: Api, code: string): Promise<DeviceState> {
+    let masterKeys: BoardKey[];
+    let masterBoardId: string;
+    try {
+      const status = await api.appInviteStatus(appInviteId(code));
+      if (status.state !== "open" || !status.masterBoardId || !status.masterKeys) throw new SetupError("invite_invalid");
+      masterBoardId = status.masterBoardId;
+      const inviteBox = appInviteBoxKeys(code);
+      masterKeys = status.masterKeys.map((k) => ({
+        boardId: masterBoardId,
+        version: k.keyVersion,
+        key: unwrapKeyFromMember(fromBase64(k.wrappedKey), inviteBox),
+      }));
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 404) throw new SetupError("invite_invalid");
+      throw asSetupError(err);
+    }
+    const wrapped = masterKeys.map((k) => ({
+      keyVersion: k.version,
+      wrappedKey: toBase64(wrapKeyForMember(k.key, accountBox.publicKey)),
+    }));
+    try {
+      await api.createAccount({ ...body, masterKeys: wrapped }, signerOf(deviceId, identity));
+    } catch (err) {
+      throw asSetupError(err);
+    }
+    const current = Math.max(...masterKeys.map((k) => k.version));
+    return {
+      v: 2,
+      accountId: account.accountId,
+      deviceId,
+      kind,
+      identity,
+      accountBox,
+      personalBoardId: personal.boardId,
+      boardKeys: [personal, ...masterKeys],
+      boards: [
+        { id: personal.boardId, kind: "personal", keyVersion: 1 },
+        { id: masterBoardId, kind: "master", keyVersion: current },
+      ],
+      isAdmin: false,
+      createdAt: Date.now(),
+    };
+  }
 }
 
 /**
@@ -213,8 +274,9 @@ async function registerDevice(
 
   let accountBox: StoredAccountBoxKeys;
   const boardKeys: BoardKey[] = [];
+  let me: Awaited<ReturnType<Api["me"]>>;
   try {
-    const me = await api.me(signer);
+    me = await api.me(signer);
     accountBox = account.accountBoxKeys(me.account.boxKeyVersion);
     const boxes = new Map<number, StoredAccountBoxKeys>([[accountBox.version, accountBox]]);
     for (const board of me.boards) {
@@ -242,6 +304,8 @@ async function registerDevice(
     accountBox,
     personalBoardId: account.personalBoardId,
     boardKeys,
+    boards: boardsFrom(me.boards),
+    isAdmin: me.account.isAdmin,
     createdAt: Date.now(),
   };
 }

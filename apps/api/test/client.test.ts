@@ -28,10 +28,13 @@ import {
   removeMember,
   setPassphrase,
   prepareSetup,
+  masterBoardOf,
   revokeDevice,
   startPairing,
+  writeKey,
   signInWithPassphrase,
   signInWithRecoveryPhrase,
+  type BoardInfo,
   type DeviceState,
 } from "@map-diary/sync";
 
@@ -62,13 +65,18 @@ describe("device setup, sign-in and sync", () => {
   let group: BoardKey;
   let friend: DeviceState;
   let friendPhrase: string;
+  let master: BoardInfo;
 
   it("sets up the account on the first device", async () => {
     const setup = await prepareSetup({ passphrase: PASSPHRASE, kdf: FAST_KDF });
     phrase = setup.recoveryPhrase;
     expect(phrase).toMatch(/^(\w{4}-){6}\w{4}$/);
     phone = await setup.complete(api);
-    expect(phone.boardKeys).toHaveLength(1);
+    // The first account is the admin, and its setup creates the master board.
+    expect(phone.isAdmin).toBe(true);
+    master = masterBoardOf(phone)!;
+    expect(master).toMatchObject({ kind: "master", keyVersion: 1 });
+    expect(phone.boardKeys.map((k) => k.boardId).sort()).toEqual([phone.personalBoardId, master.id].sort());
 
     const again = await prepareSetup({ passphrase: "another long phrase", kdf: FAST_KDF });
     await expectSetupError(again.complete(api), "registration_closed");
@@ -83,7 +91,8 @@ describe("device setup, sign-in and sync", () => {
     const laptop = await signInWithPassphrase(api, PASSPHRASE);
     expect(laptop.accountId).toBe(phone.accountId);
     expect(laptop.deviceId).not.toBe(phone.deviceId);
-    expect(laptop.boardKeys.map((k) => [k.boardId, k.version])).toEqual([[phone.personalBoardId, 1]]);
+    expect(laptop.boardKeys.map((k) => [k.boardId, k.version]).sort()).toEqual([[phone.personalBoardId, 1], [master.id, 1]].sort());
+    expect(writeKey(laptop, master.id)?.key).toEqual(writeKey(phone, master.id)?.key);
 
     const a = diaryOf(phone);
     const b = diaryOf(laptop);
@@ -162,7 +171,7 @@ describe("device setup, sign-in and sync", () => {
     expect(linked!.accountId).toBe(phone.accountId);
     expect(linked!.kind).toBe("android");
     expect(linked!.accountBox.publicKey).toEqual(phone.accountBox.publicKey);
-    expect(linked!.boardKeys.map((k) => k.boardId).sort()).toEqual([phone.personalBoardId, group.boardId].sort());
+    expect(linked!.boardKeys.map((k) => k.boardId).sort()).toEqual([phone.personalBoardId, master.id, group.boardId].sort());
 
     // It syncs like any other device, and the pairing is gone.
     const d = diaryOf(linked!);
@@ -221,7 +230,7 @@ describe("device setup, sign-in and sync", () => {
     });
     expect(restored.accountId).toBe(phone.accountId);
     // The phrase restores shared boards too, not just the personal one.
-    expect(restored.boardKeys.map((k) => k.boardId).sort()).toEqual([phone.personalBoardId, group.boardId].sort());
+    expect(restored.boardKeys.map((k) => k.boardId).sort()).toEqual([phone.personalBoardId, master.id, group.boardId].sort());
 
     const d = diaryOf(restored);
     await d.sync();
@@ -342,17 +351,32 @@ describe("device setup, sign-in and sync", () => {
     const me = await api.me({ deviceId: friend.deviceId, signSecretKey: friend.identity.signSecretKey });
     expect(me.account).toMatchObject({ isAdmin: false, hasPassphrase: false });
 
-    // The invite works once.
+    // The invite works once, and the server never sees a key it could open.
+    const row = await env.DB.prepare("SELECT master_keys FROM app_invites WHERE id = ?").bind(invite.id).first<{ master_keys: string }>();
+    expect(row!.master_keys).not.toContain(toBase64(friend.boardKeys.find((k) => k.boardId !== friend.personalBoardId)!.key));
+
     expect(await checkAppInvite(api, invite.code)).toMatchObject({ state: "used" });
     const again = await prepareSetup({ inviteCode: invite.code });
     await expectSetupError(again.complete(api), "invite_invalid");
     expect((await listAppInvites(api, phone)).map((i) => i.id)).not.toContain(invite.id);
 
-    // The friend writes to their own diary.
+    // The invite carried the Public board, every key version of it, rotations included.
+    const masterNow = me.boards.find((b) => b.kind === "master")!;
+    expect(masterNow.keyVersion).toBeGreaterThan(1);
+    expect(friend.boardKeys.filter((k) => k.boardId === masterNow.id).map((k) => k.version).sort()).toEqual(
+      Array.from({ length: masterNow.keyVersion }, (_, i) => i + 1),
+    );
+
+    // The friend reads the admin's Public items and writes to their own diary.
+    const admin = diaryOf(phone);
+    const pub = await admin.write({ type: "comment", placeId: "place-9", payload: { text: "for everyone" }, boards: [masterNow.id] });
+    await admin.sync();
     const d = diaryOf(friend);
     await d.write({ type: "status", placeId: "place-9", payload: { status: "want" } });
     await d.sync();
     expect(d.getStatus()).toMatchObject({ phase: "idle", pending: 0, error: null });
+    expect((await d.getItem(pub.id))?.payload).toEqual({ text: "for everyone" });
+    expect(d.skipped).toEqual([]);
 
     // Only the admin manages invites and members.
     await expect(createAppInvite(api, friend, "https://map.snehilsinha.com")).rejects.toMatchObject({ code: "forbidden" });
@@ -383,6 +407,16 @@ describe("device setup, sign-in and sync", () => {
     await expect(cancelAppInvite(api, phone, invite.id)).rejects.toMatchObject({ code: "not_found" });
     const setup = await prepareSetup({ inviteCode: invite.code });
     await expectSetupError(setup.complete(api), "invite_invalid");
+  });
+
+  it("refuses an invite made before the Public board's key changed", async () => {
+    const invite = await createAppInvite(api, phone, "https://map.snehilsinha.com");
+    const old = await signInWithPassphrase(api, "bombay sandwich, extra cheese");
+    phone = await revokeDevice(api, phone, old.deviceId, { recoveryPhrase: phrase });
+    const setup = await prepareSetup({ inviteCode: invite.code });
+    await expectSetupError(setup.complete(api), "invite_stale");
+    expect(await checkAppInvite(api, invite.code)).toMatchObject({ state: "open" });
+    await cancelAppInvite(api, phone, invite.id);
   });
 
   it("removes a friend from the app and refuses all their devices", async () => {

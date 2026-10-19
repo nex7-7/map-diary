@@ -8,8 +8,8 @@ import { toBase64, utf8 } from "./encoding";
  * (on iPhone a tapped link opens in Safari, whose storage the Home Screen app does not share).
  *
  * The Worker files the invite under an id derived from the code, so it never sees the code
- * itself. The code is 100 bits: an invite lasts seven days and will also carry keys sealed
- * under a key derived from it, so it must hold up to offline guessing, not just online.
+ * itself. The code is 100 bits: an invite lasts seven days and also carries keys sealed
+ * to a keypair derived from it, so it must hold up to offline guessing, not just online.
  */
 const GROUPS = 4;
 const GROUP_CHARS = 5;
@@ -64,9 +64,11 @@ export function appInviteId(code: string): string {
 }
 
 /**
- * A symmetric key only holders of the code can derive, for sealing keys into the invite
- * (the master key, once sharing exists).
+ * An X25519 keypair only holders of the code can derive. The admin's device wraps every master
+ * key version to its public key (a sealed box, as for any member), so the invite carries the
+ * Public board to the friend without the server being able to open it.
  */
-export function appInviteKey(code: string): Uint8Array {
-  return subkey(code, 2);
+export function appInviteBoxKeys(code: string): { boxPublicKey: Uint8Array; boxSecretKey: Uint8Array } {
+  const pair = getSodium().crypto_box_seed_keypair(subkey(code, 2));
+  return { boxPublicKey: pair.publicKey, boxSecretKey: pair.privateKey };
 }

@@ -10,6 +10,8 @@ import {
 } from "./auth";
 import { bytes, fail, isB64, isId, isObject, isPositiveInt } from "./http";
 import { parseKeyBackupBody, upsertKeyBackup } from "./backup";
+import { coversEveryVersion, isInviteId, parseVersionKeys } from "./admin";
+import { grantBoard, masterBoard } from "./boards";
 
 export const DEVICE_KINDS: readonly DeviceKind[] = ["web", "android", "claude"];
 
@@ -126,16 +128,10 @@ async function boardKeysAllowed(db: D1Database, accountId: string, keys: readonl
 
 export const accounts = new Hono<SignedEnv>();
 
-/** An app invite id: 16 bytes derived from the invite code, base64url. */
-export const INVITE_ID_B64 = 22;
-
-export function isInviteId(value: unknown): value is string {
-  return isB64(value, INVITE_ID_B64) && value.length === INVITE_ID_B64;
-}
-
 /**
  * Creates an account with its first device, its personal board with the key wrapped to the
- * account's box key, and (optionally, for invited friends) the passphrase key backup.
+ * account's box key, and (optionally, for invited friends) the passphrase key backup. Invited
+ * accounts also join the master board with every key version wrapped to them.
  *
  * Without an invite this is first-run setup: the admin account, open only while no account
  * exists, and the passphrase backup is required. Every later account needs an unused,
@@ -151,6 +147,7 @@ accounts.post("/accounts", readBody, async (c) => {
   const { id: boardId, wrappedKey } = body.personalBoard;
   const invite = body.invite;
   const backup = body.keyBackup === undefined ? null : parseKeyBackupBody(body.keyBackup);
+  const masterKeys = invite === undefined ? [] : parseVersionKeys(body.masterKeys);
   if (
     !isId(accountId) ||
     !isPublicKey(signPublicKey) ||
@@ -160,7 +157,8 @@ accounts.post("/accounts", readBody, async (c) => {
     !isB64(wrappedKey, MAX_WRAPPED_KEY_B64) ||
     (invite !== undefined && !isInviteId(invite)) ||
     (body.keyBackup !== undefined && !backup) ||
-    (invite === undefined && !backup)
+    (invite === undefined && !backup) ||
+    !masterKeys
   ) {
     return fail(c, 400, "bad_request");
   }
@@ -170,6 +168,7 @@ accounts.post("/accounts", readBody, async (c) => {
 
   const now = Date.now();
   const db = c.env.DB;
+  let grant: D1PreparedStatement[] = [];
   if (invite === undefined) {
     const existing = await db.prepare("SELECT COUNT(*) AS n FROM accounts").first<{ n: number }>();
     if ((existing?.n ?? 0) > 0) return fail(c, 403, "registration_closed");
@@ -179,6 +178,17 @@ accounts.post("/accounts", readBody, async (c) => {
       .bind(invite, now)
       .first<{ ok: number }>();
     if (!open) return fail(c, 403, "invite_invalid");
+    // An invite carries the Public board: the friend re-wrapped every master key version from it
+    // to their new account key. A master key rotated since the invite was made leaves it short.
+    const master = await masterBoard(db);
+    if (!master || !coversEveryVersion(masterKeys, master.key_version)) return fail(c, 409, "invite_stale");
+    grant = grantBoard(
+      db,
+      master.id,
+      accountId,
+      masterKeys.map((k) => ({ boardId: master.id, keyVersion: k.keyVersion, wrappedKey: fromBase64(k.wrappedKey) })),
+      now,
+    );
   }
   if (backup) {
     // Two accounts cannot share a passphrase: the lookup id derived from it must be unique.
@@ -220,6 +230,7 @@ accounts.post("/accounts", readBody, async (c) => {
         .bind(boardId, accountId, now),
       db.prepare("INSERT INTO board_members (board_id, account_id, joined_at) VALUES (?, ?, ?)").bind(boardId, accountId, now),
       insertBoardKey(db, accountId, { boardId, keyVersion: 1, wrappedKey: fromBase64(wrappedKey) }, now),
+      ...grant,
       ...(backup ? [upsertKeyBackup(db, accountId, backup, now)] : []),
     ]);
   } catch {

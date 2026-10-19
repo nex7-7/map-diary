@@ -2,13 +2,13 @@
 --
 -- The admin's device makes a random code and shares it as a link with the code
 -- after the '#'. The Worker stores only an id derived from the code, so it never
--- sees the code. An invite works once and for seven days. sealed_keys will carry
--- keys sealed under a key derived from the code (the master key, once sharing
--- exists); it is empty until then.
+-- sees the code. An invite works once and for seven days. master_keys holds every
+-- master key version wrapped to a keypair derived from the code, as JSON
+-- [{ keyVersion, wrappedKey }], so only the friend holding the link can open them.
 CREATE TABLE app_invites (
   id                    TEXT PRIMARY KEY,
   created_by_device_id  TEXT NOT NULL REFERENCES devices (id),
-  sealed_keys           BLOB,
+  master_keys           TEXT NOT NULL,
   created_at            INTEGER NOT NULL,
   expires_at            INTEGER NOT NULL,
   used_at               INTEGER,

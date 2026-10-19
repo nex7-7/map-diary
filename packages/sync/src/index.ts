@@ -4,8 +4,13 @@ export {
   NetworkError,
   type ApiOptions,
   type AppInviteState,
+  type AppInviteStatus,
   type AppInviteView,
   type MemberView,
+  type VersionKey,
+  type BoardMember,
+  type BoardSummary,
+  type WrappedBoardKey,
   type ResolverJobResponse,
   type ResolverJobStatus,
   type Signer,
@@ -24,7 +29,19 @@ export {
   type SetupErrorCode,
   type SetupOptions,
 } from "./account";
-export { currentBoardKey, type DeviceState } from "./device";
+export { currentBoardKey, type BoardInfo, type BoardKind, type DeviceState } from "./device";
+export {
+  boardKeysOf,
+  boardOfKind,
+  ensureMasterBoard,
+  linkHashKeyOf,
+  masterBoardOf,
+  masterKeysOf,
+  refreshKeyRing,
+  wrapBoardKeysForAccount,
+  wrapMasterKeysForAccount,
+  writeKey,
+} from "./boards";
 export {
   LINK_PATH,
   PairingError,
@@ -52,4 +69,4 @@ export { RevokeError, revokeDevice, type AccountSecret, type RevokeErrorCode } f
 export type { DeviceKind } from "@map-diary/crypto";
 export { MemoryStorage, type DiaryItem, type DiaryStorage } from "./storage";
 export { IdbStorage, IDB_NAME } from "./idb";
-export { Diary, type SkippedEnvelope, type SyncPhase, type SyncStatus, type WriteInput } from "./sync";
+export { Diary, type DiaryOptions, type SkippedEnvelope, type SyncPhase, type SyncStatus, type WriteInput } from "./sync";

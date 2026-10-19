@@ -19,6 +19,7 @@ const MESSAGES: Record<SetupErrorCode, string> = {
   passphrase_in_use: "Choose a different passphrase.",
   bad_invite: "That invite code has a typo. It is twenty letters and digits, like 7K3QM-9XT2B-QW4RT-ZP0HK.",
   invite_invalid: "That invite has expired or was already used. Ask for a new one.",
+  invite_stale: "That invite is out of date because the diary's keys changed since it was made. Ask for a new one.",
   wrong_account: "That recovery phrase belongs to a different account.",
   offline: "You're offline. Connect and try again.",
   server: "Something went wrong on the server. Try again in a moment.",
@@ -65,6 +66,8 @@ export function revokeErrorMessage(err: unknown): string {
 
 const INVITE_MESSAGES: Record<InviteErrorCode, string> = {
   too_many: "There are already ten open invites. Cancel one first.",
+  no_master: "The Public board isn't set up on this device yet. Open the diary, let it sync, then try again.",
+  stale: "The diary's keys just changed. Open the diary, let it sync, then try again.",
   not_found: "That's already gone. Reload to see the latest.",
   forbidden: "Only the admin can do that.",
   offline: "You're offline. Connect and try again.",

@@ -2,10 +2,12 @@ import type { EnvelopeType, JsonValue } from "@map-diary/crypto";
 import { describe, expect, it } from "vitest";
 import {
   addComment,
+  addOpinions,
   addPlace,
   applyTag,
   deletePlace,
   EntryError,
+  findCataloguePlace,
   findDuplicate,
   setStatus,
   unapplyTag,
@@ -200,5 +202,82 @@ describe("opinions", () => {
     const id = await addPlace(d, { kind: "place", facts: facts(), status: "want", tagIds: [], newTags: [], comment: "Hi" });
     await deletePlace(d, id);
     expect(d.items.size).toBe(0);
+  });
+});
+
+describe("boards", () => {
+  const MASTER = "board-master";
+
+  it("posts the status, tags and note to the boards picked, and widens a tag of one's own", async () => {
+    const d = new FakeDiary();
+    const old = await d.write({ type: "tag_def", placeId: null, payload: { name: "Irani", emoji: "🫖", description: "" } });
+    const id = await addPlace(d, {
+      kind: "place",
+      facts: facts(),
+      status: "visited",
+      tagIds: [old.id],
+      newTags: [{ name: "Cheap", emoji: "🪙", description: "" }],
+      comment: "Berry pulao",
+      boards: [MASTER],
+    });
+    const items = [...d.items.values()];
+    expect(items.filter((i) => i.placeId === id).every((i) => i.boardIds.join() === MASTER)).toBe(true);
+    // The old Personal tag now reads on the Public board too, so the Public tag makes sense.
+    expect(d.items.get(old.id)?.boardIds).toEqual(["board-personal", MASTER]);
+    expect(items.find((i) => i.type === "tag_def" && i.id !== old.id)?.boardIds).toEqual([MASTER]);
+  });
+
+  it("refuses to apply someone else's tag where its definition is not shared", async () => {
+    const d = new FakeDiary();
+    const place = await d.write({ type: "place", placeId: null, payload: facts() as unknown as JsonValue });
+    d.items.set("their-tag", {
+      id: "their-tag",
+      type: "tag_def",
+      authorId: "acct-friend",
+      placeId: null,
+      createdAt: 1,
+      updatedAt: 1,
+      boardIds: ["board-group"],
+      payload: { name: "Sunset", emoji: "🌅", description: "" },
+    });
+    await setStatus(d, place.id, "want", [MASTER]);
+    await expect(applyTag(d, place.id, "their-tag", [MASTER])).rejects.toBeInstanceOf(EntryError);
+    await applyTag(d, place.id, "their-tag", ["board-group"]);
+    expect([...d.items.values()].find((i) => i.type === "tag")?.boardIds).toEqual(["board-group"]);
+  });
+
+  it("moves a status to new boards, and keeps its boards when none are given", async () => {
+    const d = new FakeDiary();
+    const place = await d.write({ type: "place", placeId: null, payload: facts() as unknown as JsonValue });
+    await setStatus(d, place.id, "want");
+    await setStatus(d, place.id, "want", [MASTER]);
+    await setStatus(d, place.id, "visited");
+    const status = [...d.items.values()].find((i) => i.type === "status");
+    expect(status).toMatchObject({ boardIds: [MASTER], payload: { status: "visited" } });
+  });
+
+  it("adds notes to a place the catalogue already has instead of copying it", async () => {
+    const d = new FakeDiary();
+    const existing = await d.write({ type: "place", placeId: null, payload: facts() as unknown as JsonValue });
+    expect(await findCataloguePlace(d, ["https://www.zomato.com/mumbai/kyani/info"])).toBe(existing.id);
+    // Not on this device yet, but the Worker knows it by its link hash.
+    const remote = Object.assign(new FakeDiary(), { findCataloguePlace: async (links: readonly string[]) => (links[0] === "zomato.com/mumbai/kyani/info" ? "p-remote" : null) });
+    expect(await findCataloguePlace(remote, ["https://zomato.com/mumbai/kyani/info?utm_source=x"])).toBe("p-remote");
+    expect(await findCataloguePlace(remote, ["https://zomato.com/mumbai/other"])).toBeUndefined();
+
+    await addOpinions(d, existing.id, { status: "want", tagIds: [], newTags: [], comment: "Me too", boards: [MASTER] });
+    const mine = [...d.items.values()].filter((i) => i.placeId === existing.id);
+    expect(mine.map((i) => i.type).sort()).toEqual(["comment", "status"]);
+  });
+
+  it("names the master board Public", () => {
+    const snap = snapshotFromItems([], "acct-me", "board-personal", [
+      { id: "board-personal", kind: "personal" },
+      { id: MASTER, kind: "master" },
+    ]);
+    expect(snap.boards).toEqual([
+      { id: "board-personal", kind: "personal", name: "Personal" },
+      { id: MASTER, kind: "master", name: "Public" },
+    ]);
   });
 });

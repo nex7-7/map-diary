@@ -5,17 +5,29 @@ import type { Status } from "../places/types";
 import { normaliseLink } from "./parse-input";
 
 /**
- * Writes for the Add sheet and the place page, over the device's diary. Everything goes to
- * the Personal board for now (the diary picks the board); boards arrive with sharing.
+ * Writes for the Add sheet and the place page, over the device's diary. Each opinion goes to
+ * the boards the person picks (Personal when they pick none). The diary puts a catalogue
+ * place on the master board itself and keeps dropped pins off it.
  */
 
 /** The parts of the device's `Diary` these writes need. */
 export interface DiaryWriter {
   readonly device: { readonly accountId: string };
   listItems(): Promise<StoredItem[]>;
-  write(input: { type: EnvelopeType; placeId: string | null; payload: JsonValue; id?: string }): Promise<{ id: string }>;
+  write(input: {
+    type: EnvelopeType;
+    placeId: string | null;
+    payload: JsonValue;
+    id?: string;
+    boards?: readonly string[];
+  }): Promise<{ id: string }>;
   remove(id: string): Promise<void>;
+  /** The catalogue place that already has one of these normalised links, asked of the Worker. */
+  findCataloguePlace?(links: readonly string[]): Promise<string | null>;
 }
+
+/** Board ids for an opinion; undefined lets the diary choose (Personal, or an edit's own). */
+export type Boards = readonly string[] | undefined;
 
 export interface NewPlace {
   /** A dropped pin is a private place and never enters the shared catalogue. */
@@ -27,6 +39,8 @@ export interface NewPlace {
   /** Tags made in the sheet: defined, then applied. */
   newTags: TagDefPayload[];
   comment: string;
+  /** Where the status, tags and note go. The place itself goes where the diary puts it. */
+  boards?: readonly string[];
 }
 
 // Payload types are plain JSON, but TypeScript cannot see an interface as an index signature.
@@ -34,18 +48,51 @@ const json = (v: object): JsonValue => v as JsonValue;
 
 /** Saves a place with its status, tags and comment. Returns the place's id. */
 export async function addPlace(w: DiaryWriter, input: NewPlace): Promise<string> {
+  const boards = input.boards;
   const defined: string[] = [];
-  for (const def of input.newTags) defined.push((await w.write({ type: "tag_def", placeId: null, payload: json(def) })).id);
+  for (const def of input.newTags) defined.push(await defineTag(w, def, boards));
 
   const place = await w.write({ type: input.kind, placeId: null, payload: json(input.facts) });
   // The status goes first: tags and comments need one.
-  await w.write({ type: "status", placeId: place.id, payload: { status: input.status } });
-  for (const tagId of new Set([...input.tagIds, ...defined])) {
-    await w.write({ type: "tag", placeId: place.id, payload: { tagId } });
-  }
+  await w.write({ type: "status", placeId: place.id, payload: { status: input.status }, ...on(boards) });
+  for (const tagId of new Set([...input.tagIds, ...defined])) await applyTag(w, place.id, tagId, boards);
   const text = input.comment.trim();
-  if (text) await w.write({ type: "comment", placeId: place.id, payload: { text } });
+  if (text) await w.write({ type: "comment", placeId: place.id, payload: { text }, ...on(boards) });
   return place.id;
+}
+
+/**
+ * Puts this person's status, tags and note on a place that is already there (the catalogue
+ * has it), instead of adding a second copy. A status they already have is kept.
+ */
+export async function addOpinions(w: DiaryWriter, placeId: string, input: Omit<NewPlace, "kind" | "facts">): Promise<void> {
+  const boards = input.boards;
+  const items = await w.listItems();
+  const hasStatus = items.some((i) => i.type === "status" && i.placeId === placeId && i.authorId === w.device.accountId);
+  if (!hasStatus) await setStatus(w, placeId, input.status, boards);
+  const defined: string[] = [];
+  for (const def of input.newTags) defined.push(await defineTag(w, def, boards));
+  for (const tagId of new Set([...input.tagIds, ...defined])) await applyTag(w, placeId, tagId, boards);
+  if (input.comment.trim()) await addComment(w, placeId, input.comment, boards);
+}
+
+const on = (boards: Boards) => (boards && boards.length > 0 ? { boards } : {});
+
+/** A place's source links as the catalogue's duplicate check compares them. */
+export function placeLinks(payload: JsonValue): string[] {
+  return readPayload("place", payload)?.sourceLinks.map(normaliseLink) ?? [];
+}
+
+/**
+ * The catalogue place with one of these links: one on this device first, then one the Worker
+ * knows by its keyed link hash but this device has not synced yet. Offline, only the first.
+ */
+export async function findCataloguePlace(w: DiaryWriter, links: readonly string[]): Promise<string | undefined> {
+  const items = await w.listItems();
+  const local = links.map((l) => findDuplicate(items, l)).find((d) => d !== undefined);
+  if (local) return local.id;
+  if (!w.findCataloguePlace || links.length === 0) return undefined;
+  return (await w.findCataloguePlace(links.map(normaliseLink)).catch(() => null)) ?? undefined;
 }
 
 /** A place already in the diary with the same source link, if any. */
@@ -70,19 +117,36 @@ async function requireStatus(w: DiaryWriter, placeId: string): Promise<StoredIte
   return items;
 }
 
-/** Sets this person's status, editing their existing status item if there is one. */
-export async function setStatus(w: DiaryWriter, placeId: string, status: Status): Promise<void> {
+/**
+ * Sets this person's status, editing their existing status item if there is one. Given
+ * boards, the status moves to them; otherwise it keeps its own (Personal if new).
+ */
+export async function setStatus(w: DiaryWriter, placeId: string, status: Status, boards?: Boards): Promise<void> {
   const mine = own(w, await w.listItems(), "status", placeId);
   const latest = mine.reduce<StoredItem | undefined>((a, b) => (!a || b.updatedAt > a.updatedAt ? b : a), undefined);
-  await w.write({ type: "status", placeId, payload: { status }, ...(latest ? { id: latest.id } : {}) });
+  await w.write({ type: "status", placeId, payload: { status }, ...(latest ? { id: latest.id } : {}), ...on(boards) });
   // A sync race can leave two; keep one.
   for (const extra of mine) if (extra !== latest) await w.remove(extra.id);
 }
 
-export async function applyTag(w: DiaryWriter, placeId: string, tagId: string): Promise<void> {
+/**
+ * Applies a tag. A tag opinion only goes where its definition can be read, so applying one of
+ * this person's own tags somewhere new widens the definition to match; someone else's tag
+ * cannot be widened, and is refused.
+ */
+export async function applyTag(w: DiaryWriter, placeId: string, tagId: string, boards?: Boards): Promise<void> {
   const items = await requireStatus(w, placeId);
+  const def = items.find((i) => i.id === tagId && i.type === "tag_def");
+  const wanted = boards && boards.length > 0 ? boards : undefined;
+  if (def && wanted) {
+    const missing = wanted.filter((b) => !def.boardIds.includes(b));
+    if (missing.length > 0) {
+      if (def.authorId !== w.device.accountId) throw new EntryError("That tag isn't shared on the boards you picked");
+      await w.write({ type: "tag_def", placeId: null, payload: def.payload, id: def.id, boards: [...def.boardIds, ...missing] });
+    }
+  }
   const already = own(w, items, "tag", placeId).some((i) => readPayload("tag", i.payload)?.tagId === tagId);
-  if (!already) await w.write({ type: "tag", placeId, payload: { tagId } });
+  if (!already) await w.write({ type: "tag", placeId, payload: { tagId }, ...on(wanted) });
 }
 
 /** Removes every tag opinion of this person applying `tagId` to the place. */
@@ -92,11 +156,11 @@ export async function unapplyTag(w: DiaryWriter, placeId: string, tagId: string)
   }
 }
 
-/** Defines a tag. Returns its id. */
-export async function defineTag(w: DiaryWriter, def: TagDefPayload): Promise<string> {
+/** Defines a tag on the given boards (Personal by default). Returns its id. */
+export async function defineTag(w: DiaryWriter, def: TagDefPayload, boards?: Boards): Promise<string> {
   const clean = cleanTag(def);
   if (!clean.name) throw new EntryError("A tag needs a name");
-  return (await w.write({ type: "tag_def", placeId: null, payload: json(clean) })).id;
+  return (await w.write({ type: "tag_def", placeId: null, payload: json(clean), ...on(boards) })).id;
 }
 
 export async function editTag(w: DiaryWriter, id: string, def: TagDefPayload): Promise<void> {
@@ -105,11 +169,11 @@ export async function editTag(w: DiaryWriter, id: string, def: TagDefPayload): P
   await w.write({ type: "tag_def", placeId: null, payload: json(clean), id });
 }
 
-export async function addComment(w: DiaryWriter, placeId: string, text: string): Promise<void> {
+export async function addComment(w: DiaryWriter, placeId: string, text: string, boards?: Boards): Promise<void> {
   const payload: CommentPayload = { text: text.trim() };
   if (!payload.text) throw new EntryError("A comment needs some text");
   await requireStatus(w, placeId);
-  await w.write({ type: "comment", placeId, payload: json(payload) });
+  await w.write({ type: "comment", placeId, payload: json(payload), ...on(boards) });
 }
 
 export async function editComment(w: DiaryWriter, id: string, placeId: string, text: string): Promise<void> {
@@ -123,7 +187,10 @@ export async function removeOpinion(w: DiaryWriter, id: string): Promise<void> {
   await w.remove(id);
 }
 
-/** Rewrites a place's facts. Only its author can, and a place never changes kind. */
+/**
+ * Rewrites a place's facts. Only its author can, and a place never changes kind. Once a
+ * catalogue place is written, the Worker accepts new facts only from the admin.
+ */
 export async function updateFacts(w: DiaryWriter, place: StoredItem, facts: PlacePayload): Promise<void> {
   if (place.type !== "place" && place.type !== "private_place") throw new EntryError("Not a place");
   await w.write({ type: place.type, placeId: place.placeId, payload: json(facts), id: place.id });

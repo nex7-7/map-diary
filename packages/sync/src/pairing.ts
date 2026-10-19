@@ -18,7 +18,7 @@ import {
   type PairingJoin,
 } from "@map-diary/crypto";
 import { ApiError, NetworkError, type Api, type Signer } from "./api";
-import { openBoardKeys, type DeviceState } from "./device";
+import { boardsFrom, openBoardKeys, type DeviceState } from "./device";
 
 /** The path the old device's link opens; the secret follows the `#`. */
 export const LINK_PATH = "/link";
@@ -186,6 +186,8 @@ export async function joinPairing(api: Api, typed: string, kind: DeviceKind = "w
           accountBox: transfer.accountBox,
           personalBoardId: transfer.personalBoardId,
           boardKeys: openBoardKeys(me, transfer.accountBox),
+          boards: boardsFrom(me.boards),
+          isAdmin: me.account.isAdmin,
           createdAt: Date.now(),
         };
       } catch (err) {

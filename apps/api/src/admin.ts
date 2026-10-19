@@ -1,12 +1,45 @@
 import { Hono } from "hono";
 import { readBody, requireAdmin, requireDevice, type AuthedEnv, type SignedEnv } from "./auth";
-import { isInviteId } from "./accounts";
-import { fail, isId, isObject } from "./http";
+import { masterBoard } from "./boards";
+import { fail, isB64, isId, isObject, isPositiveInt } from "./http";
 
 /** An app invite works once, for seven days. */
 export const APP_INVITE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 /** Plenty for a handful of friends; stops a stolen admin device filling D1. */
 const MAX_OPEN_INVITES = 10;
+/** An app invite id: 16 bytes derived from the invite code, base64url. */
+export const INVITE_ID_B64 = 22;
+
+export function isInviteId(value: unknown): value is string {
+  return isB64(value, INVITE_ID_B64) && value.length === INVITE_ID_B64;
+}
+
+/** crypto_box_seal of a 32-byte board key: 32 + 48 bytes. */
+const MAX_WRAPPED_KEY_B64 = 200;
+/** Each revocation or removal adds a master key version; far more than a few friends make. */
+const MAX_KEY_VERSIONS = 500;
+
+/** A master key version wrapped to someone: the invite's keypair, or a new account. */
+export interface VersionKey {
+  keyVersion: number;
+  wrappedKey: string;
+}
+
+export function parseVersionKeys(value: unknown): VersionKey[] | null {
+  if (!Array.isArray(value) || value.length === 0 || value.length > MAX_KEY_VERSIONS) return null;
+  const out: VersionKey[] = [];
+  for (const v of value) {
+    if (!isObject(v) || !isPositiveInt(v.keyVersion) || !isB64(v.wrappedKey, MAX_WRAPPED_KEY_B64)) return null;
+    out.push({ keyVersion: v.keyVersion, wrappedKey: v.wrappedKey });
+  }
+  return out;
+}
+
+/** True when the keys are exactly versions 1 to `current`, once each: the board's whole history. */
+export function coversEveryVersion(keys: readonly VersionKey[], current: number): boolean {
+  const versions = new Set(keys.map((k) => k.keyVersion));
+  return versions.size === keys.length && keys.length === current && keys.every((k) => k.keyVersion <= current);
+}
 
 /**
  * Admin-only routes: app invites and the member list. Admin power is enforced here, by the
@@ -20,15 +53,20 @@ admin.use("/members", readBody, requireDevice, requireAdmin);
 admin.use("/members/:id/remove", readBody, requireDevice, requireAdmin);
 
 /**
- * Files a new app invite under an id the admin device derived from the invite code. The code
- * itself stays on the device and in the link after the `#`.
+ * Files a new app invite under an id the admin device derived from the invite code, with every
+ * master key version wrapped to a keypair derived from the code. The code itself stays on the
+ * device and in the link after the `#`.
  */
 admin.post("/app-invites", async (c) => {
   const body = c.var.body;
   const id = isObject(body) ? body.id : undefined;
-  if (!isInviteId(id)) return fail(c, 400, "bad_request");
+  const masterKeys = isObject(body) ? parseVersionKeys(body.masterKeys) : null;
+  if (!isInviteId(id) || !masterKeys) return fail(c, 400, "bad_request");
   const now = Date.now();
   const db = c.env.DB;
+  const master = await masterBoard(db);
+  if (!master) return fail(c, 409, "no_master_board");
+  if (!coversEveryVersion(masterKeys, master.key_version)) return fail(c, 409, "stale");
   const open = await db
     .prepare("SELECT COUNT(*) AS n FROM app_invites WHERE used_at IS NULL AND expires_at > ?")
     .bind(now)
@@ -37,8 +75,10 @@ admin.post("/app-invites", async (c) => {
   const expiresAt = now + APP_INVITE_TTL_MS;
   try {
     await db
-      .prepare("INSERT INTO app_invites (id, created_by_device_id, created_at, expires_at) VALUES (?, ?, ?, ?)")
-      .bind(id, c.var.device.id, now, expiresAt)
+      .prepare(
+        "INSERT INTO app_invites (id, created_by_device_id, master_keys, created_at, expires_at) VALUES (?, ?, ?, ?, ?)",
+      )
+      .bind(id, c.var.device.id, JSON.stringify(masterKeys), now, expiresAt)
       .run();
   } catch {
     return fail(c, 409, "conflict");
@@ -108,8 +148,9 @@ admin.post("/members/:id/remove", async (c) => {
   const id = c.req.param("id");
   if (!isId(id)) return fail(c, 400, "bad_request");
   if (id === c.var.device.accountId) return fail(c, 400, "cannot_remove_self");
-  // TODO(Phase 5, master board): rotate the master key and re-wrap it for the remaining
-  // members in this same step, so the removed person cannot read anything new on it.
+  // TODO: rotate the master key and re-wrap it for the remaining members in this same step, so
+  // the removed person cannot read anything new on it even with the server's help. Until then
+  // the server refusing all their devices is what keeps them out.
   const now = Date.now();
   const db = c.env.DB;
   const removed = "EXISTS (SELECT 1 FROM accounts WHERE id = ? AND removed_at = ?)";
@@ -129,20 +170,28 @@ admin.post("/members/:id/remove", async (c) => {
 });
 
 /**
- * Whether an invite can still be used, for the friend's screen before they make their keys.
- * Needs the id derived from the code, so only someone holding the link can ask.
+ * Whether an invite can still be used, for the friend's screen before they make their keys,
+ * and while it is open, the master keys it carries (only the code opens them). Needs the id
+ * derived from the code, so only someone holding the link can ask.
  */
 export const appInvitesOpen = new Hono<SignedEnv>();
 
 appInvitesOpen.get("/app-invites/:id/status", async (c) => {
   const id = c.req.param("id");
   if (!isInviteId(id)) return fail(c, 400, "bad_request");
-  const row = await c.env.DB.prepare("SELECT used_at, expires_at FROM app_invites WHERE id = ?")
+  const row = await c.env.DB.prepare("SELECT used_at, expires_at, master_keys FROM app_invites WHERE id = ?")
     .bind(id)
-    .first<{ used_at: number | null; expires_at: number }>();
+    .first<{ used_at: number | null; expires_at: number; master_keys: string }>();
   if (!row) return fail(c, 404, "not_found");
   const state = row.used_at !== null ? "used" : row.expires_at <= Date.now() ? "expired" : "open";
-  return c.json({ state, expiresAt: row.expires_at });
+  const master = state === "open" ? await masterBoard(c.env.DB) : null;
+  if (!master) return c.json({ state, expiresAt: row.expires_at });
+  return c.json({
+    state,
+    expiresAt: row.expires_at,
+    masterBoardId: master.id,
+    masterKeys: JSON.parse(row.master_keys) as VersionKey[],
+  });
 });
 
 /** Deletes invites that expired unused over a day ago. Returns how many were removed. */

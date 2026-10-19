@@ -1,5 +1,14 @@
 import { beforeAll, describe, expect, it } from "vitest";
-import { appInviteId, appInviteKey, generateInviteCode, normaliseInviteCode, ready } from "../src/index";
+import {
+  appInviteBoxKeys,
+  appInviteId,
+  generateBoardKey,
+  generateInviteCode,
+  normaliseInviteCode,
+  ready,
+  unwrapKeyFromMember,
+  wrapKeyForMember,
+} from "../src/index";
 
 beforeAll(async () => {
   await ready();
@@ -20,8 +29,16 @@ describe("app invites", () => {
     expect(appInviteId(code)).toBe(appInviteId(code.toLowerCase()));
     expect(appInviteId(code)).not.toBe(appInviteId(generateInviteCode()));
     expect(appInviteId(code)).toHaveLength(22);
-    expect(appInviteKey(code)).toHaveLength(32);
-    expect(appInviteKey(code)).toEqual(appInviteKey(code.replace(/-/g, "")));
+    expect(appInviteBoxKeys(code).boxPublicKey).toEqual(appInviteBoxKeys(code.replace(/-/g, "")).boxPublicKey);
+    expect(appInviteBoxKeys(code).boxPublicKey).not.toEqual(appInviteBoxKeys(generateInviteCode()).boxPublicKey);
     expect(() => appInviteId("not a code")).toThrow();
+  });
+
+  it("carries a board key that only the code opens", () => {
+    const code = generateInviteCode();
+    const board = generateBoardKey("master");
+    const wrapped = wrapKeyForMember(board.key, appInviteBoxKeys(code).boxPublicKey);
+    expect(unwrapKeyFromMember(wrapped, appInviteBoxKeys(code.toLowerCase()))).toEqual(board.key);
+    expect(() => unwrapKeyFromMember(wrapped, appInviteBoxKeys(generateInviteCode()))).toThrow();
   });
 });

@@ -9,7 +9,7 @@ import {
   type ResolvedPlace,
 } from "@map-diary/crypto";
 import { ApiError, NetworkError, type Api } from "@map-diary/sync";
-import { addComment, addPlace, applyTag, defineTag, findDuplicate, setStatus, type DiaryWriter } from "../entries/actions";
+import { addOpinions, addPlace, findCataloguePlace, type DiaryWriter } from "../entries/actions";
 import { isFood } from "../entries/facts";
 import { readPayload, type PlacePayload } from "../places/payloads";
 import type { PendingDraft, PendingItem, PendingState, PendingStore } from "./store";
@@ -202,18 +202,26 @@ export async function writeResolved(w: DiaryWriter, draft: PendingDraft, c: Reso
   const facts = factsFromCandidate(draft, c);
   if (!readPayload("place", facts as unknown as JsonValue)) throw new Error("The match doesn't fit a place");
 
-  const items = await w.listItems();
-  const existing = facts.sourceLinks.map((l) => findDuplicate(items, l)).find((d) => d !== undefined);
+  const existing = await findCataloguePlace(w, facts.sourceLinks);
   if (!existing) {
-    return addPlace(w, { kind: "place", facts, status: draft.status, tagIds: draft.tagIds, newTags: draft.newTags, comment: draft.comment });
+    return addPlace(w, {
+      kind: "place",
+      facts,
+      status: draft.status,
+      tagIds: draft.tagIds,
+      newTags: draft.newTags,
+      comment: draft.comment,
+      ...(draft.boards ? { boards: draft.boards } : {}),
+    });
   }
 
-  const placeId = existing.id;
-  const hasStatus = items.some((i) => i.type === "status" && i.placeId === placeId && i.authorId === w.device.accountId);
-  if (!hasStatus) await setStatus(w, placeId, draft.status);
-  const defined = [];
-  for (const def of draft.newTags) defined.push(await defineTag(w, def));
-  for (const tagId of new Set([...draft.tagIds, ...defined])) await applyTag(w, placeId, tagId);
-  if (draft.comment.trim()) await addComment(w, placeId, draft.comment);
+  const placeId = existing;
+  await addOpinions(w, placeId, {
+    status: draft.status,
+    tagIds: draft.tagIds,
+    newTags: draft.newTags,
+    comment: draft.comment,
+    ...(draft.boards ? { boards: draft.boards } : {}),
+  });
   return placeId;
 }

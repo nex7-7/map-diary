@@ -1,6 +1,6 @@
 import type { EnvelopeType, JsonValue } from "@map-diary/crypto";
 import { readPayload } from "./payloads";
-import type { Board, DiarySnapshot, DiarySource, Opinion, Person, PlaceView, Status, StatusOpinion, TagDefinition } from "./types";
+import type { Board, BoardKind, DiarySnapshot, DiarySource, Opinion, Person, PlaceView, Status, StatusOpinion, TagDefinition } from "./types";
 
 /** A decrypted item as the device store keeps it (the shape of `DiaryItem` in `@map-diary/sync`). */
 export interface StoredItem {
@@ -41,15 +41,32 @@ export function createItemsSource(store: ItemStore): DiarySource {
   };
 }
 
-export function snapshotFromItems(items: readonly StoredItem[], accountId: string, personalBoardId: string): DiarySnapshot {
+/** A board the account is in, as the device's key ring knows it. */
+export interface KnownBoard {
+  id: string;
+  kind: BoardKind;
+}
+
+/** What each board is called on screen. */
+export function boardName(kind: BoardKind): string {
+  return kind === "master" ? "Public" : kind === "personal" ? "Personal" : "Group";
+}
+
+export function snapshotFromItems(
+  items: readonly StoredItem[],
+  accountId: string,
+  personalBoardId: string,
+  known: readonly KnownBoard[] = [],
+): DiarySnapshot {
   const iso = (ms: number) => new Date(ms).toISOString();
   const places = new Map<string, PlaceView>();
   const tags: TagDefinition[] = [];
   const opinions: { placeId: string; opinion: Opinion }[] = [];
   const authors = new Set<string>([accountId]);
-  const boardIds = new Set<string>([personalBoardId]);
+  const boardIds = new Set<string>([personalBoardId, ...known.map((b) => b.id)]);
 
   for (const item of items) {
+    item.boardIds.forEach((b) => boardIds.add(b));
     const base = { id: item.id, authorId: item.authorId, boards: item.boardIds, createdAt: iso(item.createdAt), updatedAt: iso(item.updatedAt) };
     switch (item.type) {
       case "place":
@@ -101,10 +118,12 @@ export function snapshotFromItems(items: readonly StoredItem[], accountId: strin
 
   const me: Person = { id: accountId, name: "Me" };
   const others = [...authors].filter((id) => id !== accountId).map((id, i): Person => ({ id, name: `Friend ${i + 1}` }));
-  // Only the Personal board exists until sharing lands; name any other board generically.
-  const boards = [...boardIds].map(
-    (id): Board => (id === personalBoardId ? { id, kind: "personal", name: "Personal" } : { id, kind: "group", name: "Shared board" }),
-  );
+  const kindOf = (id: string): BoardKind => (id === personalBoardId ? "personal" : (known.find((b) => b.id === id)?.kind ?? "group"));
+  const boards = [...boardIds].map((id): Board => {
+    const kind = kindOf(id);
+    // A board this device is not in (someone's Personal board never reaches it) reads as shared.
+    return { id, kind, name: known.some((b) => b.id === id) || id === personalBoardId ? boardName(kind) : "Shared board" };
+  });
 
   return { me, people: [me, ...others], boards, tags, places: [...places.values()] };
 }
