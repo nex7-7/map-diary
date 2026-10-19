@@ -1,4 +1,4 @@
-import type { Board, Category, LngLat, Opinion, PlaceView, Status, StatusOpinion } from "./types";
+import type { Category, LngLat, PlaceView, Status, StatusOpinion } from "./types";
 
 export interface PlaceFilters {
   /** Matches name, address, cuisine and signature dish, case-insensitively. */
@@ -40,33 +40,15 @@ export interface ListedPlace {
   distanceM?: number;
 }
 
-/**
- * Whether an opinion shows on any selected board. A group's board shows only its members'
- * opinions, posted to the group or to the master board; other boards show what is posted to them.
- */
-function onBoards(selected: readonly string[], o: Opinion, boards: ReadonlyMap<string, Board>): boolean {
-  if (selected.length === 0) return true;
-  return selected.some((id) => {
-    const board = boards.get(id);
-    if (!board?.memberIds) return o.boards.includes(id);
-    if (!board.memberIds.includes(o.authorId)) return false;
-    return o.boards.some((b) => b === id || boards.get(b)?.kind === "master");
-  });
-}
+const overlaps = (selected: readonly string[], values: readonly string[]) =>
+  selected.length === 0 || values.some((v) => selected.includes(v));
 
 /**
  * Applies the filters. A place is listed only when some status opinion passes
  * the board, status and author filters: tags and comments alone never list it.
  */
-export function filterPlaces(
-  places: readonly PlaceView[],
-  filters: PlaceFilters,
-  meId: string,
-  here?: LngLat,
-  boards: readonly Board[] = [],
-): ListedPlace[] {
+export function filterPlaces(places: readonly PlaceView[], filters: PlaceFilters, meId: string, here?: LngLat): ListedPlace[] {
   const query = filters.query.trim().toLowerCase();
-  const boardsById = new Map(boards.map((b) => [b.id, b]));
   const out: ListedPlace[] = [];
 
   for (const place of places) {
@@ -78,7 +60,7 @@ export function filterPlaces(
     const statuses = place.opinions.filter(
       (o): o is StatusOpinion =>
         o.kind === "status" &&
-        onBoards(filters.boards, o, boardsById) &&
+        overlaps(filters.boards, o.boards) &&
         (filters.statuses.length === 0 || filters.statuses.includes(o.status)) &&
         (filters.authorIds.length === 0 || filters.authorIds.includes(o.authorId)),
     );
@@ -86,7 +68,7 @@ export function filterPlaces(
 
     if (filters.tagIds.length > 0) {
       const tagged = place.opinions.some(
-        (o) => o.kind === "tag" && filters.tagIds.includes(o.tagId) && onBoards(filters.boards, o, boardsById),
+        (o) => o.kind === "tag" && filters.tagIds.includes(o.tagId) && overlaps(filters.boards, o.boards),
       );
       if (!tagged) continue;
     }

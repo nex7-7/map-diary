@@ -43,7 +43,7 @@ export function DiaryView({ source, toolbarExtra }: { source: DiarySource; toolb
   }, [source]);
 
   const listed = useMemo(
-    () => (snapshot ? sortPlaces(filterPlaces(snapshot.places, filters, snapshot.me.id, here, snapshot.boards), sort) : []),
+    () => (snapshot ? sortPlaces(filterPlaces(snapshot.places, filters, snapshot.me.id, here), sort) : []),
     [snapshot, filters, here, sort],
   );
   const cuisines = useMemo(() => (snapshot ? cuisinesOf(snapshot.places) : []), [snapshot]);
