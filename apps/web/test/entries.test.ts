@@ -9,6 +9,8 @@ import {
   EntryError,
   findCataloguePlace,
   findDuplicate,
+  defineTag,
+  setDisplayName,
   setStatus,
   unapplyTag,
   type DiaryWriter,
@@ -205,6 +207,56 @@ describe("opinions", () => {
   });
 });
 
+describe("opinions on someone else's place", () => {
+  const friendsPlace = (d: FakeDiary) => {
+    const place: StoredItem = {
+      id: "p-friend", type: "place", authorId: "acct-friend", placeId: null, createdAt: 1, updatedAt: 1,
+      boardIds: ["board-master"], payload: facts() as unknown as JsonValue,
+    };
+    d.items.set(place.id, place);
+    return place;
+  };
+
+  it("posts tags and comments to the boards chosen", async () => {
+    const d = new FakeDiary();
+    const place = friendsPlace(d);
+    await setStatus(d, place.id, "want");
+    await addComment(d, place.id, "Going Saturday", ["board-master", "board-duo"]);
+    const tagId = await defineTag(d, { name: "Spicy", emoji: "", description: "" }, ["board-duo"]);
+    await applyTag(d, place.id, tagId, ["board-duo"]);
+
+    const all = [...d.items.values()];
+    expect(all.find((i) => i.type === "comment")?.boardIds).toEqual(["board-master", "board-duo"]);
+    expect(all.filter((i) => i.type === "tag").map((i) => i.boardIds)).toEqual([["board-duo"]]);
+    // The friend's place is untouched.
+    expect(d.items.get(place.id)?.authorId).toBe("acct-friend");
+  });
+
+  it("counts a tag as visible where its reader says so", async () => {
+    const d = new FakeDiary();
+    const place = friendsPlace(d);
+    d.items.set("t-friend", {
+      id: "t-friend", type: "tag_def", authorId: "acct-friend", placeId: null, createdAt: 1, updatedAt: 1,
+      boardIds: ["board-master"], payload: { name: "Sunset", emoji: "", description: "" },
+    });
+    await setStatus(d, place.id, "want");
+    // Posted only to master, but every group member can read master, so it fits the group.
+    await expect(applyTag(d, place.id, "t-friend", ["board-duo"])).rejects.toBeInstanceOf(EntryError);
+    await applyTag(d, place.id, "t-friend", ["board-duo"], () => true);
+    expect([...d.items.values()].find((i) => i.type === "tag")?.boardIds).toEqual(["board-duo"]);
+  });
+
+  it("keeps one display name on the master board", async () => {
+    const d = new FakeDiary();
+    await expect(setDisplayName(d, "  \u200b ", "board-master")).rejects.toBeInstanceOf(EntryError);
+    await setDisplayName(d, "Snehil", "board-master");
+    expect(await setDisplayName(d, "  Snehil S.  ", "board-master")).toBe("Snehil S.");
+    const profiles = [...d.items.values()].filter((i) => i.type === "profile");
+    expect(profiles).toHaveLength(1);
+    expect(profiles[0]).toMatchObject({ boardIds: ["board-master"], payload: { name: "Snehil S." } });
+  });
+});
+
 describe("boards", () => {
   const MASTER = "board-master";
 
@@ -272,12 +324,9 @@ describe("boards", () => {
 
   it("names the master board Public", () => {
     const snap = snapshotFromItems([], "acct-me", "board-personal", [
-      { id: "board-personal", kind: "personal" },
-      { id: MASTER, kind: "master" },
+      { id: "board-personal", kind: "personal", name: "Personal", memberIds: ["acct-me"] },
+      { id: MASTER, kind: "master", name: "Public", memberIds: null },
     ]);
-    expect(snap.boards).toEqual([
-      { id: "board-personal", kind: "personal", name: "Personal" },
-      { id: MASTER, kind: "master", name: "Public" },
-    ]);
+    expect(snap.boards.map((b) => b.name)).toEqual(["Personal", "Public"]);
   });
 });

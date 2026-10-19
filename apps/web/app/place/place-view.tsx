@@ -14,11 +14,13 @@ import {
   defineTag,
   deletePlace,
   editComment,
+  EntryError,
   removeOpinion,
   setStatus,
   unapplyTag,
   updateFacts,
 } from "@/lib/entries/actions";
+import { boardName, opinionBoards, tagFit } from "@/lib/places/boards";
 import { categoryStyle } from "@/lib/places/categories";
 import { readPayload } from "@/lib/places/payloads";
 import type { CommentOpinion, DiarySnapshot, Opinion, Status, StatusOpinion, TagOpinion } from "@/lib/places/types";
@@ -32,6 +34,7 @@ export function PlaceView({ diary, placeId }: { diary: Diary; placeId: string })
   const { loaded, items, snapshot } = useItems(diary);
   const [editing, setEditing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
   const [boardEdit, setBoardEdit] = useState<string[] | null>(null);
 
@@ -56,6 +59,7 @@ export function PlaceView({ diary, placeId }: { diary: Diary; placeId: string })
   /** Runs a write and shows a refusal instead of throwing. */
   const run = (write: () => Promise<unknown>) => {
     setError(null);
+    setNotice(null);
     write().catch((err: unknown) => setError(err instanceof Error ? err.message : "Could not save"));
   };
 
@@ -66,11 +70,29 @@ export function PlaceView({ diary, placeId }: { diary: Diary; placeId: string })
   const of = <K extends Opinion["kind"]>(kind: K) => place.opinions.filter((o): o is Extract<Opinion, { kind: K }> => o.kind === kind);
   const myStatusOpinion = of("status").find((o) => o.authorId === me);
   const myStatus = myStatusOpinion?.status ?? null;
-  const choices = boardChoices(snapshot.boards.filter((b) => diary.boards.some((k) => k.id === b.id)));
+  // Only boards the person is in whose readers can all see this place (a dropped pin never goes Public).
+  const choices = boardChoices(opinionBoards(snapshot, place).filter((b) => diary.boards.some((k) => k.id === b.id)));
   // New opinions here go where the person's status is, unless they pick otherwise.
   const picked = (boardEdit ?? myStatusOpinion?.boards ?? [diary.device.personalBoardId]).filter((id) => choices.some((b) => b.id === id));
   const onBoards = picked.filter((id) => !place.isPrivate || choices.find((b) => b.id === id)?.kind !== "master");
   const boards = onBoards.length > 0 ? onBoards : [diary.device.personalBoardId];
+
+  /** Applies a tag where its definition is visible, offering to widen the person's own definition. */
+  const tag = async (tagId: string) => {
+    const def = snapshot.tags.find((t) => t.id === tagId);
+    if (!def) return applyTag(diary, place.id, tagId, boards);
+    const fit = tagFit(def, boards, snapshot);
+    const visibleOn = (id: string) => fit.fits.includes(id);
+    if (fit.outside.length === 0) return applyTag(diary, place.id, tagId, boards, visibleOn);
+    const where = fit.outside.map((id) => boardName(snapshot, id)).join(", ");
+    // Applying one's own tag to the wider boards widens its definition to match.
+    if (fit.canWiden && confirm(`“${def.name}” isn't visible on ${where}. Show the tag on ${where} too?`)) {
+      return applyTag(diary, place.id, tagId, boards, visibleOn);
+    }
+    if (fit.fits.length === 0) throw new EntryError(`“${def.name}” isn't visible on ${where}, so it can't be applied there.`);
+    await applyTag(diary, place.id, tagId, fit.fits, visibleOn);
+    setNotice(`Tagged on ${fit.fits.map((id) => boardName(snapshot, id)).join(", ")} only: “${def.name}” isn't visible on ${where}.`);
+  };
   const myTagIds = new Set(of("tag").filter((o) => o.authorId === me).map((o) => o.tagId));
   const othersTags = of("tag").filter((o) => o.authorId !== me);
   const comments = of("comment").sort((a, b) => a.createdAt.localeCompare(b.createdAt));
@@ -128,6 +150,11 @@ export function PlaceView({ diary, placeId }: { diary: Diary; placeId: string })
           {error}
         </p>
       )}
+      {notice && (
+        <p className={styles.note} role="status">
+          {notice}
+        </p>
+      )}
 
       <section className={styles.section}>
         <h2>Your status</h2>
@@ -152,7 +179,7 @@ export function PlaceView({ diary, placeId }: { diary: Diary; placeId: string })
           tags={snapshot.tags}
           selected={myTagIds}
           disabled={myStatus === null}
-          onToggle={(tagId) => run(() => (myTagIds.has(tagId) ? unapplyTag(diary, place.id, tagId) : applyTag(diary, place.id, tagId, boards)))}
+          onToggle={(tagId) => run(() => (myTagIds.has(tagId) ? unapplyTag(diary, place.id, tagId) : tag(tagId)))}
           onCreate={(def) => run(async () => applyTag(diary, place.id, await defineTag(diary, def, boards), boards))}
         />
         <Others
@@ -236,10 +263,6 @@ export function PlaceView({ diary, placeId }: { diary: Diary; placeId: string })
 
 function personName(snapshot: DiarySnapshot, me: string, id: string): string {
   return id === me ? "You" : (snapshot.people.find((p) => p.id === id)?.name ?? "Someone");
-}
-
-function boardName(snapshot: DiarySnapshot, id: string): string {
-  return snapshot.boards.find((b) => b.id === id)?.name ?? "Board";
 }
 
 function Others<O extends Opinion>({ snapshot, me, opinions, render }: { snapshot: DiarySnapshot; me: string; opinions: O[]; render: (o: O) => string }) {

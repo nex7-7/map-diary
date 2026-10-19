@@ -3,7 +3,7 @@ import type { Category, LngLat, PlaceView, Status, StatusOpinion } from "./types
 export interface PlaceFilters {
   /** Matches name, address, cuisine and signature dish, case-insensitively. */
   query: string;
-  /** Board ids; empty means every board this device can read. */
+  /** Board ids; empty means every board this device can read. A board shows only its members' opinions. */
   boards: string[];
   statuses: Status[];
   categories: Category[];
@@ -60,7 +60,7 @@ export function filterPlaces(places: readonly PlaceView[], filters: PlaceFilters
     const statuses = place.opinions.filter(
       (o): o is StatusOpinion =>
         o.kind === "status" &&
-        overlaps(filters.boards, o.boards) &&
+        overlaps(filters.boards, o.shownOn) &&
         (filters.statuses.length === 0 || filters.statuses.includes(o.status)) &&
         (filters.authorIds.length === 0 || filters.authorIds.includes(o.authorId)),
     );
@@ -68,7 +68,7 @@ export function filterPlaces(places: readonly PlaceView[], filters: PlaceFilters
 
     if (filters.tagIds.length > 0) {
       const tagged = place.opinions.some(
-        (o) => o.kind === "tag" && filters.tagIds.includes(o.tagId) && overlaps(filters.boards, o.boards),
+        (o) => o.kind === "tag" && filters.tagIds.includes(o.tagId) && overlaps(filters.boards, o.shownOn),
       );
       if (!tagged) continue;
     }

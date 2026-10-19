@@ -1,6 +1,6 @@
 import type { EnvelopeType, JsonValue } from "@map-diary/crypto";
 import type { StoredItem } from "../places/items-source";
-import { readPayload, type CommentPayload, type PlacePayload, type TagDefPayload } from "../places/payloads";
+import { cleanDisplayName, readPayload, type CommentPayload, type PlacePayload, type ProfilePayload, type TagDefPayload } from "../places/payloads";
 import type { Status } from "../places/types";
 import { normaliseLink } from "./parse-input";
 
@@ -134,12 +134,19 @@ export async function setStatus(w: DiaryWriter, placeId: string, status: Status,
  * this person's own tags somewhere new widens the definition to match; someone else's tag
  * cannot be widened, and is refused.
  */
-export async function applyTag(w: DiaryWriter, placeId: string, tagId: string, boards?: Boards): Promise<void> {
+export async function applyTag(
+  w: DiaryWriter,
+  placeId: string,
+  tagId: string,
+  boards?: Boards,
+  /** Whether the definition can be read on a board; defaults to "is posted there". See `tagFit`. */
+  visibleOn?: (boardId: string) => boolean,
+): Promise<void> {
   const items = await requireStatus(w, placeId);
   const def = items.find((i) => i.id === tagId && i.type === "tag_def");
   const wanted = boards && boards.length > 0 ? boards : undefined;
   if (def && wanted) {
-    const missing = wanted.filter((b) => !def.boardIds.includes(b));
+    const missing = wanted.filter((b) => !(visibleOn ? visibleOn(b) : def.boardIds.includes(b)));
     if (missing.length > 0) {
       if (def.authorId !== w.device.accountId) throw new EntryError("That tag isn't shared on the boards you picked");
       await w.write({ type: "tag_def", placeId: null, payload: def.payload, id: def.id, boards: [...def.boardIds, ...missing] });
@@ -206,6 +213,20 @@ export async function deletePlace(w: DiaryWriter, placeId: string): Promise<void
     if (i.placeId === placeId && i.authorId === w.device.accountId) await w.remove(i.id);
   }
   await w.remove(placeId);
+}
+
+/**
+ * Sets how this person appears to everyone: one profile item on the master board, edited in
+ * place. Returns the name as saved.
+ */
+export async function setDisplayName(w: DiaryWriter, name: string, masterBoardId: string): Promise<string> {
+  const payload: ProfilePayload = { name: cleanDisplayName(name) };
+  if (!payload.name) throw new EntryError("A name needs at least one letter");
+  const mine = (await w.listItems()).filter((i) => i.type === "profile" && i.authorId === w.device.accountId);
+  const latest = mine.reduce<StoredItem | undefined>((a, b) => (!a || b.updatedAt > a.updatedAt ? b : a), undefined);
+  await w.write({ type: "profile", placeId: null, payload: json(payload), boards: [masterBoardId], ...(latest ? { id: latest.id } : {}) });
+  for (const extra of mine) if (extra !== latest) await w.remove(extra.id);
+  return payload.name;
 }
 
 function cleanTag(def: TagDefPayload): TagDefPayload {

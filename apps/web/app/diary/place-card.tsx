@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { boardName } from "@/lib/places/boards";
 import { categoryStyle, STATUS_LABELS } from "@/lib/places/categories";
 import { formatDistance, type ListedPlace } from "@/lib/places/filter";
 import type { DiarySnapshot, Opinion, Status } from "@/lib/places/types";
@@ -17,7 +18,7 @@ export function PlaceCard({ item, snapshot, onClose, onSetStatus }: Props) {
   const { place, distanceM } = item;
   const style = categoryStyle(place.category);
   const person = (id: string) => (id === snapshot.me.id ? "You" : snapshot.people.find((p) => p.id === id)?.name ?? "Someone");
-  const board = (id: string) => snapshot.boards.find((b) => b.id === id)?.name ?? id;
+  const board = (id: string) => boardName(snapshot, id);
   const tag = (id: string) => snapshot.tags.find((t) => t.id === id);
   const myStatus = place.opinions.find((o) => o.kind === "status" && o.authorId === snapshot.me.id);
   const mapsUrl = `https://www.google.com/maps/search/?api=1&query=${place.location.lat},${place.location.lng}`;

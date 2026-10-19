@@ -1,4 +1,5 @@
 import type { EnvelopeType, JsonValue } from "@map-diary/crypto";
+import { applyBoardRules } from "./boards";
 import { readPayload } from "./payloads";
 import type { Board, BoardKind, DiarySnapshot, DiarySource, Opinion, Person, PlaceView, Status, StatusOpinion, TagDefinition } from "./types";
 
@@ -16,23 +17,69 @@ export interface StoredItem {
 }
 
 /** The parts of the device's `Diary` this source needs. */
-export interface ItemStore {
-  readonly device: { readonly accountId: string; readonly personalBoardId: string };
+export interface ItemStore extends BoardDirectory {
+  readonly device: DeviceBoards;
   listItems(): Promise<StoredItem[]>;
   write(input: { type: EnvelopeType; placeId: string | null; payload: JsonValue; id?: string }): Promise<unknown>;
   subscribe(listener: () => void): () => void;
 }
 
+export interface DeviceBoards {
+  readonly accountId: string;
+  readonly personalBoardId: string;
+  /** The board keys the device holds; the boards it can read. */
+  readonly boardKeys?: readonly { readonly boardId: string }[];
+  /**
+   * The boards this account is in, refreshed on each sync (arrives with groups in
+   * `@map-diary/sync`). `memberIds` is set for groups only; absent means everyone.
+   */
+  readonly boards?: readonly { readonly id: string; readonly kind: BoardKind; readonly memberIds?: readonly string[] }[];
+}
+
+/**
+ * Where the device learns each board's kind, name and members: `listBoards` if the diary
+ * has one, else the device's board list from sync, else (before sharing) its keys.
+ */
+export interface BoardDirectory {
+  listBoards?(): Promise<Board[]>;
+  /** The diary's board ring, if it exposes one (same shape as `DeviceBoards.boards`). */
+  readonly boards?: DeviceBoards["boards"];
+}
+
+const BOARD_NAMES: Record<BoardKind, string> = { personal: "Personal", master: "Public", group: "Group" };
+
+/** True once the diary can post to boards other than Personal. */
+export function canChooseBoards(store: BoardDirectory & { readonly device: DeviceBoards }): boolean {
+  return typeof store.listBoards === "function" || (store.boards ?? store.device.boards) !== undefined;
+}
+
+/** The boards this device can read. The Personal board is always there, with only its owner. */
+export async function boardsOf(store: BoardDirectory & { readonly device: DeviceBoards }): Promise<Board[]> {
+  const { accountId, personalBoardId, boardKeys = [] } = store.device;
+  const boards = store.boards ?? store.device.boards;
+  const personal: Board = { id: personalBoardId, kind: "personal", name: "Personal", memberIds: [accountId] };
+  const listed: Board[] = store.listBoards
+    ? await store.listBoards()
+    : boards
+      ? boards.map((b) => ({ id: b.id, kind: b.kind, name: BOARD_NAMES[b.kind], memberIds: b.kind === "personal" ? [accountId] : b.memberIds ? [...b.memberIds] : null }))
+      : [...new Set(boardKeys.map((k) => k.boardId))].map((id): Board => ({ id, kind: "group", name: "Shared board", memberIds: null }));
+  return [personal, ...listed.filter((b) => b.id !== personalBoardId)];
+}
+
 /** A `DiarySource` over the device's decrypted items. */
 export function createItemsSource(store: ItemStore): DiarySource {
-  const { accountId, personalBoardId } = store.device;
-  const load = async () => snapshotFromItems(await store.listItems(), accountId, personalBoardId);
+  const load = async () => {
+    const { accountId, personalBoardId } = store.device;
+    const [items, boards] = await Promise.all([store.listItems(), boardsOf(store)]);
+    return snapshotFromItems(items, accountId, personalBoardId, boards);
+  };
 
   return {
     load,
     subscribe: (listener) => store.subscribe(listener),
     setStatus: async (placeId: string, status: Status) => {
       const items = await store.listItems();
+      const { accountId } = store.device;
       const own = latestStatus(items.filter((i) => i.type === "status" && i.placeId === placeId && i.authorId === accountId));
       // The store posts new items to the Personal board; an edit keeps the item's id.
       await store.write({ type: "status", placeId, payload: { status }, ...(own ? { id: own.id } : {}) });
@@ -41,38 +88,37 @@ export function createItemsSource(store: ItemStore): DiarySource {
   };
 }
 
-/** A board the account is in, as the device's key ring knows it. */
-export interface KnownBoard {
-  id: string;
-  kind: BoardKind;
-}
-
-/** What each board is called on screen. */
-export function boardName(kind: BoardKind): string {
-  return kind === "master" ? "Public" : kind === "personal" ? "Personal" : "Group";
-}
-
+/**
+ * Builds the map's view of the device's items. `boards` are the boards this device can read
+ * (see `boardsOf`); items are shown only where the board rules allow.
+ */
 export function snapshotFromItems(
   items: readonly StoredItem[],
   accountId: string,
   personalBoardId: string,
-  known: readonly KnownBoard[] = [],
+  boards: readonly Board[] = [{ id: personalBoardId, kind: "personal", name: "Personal", memberIds: [accountId] }],
 ): DiarySnapshot {
   const iso = (ms: number) => new Date(ms).toISOString();
   const places = new Map<string, PlaceView>();
   const tags: TagDefinition[] = [];
   const opinions: { placeId: string; opinion: Opinion }[] = [];
   const authors = new Set<string>([accountId]);
-  const boardIds = new Set<string>([personalBoardId, ...known.map((b) => b.id)]);
+  const profiles = displayNames(items);
 
   for (const item of items) {
-    item.boardIds.forEach((b) => boardIds.add(b));
-    const base = { id: item.id, authorId: item.authorId, boards: item.boardIds, createdAt: iso(item.createdAt), updatedAt: iso(item.updatedAt) };
+    const base = {
+      id: item.id,
+      authorId: item.authorId,
+      boards: item.boardIds,
+      shownOn: [],
+      createdAt: iso(item.createdAt),
+      updatedAt: iso(item.updatedAt),
+    };
     switch (item.type) {
       case "place":
       case "private_place": {
         const p = readPayload(item.type, item.payload);
-        if (p) places.set(item.id, { ...p, id: item.id, isPrivate: item.type === "private_place", opinions: [] });
+        if (p) places.set(item.id, { ...p, id: item.id, isPrivate: item.type === "private_place", boards: item.boardIds, opinions: [] });
         break;
       }
       case "tag_def": {
@@ -102,8 +148,6 @@ export function snapshotFromItems(
     const place = places.get(placeId);
     if (!place) continue;
     place.opinions.push(opinion);
-    authors.add(opinion.authorId);
-    opinion.boards.forEach((b) => boardIds.add(b));
   }
   // One status per person per place: keep the latest if a sync race left two.
   for (const place of places.values()) {
@@ -116,16 +160,34 @@ export function snapshotFromItems(
     place.opinions = place.opinions.filter((o) => o.kind !== "status" || latest.get(o.authorId) === o);
   }
 
-  const me: Person = { id: accountId, name: "Me" };
-  const others = [...authors].filter((id) => id !== accountId).map((id, i): Person => ({ id, name: `Friend ${i + 1}` }));
-  const kindOf = (id: string): BoardKind => (id === personalBoardId ? "personal" : (known.find((b) => b.id === id)?.kind ?? "group"));
-  const boards = [...boardIds].map((id): Board => {
-    const kind = kindOf(id);
-    // A board this device is not in (someone's Personal board never reaches it) reads as shared.
-    return { id, kind, name: known.some((b) => b.id === id) || id === personalBoardId ? boardName(kind) : "Shared board" };
+  const snapshot = applyBoardRules({
+    me: { id: accountId, name: "Me" },
+    people: [],
+    boards: [...boards],
+    tags,
+    places: [...places.values()],
   });
+  // People are the authors of what this device can see, named by their profiles.
+  for (const p of snapshot.places) for (const o of p.opinions) authors.add(o.authorId);
+  let unnamed = 0;
+  const people = [...authors].map((id): Person => {
+    const name = profiles.get(id);
+    if (id === accountId) return { id, name: name ?? "Me" };
+    return { id, name: name ?? `Friend ${++unnamed}` };
+  });
+  return { ...snapshot, me: people[0]!, people };
+}
 
-  return { me, people: [me, ...others], boards, tags, places: [...places.values()] };
+/** Each account's display name: the newest valid `profile` item it wrote. */
+export function displayNames(items: readonly StoredItem[]): Map<string, string> {
+  const latest = new Map<string, { name: string; updatedAt: number }>();
+  for (const item of items) {
+    if (item.type !== "profile") continue;
+    const p = readPayload("profile", item.payload);
+    const prior = latest.get(item.authorId);
+    if (p && (!prior || item.updatedAt > prior.updatedAt)) latest.set(item.authorId, { name: p.name, updatedAt: item.updatedAt });
+  }
+  return new Map([...latest].map(([id, v]) => [id, v.name]));
 }
 
 function latestStatus(items: readonly StoredItem[]): StoredItem | undefined {

@@ -14,10 +14,11 @@ export type Category = BuiltinCategory | `custom:${string}`;
 export type BoardKind = "master" | "group" | "personal";
 
 export interface Board {
-  /** `master`, `personal`, or `group:<groupId>`. */
   id: string;
   kind: BoardKind;
   name: string;
+  /** Account ids of the board's members; `null` means everyone on the app (the master board). */
+  memberIds: string[] | null;
 }
 
 export interface Person {
@@ -54,8 +55,13 @@ export interface PlaceFacts {
 interface OpinionBase {
   id: string;
   authorId: string;
-  /** Board ids this opinion is wrapped to. */
+  /** Boards this device knows that the opinion is posted to and its author belongs to: its badges. */
   boards: string[];
+  /**
+   * Boards whose view shows it: its own boards, plus each group the author is in when it is
+   * posted to master. Filled in by `applyBoardRules`.
+   */
+  shownOn: string[];
   createdAt: string;
   updatedAt: string;
 }
@@ -87,6 +93,8 @@ export interface TagDefinition {
 }
 
 export interface PlaceView extends PlaceFacts {
+  /** Boards this device knows that the place itself is posted to. */
+  boards: string[];
   /** Every opinion on this place this device can read. */
   opinions: Opinion[];
 }
