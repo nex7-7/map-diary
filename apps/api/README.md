@@ -55,7 +55,7 @@ A `claude` device (the assistant) may call only `GET /api/sync`, `POST /api/enve
 | `GET /api/resolver/pending` | `RESOLVER_TOKEN` | The resolver's list of pending jobs |
 | `POST /api/resolver/jobs/:id/resolution` | `RESOLVER_TOKEN` | The resolver's answer, checked and sealed to the job's key |
 | `POST /api/mcp/:token`, `POST /api/mcp` | `RESOLVER_TOKEN` in the path, or as a Bearer header | MCP server for the resolver: `get_pending_jobs` and `submit_resolution` (see docs/mcp-resolver.md) |
-| `POST /api/claude/mcp/:secret`, `POST /api/claude/mcp` | Claude connector secret in the path, or as a Bearer header | MCP server for the owner's Claude assistant: `search_places`, `get_place`, `list_tags`, `add_place`, `set_status`, `add_tag`, `add_comment`. Unlocks the `claude` device for one call and reads or writes only the master and Personal boards; writes go through the same checks as `POST /api/envelopes` |
+| `POST /api/claude/mcp` | Claude connector secret as a Bearer header (never in the URL) | MCP server for the owner's Claude assistant: `search_places`, `get_place`, `list_tags`, `add_place`, `set_status`, `add_tag`, `add_comment`. Unlocks the `claude` device for one call and reads or writes only the master and Personal boards; writes go through the same checks as `POST /api/envelopes` |
 
 libsodium cannot compile its embedded WebAssembly inside workerd, so `pnpm run sodium-wasm` (run automatically before dev, test, typecheck, build and deploy) extracts the binary from the installed libsodium into `src/generated/`, and `src/sodium-wasm.ts` hands it over as a precompiled module.
 

@@ -152,7 +152,11 @@ function ConnectClaude({ diary, onDone }: { diary: Diary; onDone: () => void }) 
   if (secret) {
     return (
       <>
-        <p>Claude is connected. Paste this secret into the Claude connector. It is shown only once.</p>
+        <p>
+          Claude is connected. In claude.ai, add a custom connector with the URL{" "}
+          <code>{`${window.location.origin}/api/claude/mcp`}</code> and a request header{" "}
+          <code>Authorization</code> set to <code>Bearer</code>, a space, then this secret. It is shown only once.
+        </p>
         <p className={styles.code} style={{ wordBreak: "break-all", userSelect: "all" }}>
           {secret}
         </p>

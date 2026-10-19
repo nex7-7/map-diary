@@ -22,8 +22,8 @@ import { PROBLEMS } from "./mcp";
  * only; it never holds account or group keys, so group boards are out of reach. Separate from
  * the resolver's server (mcp.ts), which never sees anyone's opinions.
  *
- * The secret comes as a Bearer header (`/api/claude/mcp`) or in the path
- * (`/api/claude/mcp/<secret>`), because claude.ai custom connectors take a URL but no headers.
+ * The connector sends the secret only as a Bearer header on `/api/claude/mcp`, never in the URL,
+ * so it stays out of request logs and browser history.
  */
 
 /** Finds the Claude device for a connector secret and opens its keys; null if there is none (or it was revoked). */
@@ -661,8 +661,7 @@ export function assistantRoutes(unlock: Unlock) {
   }
 
   routes.post("/claude/mcp", readBody, (c) => handle(c, bearer(c)));
-  routes.post("/claude/mcp/:secret", readBody, (c) => handle(c, c.req.param("secret")));
   // No server-sent streams or sessions: say so, as the spec asks.
-  routes.on(["GET", "DELETE"], ["/claude/mcp", "/claude/mcp/:secret"], (c) => c.body(null, 405, { Allow: "POST" }));
+  routes.on(["GET", "DELETE"], "/claude/mcp", (c) => c.body(null, 405, { Allow: "POST" }));
   return routes;
 }

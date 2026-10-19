@@ -20,7 +20,7 @@ let secret: string;
 let claudeDeviceId: string;
 
 let rpcId = 0;
-async function rpc(method: string, params: unknown = {}, auth: { path?: string; bearer?: string } = { path: secret }) {
+async function rpc(method: string, params: unknown = {}, auth: { path?: string; bearer?: string } = { bearer: secret }) {
   return exports.default.fetch(
     new Request(`${ORIGIN}/api/claude/mcp${auth.path ? `/${auth.path}` : ""}`, {
       method: "POST",
@@ -66,9 +66,10 @@ describe("the Claude assistant's MCP tools", () => {
       "add_tag",
       "add_comment",
     ]);
-    expect((await rpc("tools/list", {}, { path: "wrong" })).status).toBe(401);
+    expect((await rpc("tools/list", {}, { bearer: "wrong" })).status).toBe(401);
     expect((await rpc("tools/list", {}, {})).status).toBe(401);
-    expect((await rpc("tools/list", {}, { bearer: secret })).status).toBe(200);
+    // The secret is never accepted in the URL.
+    expect((await rpc("tools/list", {}, { path: secret })).status).not.toBe(200);
   });
 
   it("adds a checked place to the catalogue, with the status on Personal by default", async () => {
