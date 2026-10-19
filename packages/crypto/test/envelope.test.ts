@@ -2,6 +2,8 @@ import { beforeAll, describe, expect, it } from "vitest";
 import sodium from "libsodium-wrappers-sumo";
 import {
   CryptoError,
+  decryptStoredEnvelope,
+  fromBase64,
   generateBoardKey,
   generateIdentity,
   openEnvelope,
@@ -178,5 +180,27 @@ describe("signatures and tampering", () => {
       () => openEnvelope(resigned, { boardKey: keyring(group), signerPublicKey: alice.signPublicKey }),
       "decrypt_failed",
     );
+  });
+});
+
+describe("decryptStoredEnvelope", () => {
+  const stored = (env: Envelope) => ({ ...env, nonce: fromBase64(env.nonce), ciphertext: fromBase64(env.ciphertext) });
+  const wrap = (env: Envelope, i = 0) => {
+    const b = env.boards[i]!;
+    return { boardId: b.boardId, keyVersion: b.keyVersion, nonce: fromBase64(b.nonce), wrappedKey: fromBase64(b.wrappedKey) };
+  };
+
+  it("reads stored bytes through one board's wrap", () => {
+    const env = seal([personal, master]);
+    const i = env.boards.findIndex((b) => b.boardId === master.boardId);
+    expect(decryptStoredEnvelope(stored(env), wrap(env, i), master.key)).toEqual({ text: "Best vada pav near the station" });
+  });
+
+  it("refuses the wrong key or a wrap moved to another envelope", () => {
+    const env = seal([personal]);
+    expectCode(() => decryptStoredEnvelope(stored(env), wrap(env), group.key), "decrypt_failed");
+    const other = seal([personal]);
+    expectCode(() => decryptStoredEnvelope(stored(env), wrap(other), personal.key), "decrypt_failed");
+    expectCode(() => decryptStoredEnvelope({ ...stored(env), placeId: "place-2" }, wrap(env), personal.key), "decrypt_failed");
   });
 });

@@ -81,6 +81,16 @@ describe("snapshotFromItems", () => {
   });
 });
 
+describe("via Claude", () => {
+  it("marks opinions the author's Claude assistant wrote", () => {
+    const byClaude = item("comment", { text: "Try the bun maska" }, { placeId: kyani.id, viaClaude: true });
+    const byHand = item("comment", { text: "Cash only" }, { placeId: kyani.id });
+    const opinions = snapshotFromItems([kyani, byClaude, byHand], ME, PERSONAL).places[0]!.opinions;
+    expect(opinions.find((o) => o.id === byClaude.id)?.viaClaude).toBe(true);
+    expect(opinions.find((o) => o.id === byHand.id)?.viaClaude).toBeUndefined();
+  });
+});
+
 describe("createItemsSource", () => {
   function fakeStore(initial: StoredItem[]) {
     const items = [...initial];

@@ -14,6 +14,8 @@ export interface StoredItem {
   updatedAt: number;
   boardIds: string[];
   payload: JsonValue;
+  /** Written by the author's Claude assistant. */
+  viaClaude?: boolean;
 }
 
 /** The parts of the device's `Diary` this source needs. */
@@ -112,6 +114,7 @@ export function snapshotFromItems(
       authorId: item.authorId,
       boards: item.boardIds,
       shownOn: [],
+      ...(item.viaClaude ? { viaClaude: true } : {}),
       createdAt: iso(item.createdAt),
       updatedAt: iso(item.updatedAt),
     };

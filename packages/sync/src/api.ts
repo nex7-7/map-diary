@@ -128,7 +128,7 @@ export interface MemberBoardKey extends WrappedBoardKey {
 export interface SyncResponse {
   envelopes: Envelope[];
   deleted: string[];
-  devices: Record<string, { accountId: string; signPublicKey: string; revokedAt: number | null }>;
+  devices: Record<string, { accountId: string; kind?: DeviceKind; signPublicKey: string; revokedAt: number | null }>;
   cursor: number;
   more: boolean;
   /** The account's current box key version; newer than the device's means it must collect the new key. */

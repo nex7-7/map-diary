@@ -27,3 +27,25 @@ export function linkHash(key: Uint8Array, normalisedLink: string): Uint8Array {
   if (normalisedLink.length === 0) throw new CryptoError("invalid_input", "An empty link has no hash");
   return getSodium().crypto_generichash(LINK_HASH_BYTES, utf8(normalisedLink), key);
 }
+
+const TRACKING = /^(utm_.*|g_st|g_ep|entry|shorturl|fbclid|gclid|si|ref|ref_)$/i;
+
+/**
+ * A link reduced to what identifies the place, so pasting the same place twice can be
+ * caught: no scheme, `www.`, tracking parameters, fragment or trailing slash.
+ */
+export function normaliseLink(raw: string): string {
+  try {
+    const url = new URL(raw.trim());
+    const params: [string, string][] = [];
+    url.searchParams.forEach((value, key) => {
+      if (!TRACKING.test(key)) params.push([key, value]);
+    });
+    params.sort(([a], [b]) => a.localeCompare(b));
+    const query = params.length ? "?" + new URLSearchParams(params).toString() : "";
+    const host = url.hostname.toLowerCase().replace(/^www\./, "");
+    return `${host}${url.pathname.replace(/\/+$/, "")}${query}`;
+  } catch {
+    return raw.trim().toLowerCase();
+  }
+}

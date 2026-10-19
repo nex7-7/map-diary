@@ -69,7 +69,7 @@ interface Refused {
 
 type Listener = () => void;
 
-function itemFrom(envelope: Envelope, payload: JsonValue): DiaryItem {
+function itemFrom(envelope: Envelope, payload: JsonValue, viaClaude = false): DiaryItem {
   return {
     id: envelope.id,
     type: envelope.type,
@@ -80,6 +80,7 @@ function itemFrom(envelope: Envelope, payload: JsonValue): DiaryItem {
     updatedAt: envelope.updatedAt,
     boardIds: envelope.boards.map((b) => b.boardId),
     payload,
+    ...(viaClaude ? { viaClaude: true as const } : {}),
   };
 }
 
@@ -585,7 +586,7 @@ export class Diary {
       }
       try {
         const opened = openEnvelope(envelope, { boardKey: keyFor, signerPublicKey: fromBase64(signer.signPublicKey) });
-        items.push(itemFrom(envelope, opened.payload));
+        items.push(itemFrom(envelope, opened.payload, signer.kind === "claude"));
       } catch (err) {
         this.skip({ id: envelope.id, reason: err instanceof CryptoError ? err.code : "open_failed" });
       }

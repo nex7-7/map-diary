@@ -15,6 +15,8 @@ export interface DiaryItem {
   /** The boards it is posted to. */
   boardIds: string[];
   payload: JsonValue;
+  /** Signed by the owner's Claude assistant device: shown as "<name> via Claude". */
+  viaClaude?: true;
 }
 
 export interface PulledPage {

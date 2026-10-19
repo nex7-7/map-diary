@@ -67,3 +67,9 @@ export function unwrapKeyFromMember(
     throw new CryptoError("decrypt_failed", "Could not unwrap key for this identity");
   }
 }
+
+/** Overwrites secret bytes with zeros once they are no longer needed. */
+export function wipe(...secrets: Uint8Array[]): void {
+  const sodium = getSodium();
+  for (const s of secrets) sodium.memzero(s);
+}

@@ -214,20 +214,5 @@ function cleanName(s: string): string {
   return s.replace(/\s+/g, " ").replace(/^[\s"'“”‘’]+|[\s"'“”‘’,:-]+$/g, "").slice(0, 120);
 }
 
-const TRACKING = /^(utm_.*|g_st|g_ep|entry|shorturl|fbclid|gclid|si|ref|ref_)$/i;
-
-/**
- * A link reduced to what identifies the place, so pasting the same place twice can be
- * caught: no scheme, `www.`, tracking parameters, fragment or trailing slash.
- */
-export function normaliseLink(raw: string): string {
-  try {
-    const url = new URL(raw.trim());
-    const params = [...url.searchParams.entries()].filter(([k]) => !TRACKING.test(k)).sort(([a], [b]) => a.localeCompare(b));
-    const query = params.length ? "?" + new URLSearchParams(params).toString() : "";
-    const host = url.hostname.toLowerCase().replace(/^www\./, "");
-    return `${host}${url.pathname.replace(/\/+$/, "")}${query}`;
-  } catch {
-    return raw.trim().toLowerCase();
-  }
-}
+/** Shared with the Worker, which checks links for the Claude assistant the same way. */
+export { normaliseLink } from "@map-diary/crypto";

@@ -7,6 +7,7 @@ export {
   generateBoardKey,
   wrapKeyForMember,
   unwrapKeyFromMember,
+  wipe,
   type IdentityKeys,
   type PublicIdentity,
   type BoardKey,
@@ -16,6 +17,7 @@ export {
   ENVELOPE_TYPES,
   sealEnvelope,
   openEnvelope,
+  decryptStoredEnvelope,
   verifyEnvelope,
   signedBytes,
   type Envelope,
@@ -25,6 +27,8 @@ export {
   type SealInput,
   type OpenOptions,
   type OpenedEnvelope,
+  type StoredEnvelope,
+  type StoredWrap,
 } from "./envelope";
 export {
   KEY_BACKUP_VERSION,
@@ -89,7 +93,7 @@ export {
   type AccountTransfer,
 } from "./pairing";
 export { generateInviteCode, normaliseInviteCode, appInviteId, appInviteBoxKeys } from "./invite";
-export { LINK_HASH_BYTES, linkHashKey, linkHash } from "./links";
+export { LINK_HASH_BYTES, linkHashKey, linkHash, normaliseLink } from "./links";
 export {
   generateGroupInviteSecret,
   isGroupInviteSecret,
