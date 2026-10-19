@@ -253,24 +253,35 @@ envelopes.get("/sync", readBody, requireDevice, async (c) => {
     signature: unknown;
     deleted_at: number | null;
     seq: number;
+    visible: number;
   };
+  // An envelope reaches the account through a board it is in, or because the account wrote
+  // it. A board row marked removed (its author left that group) still counts for finding the
+  // change, but not for seeing the envelope: such an envelope is reported as deleted to anyone
+  // who could see it only through that board.
+  const accountId = c.var.device.accountId;
   const { results: rows } = await db
     .prepare(
       `SELECT e.id, e.v, e.type, e.author_id, e.device_id, e.place_id, e.created_at, e.updated_at,
-              e.nonce, e.ciphertext, e.signature, e.deleted_at, e.seq
+              e.nonce, e.ciphertext, e.signature, e.deleted_at, e.seq,
+              (e.author_id = ?1 OR EXISTS (
+                SELECT 1 FROM envelope_boards eb
+                  JOIN board_members m ON m.board_id = eb.board_id AND m.account_id = ?1
+                 WHERE eb.envelope_id = e.id AND eb.removed_at IS NULL)) AS visible
          FROM envelopes e
-        WHERE e.seq > ? AND EXISTS (
+        WHERE e.seq > ?2 AND (e.author_id = ?1 OR EXISTS (
           SELECT 1 FROM envelope_boards eb
-            JOIN board_members m ON m.board_id = eb.board_id AND m.account_id = ?
-           WHERE eb.envelope_id = e.id)
-        ORDER BY e.seq LIMIT ?`,
+            JOIN board_members m ON m.board_id = eb.board_id AND m.account_id = ?1
+           WHERE eb.envelope_id = e.id))
+        ORDER BY e.seq LIMIT ?3`,
     )
-    .bind(since, c.var.device.accountId, limit + 1)
+    .bind(accountId, since, limit + 1)
     .all<Row>();
 
   const more = rows.length > limit;
   const page = rows.slice(0, limit);
-  const live = page.filter((r) => r.deleted_at === null);
+  const gone = (r: Row) => r.deleted_at !== null || r.visible !== 1;
+  const live = page.filter((r) => !gone(r));
   const liveIds = JSON.stringify(live.map((r) => r.id));
   const signerIds = JSON.stringify([...new Set(live.map((r) => r.device_id))]);
 
@@ -325,15 +336,25 @@ envelopes.get("/sync", readBody, requireDevice, async (c) => {
     signature: toBase64(bytes(r.signature)),
   }));
 
-  // Lets the device notice that another of its account's devices moved the account to new keys.
-  const account = await db
-    .prepare("SELECT box_key_version FROM accounts WHERE id = ?")
-    .bind(c.var.device.accountId)
-    .first<{ box_key_version: number }>();
+  // Lets the device notice that another of its account's devices moved the account to new keys,
+  // that it joined or left a board, that a board moved to a new key, or that a group is waiting
+  // for a remaining member to rotate its key.
+  const [accountRes, boardsRes] = await db.batch([
+    db.prepare("SELECT box_key_version FROM accounts WHERE id = ?").bind(accountId),
+    db
+      .prepare(
+        `SELECT b.id, b.kind, b.key_version, b.rotation_due_at FROM boards b
+           JOIN board_members m ON m.board_id = b.id AND m.account_id = ?
+          ORDER BY b.created_at`,
+      )
+      .bind(accountId),
+  ]);
+  const account = (accountRes?.results?.[0] ?? null) as { box_key_version: number } | null;
+  type BoardStateRow = { id: string; kind: string; key_version: number; rotation_due_at: number | null };
 
   return c.json({
     envelopes: out,
-    deleted: page.filter((r) => r.deleted_at !== null).map((r) => r.id),
+    deleted: page.filter(gone).map((r) => r.id),
     // Signer keys so the device can verify each envelope without another round trip.
     devices: Object.fromEntries(
       deviceRows.map((d) => [
@@ -344,5 +365,11 @@ envelopes.get("/sync", readBody, requireDevice, async (c) => {
     cursor: page.at(-1)?.seq ?? since,
     more,
     boxKeyVersion: account?.box_key_version ?? 1,
+    boards: ((boardsRes?.results ?? []) as BoardStateRow[]).map((b) => ({
+      id: b.id,
+      kind: b.kind,
+      keyVersion: b.key_version,
+      rotationDue: b.rotation_due_at !== null,
+    })),
   });
 });

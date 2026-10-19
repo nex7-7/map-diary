@@ -12,6 +12,7 @@ export const ENVELOPE_TYPES = [
   "tag_def",
   "tag",
   "comment",
+  "group",
 ] as const;
 
 export type EnvelopeType = (typeof ENVELOPE_TYPES)[number];

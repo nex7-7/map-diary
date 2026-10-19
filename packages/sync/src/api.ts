@@ -97,6 +97,48 @@ export interface SyncResponse {
   more: boolean;
   /** The account's current box key version; newer than the device's means it must collect the new key. */
   boxKeyVersion: number;
+  /** The boards the account is in now, with their current key versions. */
+  boards?: BoardState[];
+}
+
+export interface BoardState {
+  id: string;
+  kind: string;
+  keyVersion: number;
+  /** A member left this group; a remaining member's device moves it to a new key. */
+  rotationDue: boolean;
+}
+
+export interface GroupMember {
+  accountId: string;
+  joinedAt: number;
+  /** The account's box public key; board keys are wrapped to it. */
+  boxPublicKey: string | null;
+  boxKeyVersion: number;
+}
+
+export interface GroupView {
+  id: string;
+  keyVersion: number;
+  rotationDue: boolean;
+  members: GroupMember[];
+}
+
+export interface InviteView {
+  boardId: string;
+  nonce: string;
+  sealedKeys: string;
+  expiresAt: number;
+  keyVersion: number;
+  members: number;
+  isMember: boolean;
+}
+
+/** A new group key wrapped to one member's account box key. */
+export interface MemberKeyBody {
+  accountId: string;
+  accountKeyVersion: number;
+  wrappedKey: string;
 }
 
 export interface RevokeBody {
@@ -260,6 +302,60 @@ export class Api {
   pull(since: number, signer: Signer, limit?: number) {
     const query = `since=${since}` + (limit === undefined ? "" : `&limit=${limit}`);
     return this.call<SyncResponse>("GET", `/api/sync?${query}`, undefined, signer);
+  }
+
+  // Groups: see apps/api/src/groups.ts.
+
+  listGroups(signer: Signer) {
+    return this.call<{ groups: GroupView[] }>("GET", "/api/groups", undefined, signer);
+  }
+
+  createGroup(body: { boardId: string; wrappedKey: string }, signer: Signer) {
+    return this.call<{ id: string; keyVersion: number }>("POST", "/api/groups", body, signer);
+  }
+
+  createInvite(groupId: string, body: { id: string; tokenHash: string; nonce: string; sealedKeys: string }, signer: Signer) {
+    return this.call<{ id: string; expiresAt: number }>(
+      "POST",
+      `/api/groups/${encodeURIComponent(groupId)}/invites`,
+      body,
+      signer,
+    );
+  }
+
+  readInvite(id: string, signer: Signer) {
+    return this.call<InviteView>("GET", `/api/invites/${encodeURIComponent(id)}`, undefined, signer);
+  }
+
+  acceptInvite(id: string, body: { token: string; keys: { keyVersion: number; wrappedKey: string }[] }, signer: Signer) {
+    return this.call<{ boardId: string; keyVersion: number }>(
+      "POST",
+      `/api/invites/${encodeURIComponent(id)}/accept`,
+      body,
+      signer,
+    );
+  }
+
+  rotateGroup(groupId: string, body: { keyVersion: number; memberKeys: MemberKeyBody[] }, signer: Signer) {
+    return this.call<{ id: string; keyVersion: number }>(
+      "POST",
+      `/api/groups/${encodeURIComponent(groupId)}/rotate`,
+      body,
+      signer,
+    );
+  }
+
+  removeMember(groupId: string, accountId: string, body: { keyVersion: number; memberKeys: MemberKeyBody[] }, signer: Signer) {
+    return this.call<{ id: string; keyVersion: number; removed: string }>(
+      "POST",
+      `/api/groups/${encodeURIComponent(groupId)}/members/${encodeURIComponent(accountId)}/remove`,
+      body,
+      signer,
+    );
+  }
+
+  leaveGroup(groupId: string, signer: Signer) {
+    return this.call<{ id: string; left: true }>("POST", `/api/groups/${encodeURIComponent(groupId)}/leave`, undefined, signer);
   }
 
   // Resolver jobs are anonymous: these calls are never signed, so the server cannot tie a

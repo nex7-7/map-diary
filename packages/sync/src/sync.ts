@@ -10,8 +10,9 @@ import {
   type EnvelopeType,
   type JsonValue,
 } from "@map-diary/crypto";
-import { ApiError, NetworkError, type Api, type Signer, type SyncResponse } from "./api";
+import { ApiError, NetworkError, type Api, type BoardState, type Signer, type SyncResponse } from "./api";
 import { boardKeyLookup, currentBoardKey, mergeBoardKeys, openBoardKeys, type DeviceState } from "./device";
+import { rotateGroupKey } from "./groups";
 import type { DiaryItem, DiaryStorage } from "./storage";
 
 /** The API takes at most this many envelopes or deletions per call. */
@@ -41,6 +42,11 @@ export interface WriteInput {
   payload: JsonValue;
   /** Rewrites an existing item of this device's account. Omit for a new one. */
   id?: string;
+  /**
+   * The boards to post it to. Defaults to the item's current boards when rewriting one, and
+   * to the Personal board for a new item.
+   */
+  boards?: readonly string[];
 }
 
 type Listener = () => void;
@@ -75,6 +81,8 @@ export class Diary {
   private readonly stale: string[] = [];
   /** Set when a pull collected a newer account key, so stale items can be re-sealed. */
   private keysCollected = false;
+  /** Set when this device gained a board, so the next round pulls everything again to fetch its past items. */
+  private rewind = false;
 
   private current: DeviceState;
 
@@ -135,13 +143,16 @@ export class Diary {
   /** Encrypts and saves an item on this device, then syncs it. Returns the stored item. */
   async write(input: WriteInput): Promise<DiaryItem> {
     await ready();
-    const board = currentBoardKey(this.device, this.device.personalBoardId);
-    if (!board) throw new Error("This device has no key for the Personal board");
+    const prior = input.id === undefined ? undefined : await this.storage.getItem(input.id);
+    const boardIds = input.boards ?? prior?.boardIds ?? [this.device.personalBoardId];
+    const boards = this.keysFor(boardIds);
+    if (boards.length === 0 || (input.boards !== undefined && boards.length !== new Set(input.boards).size)) {
+      throw new Error("This device has no key for one of the chosen boards");
+    }
 
     let createdAt: number | undefined;
     let updatedAt: number | undefined;
     if (input.id !== undefined) {
-      const prior = await this.storage.getItem(input.id);
       if (!prior) throw new Error("No such item on this device");
       if (prior.authorId !== this.device.accountId) throw new Error("Only the author can change an item");
       if (prior.type !== input.type || prior.placeId !== input.placeId) {
@@ -152,20 +163,64 @@ export class Diary {
       updatedAt = Math.max(Date.now(), prior.updatedAt + 1);
     }
 
-    const item = await this.sealLocal(input, board, createdAt, updatedAt);
+    const item = await this.sealLocal(input, boards, createdAt, updatedAt);
     this.emit();
     void this.sync();
     return item;
   }
 
-  private async sealLocal(input: WriteInput, board: BoardKey, createdAt?: number, updatedAt?: number): Promise<DiaryItem> {
+  /** The newest key of each board this device holds, skipping boards it has none for (ones it left). */
+  private keysFor(boardIds: readonly string[]): BoardKey[] {
+    const keys: BoardKey[] = [];
+    for (const id of new Set(boardIds)) {
+      const key = currentBoardKey(this.device, id);
+      if (key) keys.push(key);
+    }
+    return keys;
+  }
+
+  /** Board ids this device holds a key for. */
+  heldBoards(): string[] {
+    return [...new Set(this.device.boardKeys.map((k) => k.boardId))];
+  }
+
+  /** Adds board keys this device just made or received (a new group, an accepted invite), and saves them. */
+  async adoptBoardKeys(keys: readonly BoardKey[]): Promise<void> {
+    const held = new Set(this.heldBoards());
+    if (keys.some((k) => !held.has(k.boardId))) this.rewind = true;
+    const device: DeviceState = { ...this.current, boardKeys: mergeBoardKeys(this.current.boardKeys, keys) };
+    await this.storage.saveDevice(device);
+    this.current = device;
+    this.keysCollected = true;
+    this.emit();
+  }
+
+  /**
+   * Forgets boards the account is no longer in (it left or was removed from a group): their
+   * keys, and every item this device could see only through them.
+   */
+  async forgetBoards(boardIds: readonly string[]): Promise<void> {
+    const gone = new Set(boardIds);
+    if (gone.size === 0) return;
+    const device: DeviceState = { ...this.current, boardKeys: this.current.boardKeys.filter((k) => !gone.has(k.boardId)) };
+    await this.storage.saveDevice(device);
+    this.current = device;
+    const held = new Set(this.heldBoards());
+    const unreadable = (await this.storage.listItems())
+      .filter((i) => i.authorId !== device.accountId && !i.boardIds.some((b) => held.has(b)))
+      .map((i) => i.id);
+    if (unreadable.length > 0) await this.storage.applyPull({ items: [], deleted: unreadable });
+    this.emit();
+  }
+
+  private async sealLocal(input: WriteInput, boards: readonly BoardKey[], createdAt?: number, updatedAt?: number): Promise<DiaryItem> {
     const envelope = sealEnvelope({
       type: input.type,
       authorId: this.device.accountId,
       deviceId: this.device.deviceId,
       placeId: input.placeId,
       payload: input.payload,
-      boards: [board],
+      boards,
       signSecretKey: this.device.identity.signSecretKey,
       ...(input.id === undefined ? {} : { id: input.id }),
       ...(createdAt === undefined ? {} : { createdAt }),
@@ -182,9 +237,8 @@ export class Diary {
    */
   private async resealStale(): Promise<void> {
     const ids = this.stale.splice(0);
-    const board = currentBoardKey(this.device, this.device.personalBoardId);
     // Without a newer key, sealing again would be refused again.
-    if (!board || !this.keysCollected) {
+    if (!this.keysCollected) {
       for (const id of ids) this.skip({ id, reason: "stale_key" });
       return;
     }
@@ -193,10 +247,15 @@ export class Diary {
     for (const id of ids) {
       const item = await this.storage.getItem(id);
       if (!item || item.authorId !== this.device.accountId) continue;
+      const boards = this.keysFor(item.boardIds);
+      if (boards.length === 0) {
+        this.skip({ id, reason: "stale_key" });
+        continue;
+      }
       // One past the refused version, so settling that one does not drop this from the outbox.
       await this.sealLocal(
         { type: item.type, placeId: item.placeId, payload: item.payload, id: item.id },
-        board,
+        boards,
         item.createdAt,
         item.updatedAt + 1,
       );
@@ -255,6 +314,11 @@ export class Diary {
       await this.pushDeletes();
       await this.pushEnvelopes();
       await this.pull();
+      if (this.rewind) {
+        this.rewind = false;
+        await this.storage.applyPull({ items: [], deleted: [], cursor: 0 });
+        this.again = true;
+      }
       if (this.stale.length > 0) await this.resealStale();
       this.setStatus({ phase: "idle", lastSyncedAt: Date.now(), error: null, pending: await this.countPending() });
     } catch (err) {
@@ -306,12 +370,42 @@ export class Diary {
       const page = await this.api.pull(cursor, this.signer);
       // Another device moved the account to new keys: collect them before opening anything.
       if (page.boxKeyVersion > this.current.accountBox.version) await this.collectAccountKey();
+      if (page.boards) await this.reconcileBoards(page.boards);
       const items = this.openPage(page);
       const changed = await this.storage.applyPull({ items, deleted: page.deleted, cursor: page.cursor });
       if (changed.length > 0) this.emit();
       if (!page.more || page.cursor <= cursor) break;
       cursor = page.cursor;
     }
+  }
+
+  /**
+   * Brings this device's board keys in line with the boards the account is in: collects keys
+   * for boards it joined or that moved to a new key (on another device, or by another member),
+   * forgets boards it left, and rotates any group a member left, since the leaver must not.
+   */
+  private async reconcileBoards(boards: readonly BoardState[]): Promise<void> {
+    const held = new Set(this.heldBoards());
+    const listed = new Set(boards.map((b) => b.id));
+    const left = [...held].filter((id) => !listed.has(id));
+    if (left.length > 0) await this.forgetBoards(left);
+
+    for (const b of boards) {
+      if (b.kind !== "group" || !b.rotationDue) continue;
+      try {
+        const key = await rotateGroupKey(this.api, this.current, b.id);
+        await this.adoptBoardKeys([key]);
+      } catch (err) {
+        // Another member's device rotated it first; the refresh below picks up their key.
+        if (err instanceof NetworkError) throw err;
+      }
+    }
+
+    const lookup = boardKeyLookup(this.current);
+    if (boards.every((b) => lookup(b.id, b.keyVersion) !== undefined)) return;
+    const me = await this.api.me(this.signer);
+    const opened = openBoardKeys(me, this.current.accountBox);
+    if (opened.length > 0) await this.adoptBoardKeys(opened);
   }
 
   /**
