@@ -12,6 +12,7 @@ import { bytes, fail, isB64, isId, isObject, isPositiveInt } from "./http";
 import { parseKeyBackupBody, upsertKeyBackup } from "./backup";
 import { coversEveryVersion, isInviteId, parseVersionKeys } from "./admin";
 import { grantBoard, masterBoard } from "./boards";
+import { claudeKeysHeld } from "./claude";
 
 export const DEVICE_KINDS: readonly DeviceKind[] = ["web", "android", "claude"];
 
@@ -325,6 +326,12 @@ me.get("/me", readBody, requireDevice, async (c) => {
     revoked_at: number | null;
   };
   const keyRows = (keys?.results ?? []) as KeyRow[];
+  const deviceRows = (devices?.results ?? []) as DeviceRow[];
+  // Which master and Personal key versions each Claude device holds, so this device can add
+  // the ones a rotation made since.
+  const claudeKeys = deviceRows.some((d) => d.kind === "claude" && d.revoked_at === null)
+    ? await claudeKeysHeld(db, accountId)
+    : new Map<string, { boardId: string; keyVersion: number }[]>();
   const b64 = (v: unknown) => toBase64(bytes(v));
   const acc = (account?.results?.[0] ?? null) as AccountRow | null;
 
@@ -349,7 +356,7 @@ me.get("/me", readBody, requireDevice, async (c) => {
         .filter((k) => k.board_id === b.id)
         .map((k) => ({ keyVersion: k.key_version, accountKeyVersion: k.account_key_version, wrappedKey: b64(k.wrapped_key) })),
     })),
-    devices: ((devices?.results ?? []) as DeviceRow[]).map((d) => ({
+    devices: deviceRows.map((d) => ({
       id: d.id,
       kind: d.kind,
       signPublicKey: b64(d.sign_public_key),
@@ -357,6 +364,7 @@ me.get("/me", readBody, requireDevice, async (c) => {
       createdAt: d.created_at,
       lastSeenAt: d.last_seen_at,
       revokedAt: d.revoked_at,
+      ...(d.kind === "claude" && d.revoked_at === null ? { boardKeys: claudeKeys.get(d.id) ?? [] } : {}),
     })),
   });
 });

@@ -89,7 +89,7 @@ devices.post("/devices/:id/revoke", readBody, requireDevice, async (c) => {
 
   const [accountRes, devicesRes, boardsRes, keysRes, membersRes] = await db.batch([
     db.prepare("SELECT box_key_version FROM accounts WHERE id = ?").bind(accountId),
-    db.prepare("SELECT id FROM devices WHERE account_id = ? AND revoked_at IS NULL").bind(accountId),
+    db.prepare("SELECT id, kind FROM devices WHERE account_id = ? AND revoked_at IS NULL").bind(accountId),
     db
       .prepare(
         `SELECT b.id, b.kind, b.key_version FROM boards b
@@ -108,7 +108,8 @@ devices.post("/devices/:id/revoke", readBody, requireDevice, async (c) => {
       .bind(accountId, accountId),
   ]);
   const account = (accountRes?.results?.[0] ?? null) as { box_key_version: number } | null;
-  const active = ((devicesRes?.results ?? []) as { id: string }[]).map((d) => d.id);
+  const activeRows = (devicesRes?.results ?? []) as { id: string; kind: string }[];
+  const active = activeRows.map((d) => d.id);
   const boards = (boardsRes?.results ?? []) as { id: string; kind: string; key_version: number }[];
   const held = (keysRes?.results ?? []) as { board_id: string; key_version: number }[];
   const others = (membersRes?.results ?? []) as { board_id: string; id: string; box_key_version: number }[];
@@ -117,8 +118,10 @@ devices.post("/devices/:id/revoke", readBody, requireDevice, async (c) => {
   // The account moves exactly one version on; anything else is a stale view of it.
   if (boxKeyVersion !== account.box_key_version + 1) return fail(c, 409, "stale");
 
-  // Every remaining device gets the new key, so none is left unable to read.
-  const remaining = active.filter((id) => id !== targetId);
+  // Every remaining device gets the new key, so none is left unable to read. A Claude device
+  // never holds the account key; one of these devices wraps it the new master and Personal
+  // keys on its next sync.
+  const remaining = activeRows.filter((d) => d.id !== targetId && d.kind !== "claude").map((d) => d.id);
   if (!sameSet(remaining, deviceKeys.map((k) => k.deviceId)) || deviceKeys.length !== remaining.length) {
     return fail(c, 409, "stale");
   }
@@ -158,6 +161,10 @@ devices.post("/devices/:id/revoke", readBody, requireDevice, async (c) => {
       .bind(now, targetId, accountId, ...guard),
     db.prepare(`DELETE FROM device_account_keys WHERE device_id = ? AND ${moved}`).bind(targetId, ...guard),
     db.prepare(`DELETE FROM pairings WHERE created_by_device_id = ? AND ${moved}`).bind(targetId, ...guard),
+    // A revoked Claude device's sealed keys and board keys go too; the connector secret then
+    // opens nothing.
+    db.prepare(`DELETE FROM claude_connectors WHERE device_id = ? AND ${moved}`).bind(targetId, ...guard),
+    db.prepare(`DELETE FROM device_board_keys WHERE device_id = ? AND ${moved}`).bind(targetId, ...guard),
     ...rotated.map((b) =>
       db
         .prepare(`UPDATE boards SET key_version = ? WHERE id = ? AND key_version = ? AND ${moved}`)

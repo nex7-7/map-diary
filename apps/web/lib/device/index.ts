@@ -4,7 +4,7 @@ export { useSession, useDiaryItems, useSyncStatus, type SessionState } from "./h
 export { getSession, adoptDevice, forgetDevice, api } from "./session";
 export { DeviceGate } from "./gate";
 export { currentDeviceKind } from "./kind";
-export { addDevice, choosePassphrase, listDevices, removeDevice, type AccountOverview, type ListedDevice } from "./devices";
+export { addDevice, choosePassphrase, connectClaudeDevice, listDevices, removeDevice, type AccountOverview, type ListedDevice } from "./devices";
 export {
   cancelInvite,
   inviteFriend,

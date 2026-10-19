@@ -14,6 +14,8 @@ Hono API Worker on `map.snehilsinha.com/api/*`. The web app Worker (`map-diary-w
 
 Signed routes need the `X-Device-Id`, `X-Timestamp` and `X-Signature` headers from `signRequest()` in `@map-diary/crypto`: an Ed25519 signature by the device over the method, path and query, timestamp and a hash of the body. There are no sessions or passwords. Timestamps more than 5 minutes off are refused.
 
+A `claude` device (the assistant) may call only `GET /api/sync`, `POST /api/envelopes`, `POST /api/envelopes/delete` and `POST /api/place-links/check`; everything else answers `403 claude_not_allowed`. It is never treated as the admin, sees and writes only the master and Personal boards, cannot change or delete an envelope that is also on a group board, and changes a catalogue place's facts only if it wrote their current version. Its keys live on the Worker sealed under the connector secret; `unlockClaudeDevice` in `src/claude.ts` opens them for one assistant call. Revoking it deletes them.
+
 | Route | Auth | Does |
 | --- | --- | --- |
 | `GET /api/health` | none | Health and applied migration count |
@@ -32,6 +34,8 @@ Signed routes need the `X-Device-Id`, `X-Timestamp` and `X-Signature` headers fr
 | `POST /api/place-links/check` | device of a master board member | Which of up to 50 keyed link hashes already belong to a catalogue place |
 | `POST /api/devices/:id/revoke` | another device of the same account | Revokes the device and, in the same step, moves the account to the next box key version: the new public key, every board key re-wrapped to it, the next Personal board key, a fresh key for every shared board (master, later groups) wrapped to every member, and the new account key sealed to each remaining device |
 | `GET /api/me/account-key` | device | The current account box key sealed to this device, after another device revoked one |
+| `POST /api/claude-devices` | device of the account (not Claude) | Connect Claude: registers a `claude` device authorised by the calling device's key, its secret keys sealed under a key derived from the connector secret (filed by the secret's hash), and every master and Personal key version wrapped to it. One per account |
+| `PUT /api/claude-devices/:id/board-keys` | device of the same account (not Claude) | Adds master or Personal key versions the Claude device is missing after a rotation; devices do this on sync |
 | `POST /api/pairings` | device | Opens a ten-minute device pairing under an id derived from the link secret |
 | `GET /api/pairings/:id` | device of the same account | The joining device's public keys and MAC, once it has joined |
 | `POST /api/pairings/:id/approve` | device of the same account | Registers the joining device (authorised by the approving device's key) and stores the account keys sealed to it |

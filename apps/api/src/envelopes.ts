@@ -74,6 +74,14 @@ function parseEnvelope(value: unknown): Envelope | null {
   };
 }
 
+/**
+ * True (1) for an envelope also posted to a board a Claude device holds no key for (a group).
+ * A Claude device may not change or delete such an envelope, since it would take it off a
+ * board it cannot see.
+ */
+const BEYOND_CLAUDE = `EXISTS (SELECT 1 FROM envelope_boards xb JOIN boards xk ON xk.id = xb.board_id
+  WHERE xb.envelope_id = envelopes.id AND xk.kind NOT IN ('master', 'personal'))`;
+
 /** The next change number, computed inside the statement that uses it. */
 const NEXT_SEQ = "(SELECT COALESCE(MAX(seq), 0) + 1 FROM envelopes)";
 
@@ -90,6 +98,7 @@ envelopes.post("/envelopes", readBody, requireDevice, async (c) => {
   const linkHashes = parseLinkHashes(isObject(body) ? body.linkHashes : undefined);
   if (!linkHashes) return fail(c, 400, "bad_request");
   const device = c.var.device;
+  const isClaude = device.kind === "claude";
   const db = c.env.DB;
 
   const signer = await db
@@ -118,7 +127,8 @@ envelopes.post("/envelopes", readBody, requireDevice, async (c) => {
     }
   }
 
-  // Board rights: a member of every board, at that board's current key version.
+  // Board rights: a member of every board, at that board's current key version. A Claude device
+  // holds keys for the master and Personal boards only.
   const boardIds = [...new Set(candidates.flatMap((e) => e.boards.map((b) => b.boardId)))];
   const allowed = new Map<string, number>();
   if (boardIds.length > 0) {
@@ -126,19 +136,30 @@ envelopes.post("/envelopes", readBody, requireDevice, async (c) => {
       .prepare(
         `SELECT b.id, b.key_version FROM boards b
            JOIN board_members m ON m.board_id = b.id AND m.account_id = ?
-          WHERE b.id IN (SELECT value FROM json_each(?))`,
+          WHERE b.id IN (SELECT value FROM json_each(?)) AND (? = 0 OR b.kind IN ('master', 'personal'))`,
       )
-      .bind(device.accountId, JSON.stringify(boardIds))
+      .bind(device.accountId, JSON.stringify(boardIds), isClaude ? 1 : 0)
       .all<{ id: string; key_version: number }>();
     for (const r of results) allowed.set(r.id, r.key_version);
   }
 
-  type Existing = { id: string; author_id: string; type: string; place_id: string | null; created_at: number; updated_at: number; deleted_at: number | null };
+  type Existing = {
+    id: string;
+    author_id: string;
+    device_id: string;
+    type: string;
+    place_id: string | null;
+    created_at: number;
+    updated_at: number;
+    deleted_at: number | null;
+    beyond_claude: number;
+  };
   const existing = new Map<string, Existing>();
   if (candidates.length > 0) {
     const { results } = await db
       .prepare(
-        `SELECT id, author_id, type, place_id, created_at, updated_at, deleted_at FROM envelopes
+        `SELECT id, author_id, device_id, type, place_id, created_at, updated_at, deleted_at,
+                ${BEYOND_CLAUDE} AS beyond_claude FROM envelopes
           WHERE id IN (SELECT value FROM json_each(?))`,
       )
       .bind(JSON.stringify(candidates.map((e) => e.id)))
@@ -186,14 +207,17 @@ envelopes.post("/envelopes", readBody, requireDevice, async (c) => {
       for (const h of linkHashes.get(e.id) ?? []) if (!taken.has(h)) taken.set(h, e.id);
     } else if (prior.author_id !== e.authorId) {
       rejected.push({ id: e.id, reason: "not_author" });
+    } else if (isClaude && prior.beyond_claude === 1) {
+      rejected.push({ id: e.id, reason: "board_not_allowed" });
     } else if (prior.deleted_at !== null) {
       rejected.push({ id: e.id, reason: "deleted" });
     } else if (prior.type !== e.type || prior.place_id !== e.placeId || prior.created_at !== e.createdAt) {
       rejected.push({ id: e.id, reason: "immutable_field" });
     } else if (e.updatedAt <= prior.updated_at) {
       unchanged.push(e.id);
-    } else if (e.type === "place" && !device.isAdmin) {
-      // Facts are written once by the first resolution; after that only the admin edits them.
+    } else if (e.type === "place" && !device.isAdmin && !(isClaude && prior.device_id === device.id)) {
+      // Facts are written once by the first resolution; after that only the admin edits them,
+      // and Claude only facts it wrote itself.
       rejected.push({ id: e.id, reason: "facts_locked" });
     } else {
       accepted.push(e);
@@ -270,16 +294,17 @@ envelopes.post("/envelopes/delete", readBody, requireDevice, async (c) => {
   const db = c.env.DB;
   const now = Date.now();
   const unique = [...new Set(ids)];
-  const { accountId, isAdmin } = c.var.device;
+  const { accountId, isAdmin, kind } = c.var.device;
   const results = await db.batch(
     unique.flatMap((id) => [
       db
         .prepare(
           `UPDATE envelopes SET nonce = NULL, ciphertext = NULL, deleted_at = ?, server_updated_at = ?,
              seq = ${NEXT_SEQ}
-           WHERE id = ? AND author_id = ? AND deleted_at IS NULL AND (type <> 'place' OR ?)`,
+           WHERE id = ? AND author_id = ? AND deleted_at IS NULL AND (type <> 'place' OR ?)
+             AND (? = 0 OR NOT ${BEYOND_CLAUDE})`,
         )
-        .bind(now, now, id, accountId, isAdmin ? 1 : 0),
+        .bind(now, now, id, accountId, isAdmin ? 1 : 0, kind === "claude" ? 1 : 0),
       db
         .prepare(
           `UPDATE envelope_boards SET seq = (SELECT seq FROM envelopes WHERE id = ?)
@@ -330,24 +355,28 @@ envelopes.get("/sync", readBody, requireDevice, async (c) => {
   // An envelope reaches the account through a board it is in, or because the account wrote
   // it. A board row marked removed (its author left that group) still counts for finding the
   // change, but not for seeing the envelope: such an envelope is reported as deleted to anyone
-  // who could see it only through that board.
+  // who could see it only through that board. A Claude device sees only what reaches the
+  // account through the master and Personal boards, never through a group.
   const accountId = c.var.device.accountId;
+  const isClaude = c.var.device.kind === "claude";
   const { results: rows } = await db
     .prepare(
       `SELECT e.id, e.v, e.type, e.author_id, e.device_id, e.place_id, e.created_at, e.updated_at,
               e.nonce, e.ciphertext, e.signature, e.deleted_at, e.seq,
-              (e.author_id = ?1 OR EXISTS (
+              ((?4 = 0 AND e.author_id = ?1) OR EXISTS (
                 SELECT 1 FROM envelope_boards eb
                   JOIN board_members m ON m.board_id = eb.board_id AND m.account_id = ?1
+                  JOIN boards k ON k.id = eb.board_id AND (?4 = 0 OR k.kind IN ('master', 'personal'))
                  WHERE eb.envelope_id = e.id AND eb.removed_at IS NULL)) AS visible
          FROM envelopes e
-        WHERE e.seq > ?2 AND (e.author_id = ?1 OR EXISTS (
+        WHERE e.seq > ?2 AND ((?4 = 0 AND e.author_id = ?1) OR EXISTS (
           SELECT 1 FROM envelope_boards eb
             JOIN board_members m ON m.board_id = eb.board_id AND m.account_id = ?1
+            JOIN boards k ON k.id = eb.board_id AND (?4 = 0 OR k.kind IN ('master', 'personal'))
            WHERE eb.envelope_id = e.id))
         ORDER BY e.seq LIMIT ?3`,
     )
-    .bind(accountId, since, limit + 1)
+    .bind(accountId, since, limit + 1, isClaude ? 1 : 0)
     .all<Row>();
 
   const more = rows.length > limit;
@@ -417,17 +446,18 @@ envelopes.get("/sync", readBody, requireDevice, async (c) => {
       .prepare(
         `SELECT b.id, b.kind, b.key_version, b.rotation_due_at FROM boards b
            JOIN board_members m ON m.board_id = b.id AND m.account_id = ?
+          WHERE ? = 0 OR b.kind IN ('master', 'personal')
           ORDER BY b.created_at`,
       )
-      .bind(accountId),
+      .bind(accountId, isClaude ? 1 : 0),
     // Group members, so each device shows a group's board with its members' opinions only.
     db
       .prepare(
         `SELECT g.board_id, g.account_id FROM board_members g JOIN boards b ON b.id = g.board_id AND b.kind = 'group'
-          WHERE g.board_id IN (SELECT board_id FROM board_members WHERE account_id = ?)
+          WHERE g.board_id IN (SELECT board_id FROM board_members WHERE account_id = ?) AND ? = 0
           ORDER BY g.joined_at, g.account_id`,
       )
-      .bind(accountId),
+      .bind(accountId, isClaude ? 1 : 0),
   ]);
   const groupMembers = (membersRes?.results ?? []) as { board_id: string; account_id: string }[];
   const account = (accountRes?.results?.[0] ?? null) as { box_key_version: number } | null;

@@ -1,9 +1,11 @@
 import {
+  ClaudeError,
   InviteError,
   PASSPHRASE_MIN_LENGTH,
   PairingError,
   RevokeError,
   SetupError,
+  type ClaudeErrorCode,
   type InviteErrorCode,
   type PairingErrorCode,
   type RevokeErrorCode,
@@ -76,4 +78,15 @@ const INVITE_MESSAGES: Record<InviteErrorCode, string> = {
 
 export function inviteErrorMessage(err: unknown): string {
   return err instanceof InviteError ? INVITE_MESSAGES[err.code] : INVITE_MESSAGES.server;
+}
+
+const CLAUDE_MESSAGES: Record<ClaudeErrorCode, string> = {
+  already_connected: "Claude is already connected. Remove it first to connect it again with a new secret.",
+  stale: "The diary's keys just changed. Try again.",
+  offline: "You're offline. Connect and try again.",
+  server: "Something went wrong on the server. Try again in a moment.",
+};
+
+export function claudeErrorMessage(err: unknown): string {
+  return err instanceof ClaudeError ? CLAUDE_MESSAGES[err.code] : CLAUDE_MESSAGES.server;
 }
