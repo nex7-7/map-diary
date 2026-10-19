@@ -211,7 +211,7 @@ export async function writeResolved(w: DiaryWriter, draft: PendingDraft, c: Reso
       tagIds: draft.tagIds,
       newTags: draft.newTags,
       comment: draft.comment,
-      ...(draft.boards ? { boards: draft.boards } : {}),
+      ...boardsOf(draft),
     });
   }
 
@@ -221,7 +221,13 @@ export async function writeResolved(w: DiaryWriter, draft: PendingDraft, c: Reso
     tagIds: draft.tagIds,
     newTags: draft.newTags,
     comment: draft.comment,
-    ...(draft.boards ? { boards: draft.boards } : {}),
+    ...boardsOf(draft),
   });
   return placeId;
 }
+
+const boardsOf = (draft: PendingDraft) => ({
+  ...(draft.boards ? { boards: draft.boards } : {}),
+  ...(draft.tagBoards ? { tagBoards: draft.tagBoards } : {}),
+  ...(draft.commentBoards ? { commentBoards: draft.commentBoards } : {}),
+});

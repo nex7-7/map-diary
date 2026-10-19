@@ -3,6 +3,7 @@
 import "maplibre-gl/dist/maplibre-gl.css";
 import { Map as MapLibre, type GeoJSONSource } from "maplibre-gl";
 import { useEffect, useRef } from "react";
+import { addAttribution } from "@/lib/map/attribution";
 import { loadMapFile } from "@/lib/map/map-file";
 import { registerProtocol } from "@/lib/map/protocol";
 import { basemapStyle, drawPin, PINS_SOURCE, pinsCollection, type PinKind } from "@/lib/map/style";
@@ -45,6 +46,7 @@ export function PlaceMap({ place, kind, className }: { place: PlaceView; kind: P
           interactive: false,
           attributionControl: false,
         });
+        addAttribution(map);
         map.setMissingStyleImageResolver((id) => {
           const ratio = window.devicePixelRatio || 1;
           const image = drawPin(id, ratio);

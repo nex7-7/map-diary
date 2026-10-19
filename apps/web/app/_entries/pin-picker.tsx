@@ -1,8 +1,9 @@
 "use client";
 
 import "maplibre-gl/dist/maplibre-gl.css";
-import { AttributionControl, Map as MapLibre } from "maplibre-gl";
+import { Map as MapLibre } from "maplibre-gl";
 import { useEffect, useRef, useState } from "react";
+import { addAttribution } from "@/lib/map/attribution";
 import { loadMapFile } from "@/lib/map/map-file";
 import { registerProtocol } from "@/lib/map/protocol";
 import { basemapStyle, MUMBAI_CENTER } from "@/lib/map/style";
@@ -48,7 +49,7 @@ export function PinPicker({ value, onChange }: Props) {
           maxZoom: 19,
           attributionControl: false,
         });
-        map.addControl(new AttributionControl({ compact: true }), "bottom-right");
+        addAttribution(map);
         map.on("moveend", (e) => {
           // Only the person's own moves drop the pin, not programmatic jumps.
           if (!map || !("originalEvent" in e) || !e.originalEvent) return;

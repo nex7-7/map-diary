@@ -109,6 +109,117 @@ export function MoreMenu({ label, items }: { label: string; items: MenuItem[] })
   );
 }
 
+export interface PickOption<T extends string> {
+  value: T;
+  label: string;
+  disabled?: boolean;
+}
+
+/**
+ * A select drawn in the app's own style: the trigger looks like whatever `className` makes
+ * it (a chip, a text link) and the choices open in a small menu, not the browser's list.
+ * The menu is fixed to the screen so a scrolling chip row can't clip it.
+ */
+export function Picker<T extends string>({
+  label,
+  value,
+  options,
+  onChange,
+  className,
+  align = "left",
+}: {
+  label: string;
+  value: T;
+  options: readonly PickOption<T>[];
+  onChange: (value: T) => void;
+  className?: string;
+  align?: "left" | "right";
+}) {
+  const [at, setAt] = useState<{ top: number; left?: number; right?: number } | null>(null);
+  const open = at !== null;
+  const wrap = useRef<HTMLDivElement>(null);
+  const id = useId();
+  const toggle = () => {
+    const r = wrap.current?.getBoundingClientRect();
+    if (open || !r) return setAt(null);
+    setAt(align === "left" ? { top: r.bottom + 6, left: r.left } : { top: r.bottom + 6, right: window.innerWidth - r.right });
+  };
+  useEffect(() => {
+    if (!open) return;
+    const close = () => setAt(null);
+    const away = (e: PointerEvent) => {
+      if (!wrap.current?.contains(e.target as Node)) close();
+    };
+    const esc = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      close();
+      wrap.current?.querySelector<HTMLButtonElement>("button")?.focus();
+    };
+    document.addEventListener("pointerdown", away);
+    document.addEventListener("keydown", esc);
+    // The menu is pinned where it opened, so it closes rather than drift when things move.
+    window.addEventListener("resize", close);
+    window.addEventListener("scroll", close, true);
+    wrap.current?.querySelector<HTMLButtonElement>("[role=option][aria-selected=true]")?.focus({ preventScroll: true });
+    return () => {
+      document.removeEventListener("pointerdown", away);
+      document.removeEventListener("keydown", esc);
+      window.removeEventListener("resize", close);
+      window.removeEventListener("scroll", close, true);
+    };
+  }, [open]);
+  const current = options.find((o) => o.value === value);
+  return (
+    <div className={s.menuWrap} ref={wrap}>
+      <button
+        type="button"
+        className={`${s.pickButton}${className ? ` ${className}` : ""}`}
+        aria-label={`${label}: ${current?.label ?? ""}`}
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        aria-controls={open ? id : undefined}
+        onClick={toggle}
+      >
+        {current?.label}
+        <Icon name="chevronDown" size="s" />
+      </button>
+      {open && (
+        <div
+          className={`${s.menu} ${s.pickMenu}`}
+          style={at}
+          role="listbox"
+          id={id}
+          aria-label={label}
+          onKeyDown={(e) => {
+            if (e.key !== "ArrowDown" && e.key !== "ArrowUp") return;
+            e.preventDefault();
+            const items = [...(wrap.current?.querySelectorAll<HTMLButtonElement>("[role=option]:not(:disabled)") ?? [])];
+            const i = items.indexOf(document.activeElement as HTMLButtonElement);
+            items[(i + (e.key === "ArrowDown" ? 1 : items.length - 1)) % items.length]?.focus({ preventScroll: true });
+          }}
+        >
+          {options.map((o) => (
+            <button
+              key={o.value}
+              type="button"
+              role="option"
+              aria-selected={o.value === value}
+              disabled={o.disabled}
+              onClick={() => {
+                setAt(null);
+                if (o.value !== value) onChange(o.value);
+              }}
+            >
+              <span>{o.label}</span>
+              {o.value === value && <Icon name="check" size="m" />}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 /** A secret or link in a dark box; tapping copies it. */
 export function CopyCode({ value, shown, label }: { value: string; shown?: string; label: string }) {
   const [copied, setCopied] = useState(false);

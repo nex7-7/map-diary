@@ -15,6 +15,7 @@ import {
   unapplyTag,
   type DiaryWriter,
 } from "../lib/entries/actions";
+import { oneEmoji } from "../lib/entries/emoji";
 import { buildFacts, customCategory, type FactsForm } from "../lib/entries/facts";
 import { normaliseLink, parseCoordinates, parseEntry } from "../lib/entries/parse-input";
 import { snapshotFromItems, type StoredItem } from "../lib/places/items-source";
@@ -164,6 +165,26 @@ describe("addPlace", () => {
     expect(place?.opinions.map((o) => o.kind).sort()).toEqual(["comment", "status", "tag", "tag"]);
     expect(place?.opinions.find((o) => o.kind === "comment")).toMatchObject({ text: "Go early" });
     expect(place?.opinions.every((o) => o.boards.join() === "board-personal")).toBe(true);
+  });
+
+  it("sends the tags and the note to their own boards when picked", async () => {
+    const d = new FakeDiary();
+    const id = await addPlace(d, {
+      kind: "place",
+      facts: facts(),
+      status: "visited",
+      tagIds: [],
+      newTags: [{ name: "Cheap", emoji: "🪙", description: "" }],
+      comment: "Go early",
+      boards: ["board-master"],
+      tagBoards: ["board-duo"],
+      commentBoards: ["board-personal"],
+    });
+    const on = (type: string) => [...d.items.values()].find((i) => i.type === type && i.placeId === id)?.boardIds.join();
+    expect(on("status")).toBe("board-master");
+    expect(on("tag")).toBe("board-duo");
+    expect(on("comment")).toBe("board-personal");
+    expect([...d.items.values()].find((i) => i.type === "tag_def")?.boardIds).toEqual(["board-duo"]);
   });
 
   it("finds a place already saved from the same link", async () => {
@@ -328,5 +349,17 @@ describe("boards", () => {
       { id: MASTER, kind: "master", name: "Public", memberIds: null },
     ]);
     expect(snap.boards.map((b) => b.name)).toEqual(["Personal", "Public"]);
+  });
+});
+
+describe("oneEmoji", () => {
+  it("keeps only the last emoji typed", () => {
+    expect(oneEmoji("abc")).toBe("");
+    expect(oneEmoji("🌶️")).toBe("🌶️");
+    expect(oneEmoji("🌶️x")).toBe("🌶️");
+    expect(oneEmoji("🌶️🍕")).toBe("🍕");
+    expect(oneEmoji("👩‍🍳")).toBe("👩‍🍳");
+    expect(oneEmoji("🇮🇳")).toBe("🇮🇳");
+    expect(oneEmoji("12")).toBe("");
   });
 });

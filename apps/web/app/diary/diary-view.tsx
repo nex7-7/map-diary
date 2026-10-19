@@ -9,7 +9,7 @@ import type { DiarySnapshot, DiarySource, LngLat, Status } from "@/lib/places/ty
 import { FilterBar } from "./filter-bar";
 import { PlaceCard } from "./place-card";
 import { PlacesList } from "./places-list";
-import { Icon } from "@/lib/ui";
+import { Icon, Picker } from "@/lib/ui";
 
 // MapLibre needs the browser (WebGL, workers); never render it on the server.
 const PlacesMap = dynamic(() => import("./places-map").then((m) => m.PlacesMap), {
@@ -114,17 +114,17 @@ export function DiaryView({ source, view }: { source: DiarySource; view: DiaryVi
             <span className="sub">
               {listed.length} {listed.length === 1 ? "place" : "places"} · sorted by
             </span>
-            <label className="sort">
-              <span className="visually-hidden">Sort</span>
-              <select value={sort} onChange={(e) => setSort(e.target.value as SortKey)}>
-                <option value="added">Newest</option>
-                <option value="distance" disabled={!here}>
-                  Nearest
-                </option>
-                <option value="price">Cheapest dish</option>
-              </select>
-              <Icon name="chevronDown" size="s" />
-            </label>
+            <Picker
+              label="Sort"
+              className="sort"
+              value={sort}
+              options={[
+                { value: "added", label: "Newest" },
+                { value: "distance", label: here ? "Nearest" : "Nearest (tap Near me)", disabled: !here },
+                { value: "price", label: "Cheapest dish" },
+              ]}
+              onChange={setSort}
+            />
           </div>
         </div>
         <div className="list-items">

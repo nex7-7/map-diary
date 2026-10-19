@@ -1,8 +1,9 @@
 "use client";
 
 import "maplibre-gl/dist/maplibre-gl.css";
-import { AttributionControl, Map as MapLibre, NavigationControl, type GeoJSONSource, type MapMouseEvent, type MapTouchEvent } from "maplibre-gl";
+import { Map as MapLibre, NavigationControl, type GeoJSONSource, type MapMouseEvent, type MapTouchEvent } from "maplibre-gl";
 import { useEffect, useRef, useState } from "react";
+import { addAttribution } from "@/lib/map/attribution";
 import { loadMapFile } from "@/lib/map/map-file";
 import { registerProtocol } from "@/lib/map/protocol";
 import {
@@ -76,7 +77,7 @@ export function PlacesMap({ listed, here, selectedId, onSelect, onLongPress }: P
           const image = drawPin(id, ratio);
           if (image && map && !map.hasImage(id)) map.addImage(id, image, { pixelRatio: ratio });
         });
-        map.addControl(new AttributionControl({ compact: true }), "bottom-right");
+        addAttribution(map);
         map.on("style.load", syncData);
         map.on("click", PIN_LAYER, (e) => {
           const props = e.features?.[0]?.properties as PinProps | undefined;

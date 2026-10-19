@@ -22,6 +22,10 @@ export interface PendingDraft {
   comment: string;
   /** Where the status, tags and note go once the place is found; Personal if missing. */
   boards?: string[];
+  /** Where the tags go, when the person picked boards apart from the status's. */
+  tagBoards?: string[];
+  /** Where the note goes, when the person picked boards apart from the status's. */
+  commentBoards?: string[];
 }
 
 export type PendingState =
