@@ -100,7 +100,7 @@
   font-size: 14px;
   font-weight: 700;
   color: var(--ink-2);
-  cursor: pointer;
+  cursor: var(--cursor-press);
   transition: transform 0.25s var(--ease-spring), border-color 0.2s, box-shadow 0.2s;
 }
 
@@ -340,7 +340,7 @@
   font: inherit;
   font-size: 14.5px;
   text-align: start;
-  cursor: pointer;
+  cursor: var(--cursor-press);
 }
 
 .outletName strong {

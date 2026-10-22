@@ -121,7 +121,7 @@
   gap: 4px;
   text-align: left;
   color: var(--ink);
-  cursor: pointer;
+  cursor: var(--cursor-press);
   transition: transform 0.25s var(--ease-spring), border-color 0.2s, box-shadow 0.2s;
 }
 

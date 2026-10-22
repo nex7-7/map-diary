@@ -50,7 +50,7 @@
   border-radius: 50%;
   background: var(--page);
   color: var(--ink);
-  cursor: pointer;
+  cursor: var(--cursor-press);
 }
 
 /* The save strip runs edge to edge, over the margin rules. */
