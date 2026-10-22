@@ -103,9 +103,10 @@ export function PinPicker({ value, onChange }: Props) {
       <div ref={container} className={styles.pickermap} role="region" aria-label="Move the map to put the pin on the place" />
       {state.kind === "ready" && (
         <>
-          <span className={styles.crosshair} aria-hidden>
-            📍
-          </span>
+          <svg className={styles.crosshair} viewBox="0 0 30 40" aria-hidden>
+            <path d="M15 38C15 38 3 23.5 3 14.5a12 12 0 0 1 24 0C27 23.5 15 38 15 38Z" fill="var(--seal)" stroke="var(--ink)" strokeWidth="2" strokeLinejoin="round" />
+            <circle cx="15" cy="14.5" r="4.5" fill="var(--cream)" stroke="var(--ink)" strokeWidth="1.5" />
+          </svg>
           <button type="button" className={styles.pickerhere} onClick={here} disabled={locating}>
             {locating ? "Locating…" : "I'm here"}
           </button>

@@ -1,20 +1,22 @@
-/* Shared by the Add sheet, the place page and the tags page. */
+/* Shared by the Add sheet, the place page and the tags page, in Ink & Paper. */
 
 .page {
   display: flex;
   flex-direction: column;
-  gap: 20px;
+  gap: 22px;
   padding-bottom: calc(24px + env(safe-area-inset-bottom));
 }
 
-/* Zero specificity, so the button classes below keep their colours. */
-:where(.page) :where(button, input, textarea, select) {
-  font: inherit;
-  color: inherit;
-}
+/* In the base layer, so the ink chips and buttons (and Tailwind utilities) keep their colours. */
+@layer base {
+  :where(.page) :where(button, input, textarea, select) {
+    font: inherit;
+    color: inherit;
+  }
 
-:where(.page) :where(button) {
-  cursor: pointer;
+  :where(.page) :where(button) {
+    cursor: pointer;
+  }
 }
 
 .back {
@@ -23,16 +25,18 @@
   gap: 2px;
   color: var(--ink-2);
   text-decoration: none;
-  font-size: 13px;
+  font-family: var(--hand);
+  font-size: 16px;
 }
 
 .title {
   margin: 0;
   font-family: var(--serif);
-  font-weight: 500;
-  font-size: 32px;
-  line-height: 1.1;
-  letter-spacing: -0.4px;
+  font-weight: 400;
+  font-size: 36px;
+  line-height: 1.02;
+  letter-spacing: -0.6px;
+  color: var(--ink);
 }
 
 .meta {
@@ -45,38 +49,117 @@
   gap: 10px;
 }
 
+/* Section headings, small and spaced like a printed form. */
 .section h2,
 .label {
   margin: 0;
   font-family: var(--sans);
-  font-size: 11px;
+  font-size: 10.5px;
   font-weight: 600;
-  letter-spacing: 0.8px;
+  letter-spacing: 0.16em;
   text-transform: uppercase;
   color: var(--ink-3);
+}
+
+/* The one big field at the top of the Add sheet: ink on a ruled line. */
+.headline {
+  width: 100%;
+  border: 0;
+  border-bottom: 2px solid var(--ink);
+  border-radius: 0;
+  background: none;
+  outline: none;
+  padding: 4px 0 6px;
+  resize: none;
+  font-family: var(--serif);
+  font-size: 24px;
+  line-height: 1.25;
+  color: var(--ink);
+}
+
+.headline::placeholder {
+  color: var(--ink-3);
+  opacity: 0.8;
+}
+
+.headline:focus {
+  border-bottom-color: var(--seal);
+}
+
+.stamps {
+  display: flex;
+  gap: 10px;
+}
+
+.stampbtn {
+  flex: 1;
+  height: 56px;
+  border-radius: 14px;
+  border: 1.5px solid var(--rule-ink);
+  background: var(--page);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--ink-2);
+  transition: transform 0.25s var(--ease-spring), border-color 0.2s, box-shadow 0.2s;
+}
+
+.stampbtn[aria-pressed="true"] {
+  border-color: var(--ink);
+  color: var(--ink);
+  box-shadow: 0 3px 0 var(--ink);
+}
+
+.stampbtn:active:not(:disabled) {
+  transform: scale(0.95);
+}
+
+.stampbtn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.stampwant {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 1.6px dashed currentColor;
+}
+
+.stampvisited {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--seal);
 }
 
 .input,
 .textarea {
   width: 100%;
   font-size: 1rem; /* 16px keeps iOS Safari from zooming in */
-  padding: 12px 14px;
-  border: 1px solid var(--line);
+  padding: 11px 14px;
+  border: 1.5px solid var(--ink);
   border-radius: 12px;
-  background: var(--surface);
+  background: var(--page);
   color: var(--ink);
+  box-shadow: 0 3px 0 var(--ink);
+  transition: box-shadow 0.12s, transform 0.12s;
 }
 
 .textarea {
   resize: vertical;
   min-height: 4.5em;
+  line-height: 1.45;
 }
 
 .input:focus,
 .textarea:focus {
   outline: none;
-  border-color: var(--ink);
-  box-shadow: inset 0 0 0 0.5px var(--ink);
+  box-shadow: 0 1px 0 var(--ink);
+  transform: translateY(2px);
 }
 
 .input::placeholder,
@@ -106,33 +189,37 @@
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  border: 1px solid var(--line);
+  border: 1.5px solid var(--ink);
   border-radius: 999px;
-  background: var(--surface);
-  padding: 7px 12px;
+  background: var(--page);
+  color: var(--ink);
+  padding: 7px 13px;
   font-weight: 500;
   font-size: 13.5px;
   line-height: 1.2;
   white-space: nowrap;
+  transition: transform 0.18s var(--ease-spring), background 0.12s, color 0.12s;
 }
 
 .chip[aria-pressed="true"] {
   background: var(--ink);
-  border-color: var(--ink);
-  color: var(--on-ink);
+  color: var(--page);
+  transform: rotate(-1.5deg);
 }
 
 .chip:disabled {
-  opacity: 0.5;
+  opacity: 0.45;
   cursor: default;
 }
 
 .segmented {
   display: inline-flex;
-  border: 1px solid var(--line);
+  border: 1.5px solid var(--ink);
   border-radius: 999px;
   overflow: hidden;
   align-self: flex-start;
+  background: var(--page);
+  box-shadow: 0 2px 0 var(--ink);
 }
 
 .segmented button {
@@ -142,6 +229,10 @@
   display: inline-flex;
   gap: 6px;
   align-items: center;
+}
+
+.segmented button + button {
+  border-left: 1.5px solid var(--ink);
 }
 
 .segmented button[aria-pressed="true"] {
@@ -157,13 +248,14 @@
 }
 
 .dotvisited {
-  background: var(--visited);
+  background: var(--seal);
 }
 
 .dotwant {
-  background: var(--want);
+  border: 1.5px dashed var(--graphite);
 }
 
+/* The inked buttons: a 2px outline and a hard shadow that presses in. */
 .primary,
 .secondary,
 .danger {
@@ -172,30 +264,39 @@
   justify-content: center;
   gap: 8px;
   font-size: 15px;
-  font-weight: 500;
+  font-weight: 600;
   line-height: 1.2;
-  padding: 14px 20px;
-  border-radius: var(--radius-m);
+  padding: 13px 20px;
+  border: 2px solid var(--ink);
+  border-radius: 14px;
+  box-shadow: 0 3px 0 var(--ink);
   text-align: center;
   text-decoration: none;
+  transition: transform 0.1s, box-shadow 0.1s;
+}
+
+.primary:active:not(:disabled),
+.secondary:active:not(:disabled),
+.danger:active:not(:disabled) {
+  transform: translateY(2px);
+  box-shadow: 0 1px 0 var(--ink);
 }
 
 .primary {
-  border: none;
-  background: var(--ink);
-  color: var(--on-ink);
+  background: var(--seal);
+  color: var(--cream);
 }
 
 .secondary {
-  border: 1px solid var(--line);
-  background: var(--surface);
+  background: var(--page);
   color: var(--ink);
 }
 
 .danger {
-  border: none;
-  background: var(--danger-soft);
-  color: var(--danger);
+  background: var(--seal-wash);
+  color: var(--seal-deep);
+  border-color: var(--seal-deep);
+  box-shadow: 0 3px 0 var(--seal-deep);
 }
 
 .primary:disabled,
@@ -209,26 +310,30 @@
 .textbutton {
   border: 0;
   background: transparent;
-  padding: 4px 6px;
-  color: var(--sea);
-  font-weight: 500;
+  padding: 4px 2px;
+  color: var(--ink);
+  font-weight: 600;
   font-size: 14px;
-  text-decoration: none;
+  text-decoration: underline wavy var(--seal);
+  text-decoration-thickness: 1.5px;
+  text-underline-offset: 4px;
 }
 
 .badge {
   display: inline-block;
   font-size: 0.75rem;
   padding: 2px 8px;
-  border-radius: 999px;
-  background: var(--surface);
-  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--page);
+  border: 1px solid var(--ink-3);
   white-space: nowrap;
 }
 
 .note {
   margin: 0;
-  font-size: 13px;
+  font-family: var(--hand);
+  font-size: 15.5px;
+  line-height: 1.35;
   color: var(--ink-2);
 }
 
@@ -236,8 +341,9 @@
   margin: 0;
   padding: 10px 12px;
   border-radius: 12px;
-  background: var(--danger-soft);
-  color: var(--danger);
+  border: 1.5px solid var(--seal-deep);
+  background: var(--seal-wash);
+  color: var(--seal-deep);
   font-size: 14px;
 }
 
@@ -245,7 +351,8 @@
   margin: 0;
   padding: 10px 12px;
   border-radius: 12px;
-  background: var(--sea-soft);
+  border: 1.5px dashed var(--indigo);
+  background: var(--indigo-wash);
   font-size: 14px;
   display: flex;
   gap: 8px;
@@ -259,14 +366,15 @@
   padding: 0;
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 12px;
 }
 
 .item {
   padding: 14px 16px;
-  border-radius: 16px;
-  background: var(--surface);
-  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--page);
+  border: 1.5px solid var(--ink);
+  box-shadow: 0 3px 0 var(--ink);
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -282,26 +390,32 @@
   margin: 0;
   padding: 10px 12px;
   border-radius: 10px;
-  background: var(--surface);
+  border: 1.5px dashed var(--ink-3);
+  background: var(--page);
 }
 
 .links {
   display: flex;
   flex-wrap: wrap;
-  gap: 12px;
+  gap: 14px;
 }
 
 .links a {
-  color: var(--indigo);
+  color: var(--ink);
+  font-weight: 600;
+  text-decoration: underline wavy var(--seal);
+  text-decoration-thickness: 1.5px;
+  text-underline-offset: 4px;
 }
 
 .newtag {
   display: grid;
   grid-template-columns: 4.5rem 1fr;
-  gap: 8px;
-  padding: 12px;
-  border: 1px dashed var(--line);
-  border-radius: 10px;
+  gap: 10px;
+  padding: 14px;
+  border: 1.5px dashed var(--ink-3);
+  border-radius: 14px;
+  background: var(--page);
 }
 
 .newtag .full {
@@ -312,10 +426,11 @@
 .picker {
   position: relative;
   height: 260px;
-  border-radius: 12px;
+  border-radius: 14px;
   overflow: hidden;
-  border: 1px solid var(--line);
-  background: var(--surface);
+  border: 1.5px solid var(--ink);
+  box-shadow: 0 3px 0 var(--ink);
+  background: var(--paper);
 }
 
 .pickermap {
@@ -324,18 +439,15 @@
   height: 100%;
 }
 
+/* An inked map pin whose point sits on the centre of the map. */
 .crosshair {
   position: absolute;
   left: 50%;
   top: 50%;
-  width: 28px;
-  height: 28px;
-  margin: -28px 0 0 -14px;
+  width: 30px;
+  height: 40px;
+  margin: -40px 0 0 -15px;
   pointer-events: none;
-  font-size: 28px;
-  line-height: 28px;
-  text-align: center;
-  filter: drop-shadow(0 1px 1px rgb(0 0 0 / 40%));
 }
 
 .pickeroverlay {
@@ -348,47 +460,53 @@
   gap: 6px;
   padding: 16px;
   text-align: center;
-  background: var(--surface);
+  background: var(--page);
 }
 
 .pickerhere {
   position: absolute;
   left: 8px;
   bottom: 8px;
-  border: 0;
+  border: 1.5px solid var(--ink);
   border-radius: 999px;
-  background: var(--surface);
-  color: var(--sea);
-  font-weight: 500;
-  padding: 7px 12px;
+  background: var(--page);
+  color: var(--ink);
+  font-weight: 600;
+  padding: 6px 12px;
   font-size: 13px;
-  box-shadow: 0 6px 18px var(--shadow);
+  box-shadow: 0 2px 0 var(--ink);
 }
 
+/* The save strip: a torn-off band of page above the tab bar. */
 .savebar {
   position: sticky;
   /* Above the tab bar on phones. */
   bottom: calc(var(--tabbar-h) + env(safe-area-inset-bottom));
   margin: 0 -20px;
   padding: 12px 20px;
-  background: var(--surface);
-  border-top: 1px solid var(--line);
+  background: var(--page) var(--paper-tex);
+  background-size: 480px;
+  background-blend-mode: multiply;
+  border-top: 1.5px solid var(--ink);
   display: flex;
   flex-direction: column;
   gap: 8px;
+  z-index: 5;
 }
 
-/* Board options: which boards an opinion goes to. */
+/* Board options: which boards an opinion goes to, as rubber stamps. */
 .bopt {
   display: inline-flex;
   align-items: center;
   gap: 8px;
   padding: 8px 12px;
-  border-radius: 12px;
-  border: 1px solid var(--line);
-  background: var(--surface);
+  border-radius: 10px;
+  border: 1.5px dashed var(--ink-3);
+  background: var(--page);
+  color: var(--ink-2);
   text-align: left;
   line-height: 1.25;
+  transition: transform 0.2s var(--ease-spring), border-color 0.12s, color 0.12s;
 }
 
 .bopt small {
@@ -398,13 +516,18 @@
 }
 
 .bopt[aria-pressed="true"] {
-  background: var(--ink);
-  border-color: var(--ink);
-  color: var(--on-ink);
+  border: 2px solid var(--stamp, var(--ink));
+  color: var(--stamp, var(--ink));
+  background: var(--stamp-wash, var(--page));
+  transform: rotate(-1.5deg);
+  font-family: var(--worn);
+  letter-spacing: 0.04em;
 }
 
 .bopt[aria-pressed="true"] small {
-  color: var(--surface-2);
+  font-family: var(--sans);
+  letter-spacing: 0;
+  color: var(--ink-2);
 }
 
 .bopt:disabled {
