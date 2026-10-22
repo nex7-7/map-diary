@@ -47,11 +47,18 @@
   box-shadow: 0 3px 0 var(--ink);
 }
 
-/* The page itself (.page .scalloped .lift), overlapping the map by a few pixels. */
-.main {
+/* The page's wrapper casts its shadow on the map (a masked element can't), overlapping it by the scallops. */
+.sheet {
   position: relative;
   z-index: 1;
   margin-top: -9px;
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+}
+
+/* The page itself (.page .scalloped). */
+.main {
   /* Under the scalloped edge, with room for the seal pressed on the title. */
   padding: calc(9px + 34px) 20px 40px;
   display: flex;
@@ -270,10 +277,13 @@
     display: none;
   }
 
-  .main {
+  .sheet {
     grid-column: 1;
     grid-row: 1;
     margin: 0;
+  }
+
+  .main {
     padding: calc(9px + 40px) 32px 40px;
     border-radius: 0 0 18px 18px;
     gap: 22px;

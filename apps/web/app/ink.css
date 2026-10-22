@@ -220,16 +220,17 @@
     padding: 0 2px;
   }
 
-  /* A sheet whose top edge is one continuous row of scallops, cut from the sheet itself. */
+  /* A sheet whose top edge is one continuous row of scallops, cut from the sheet itself.
+     The body overlaps the scallop row by 1px so no hairline of what is behind shows at the join. */
   .scalloped {
     --bump: 9px;
     padding-top: calc(var(--bump) + var(--pad-top, 16px));
     -webkit-mask:
       radial-gradient(circle at 50% 100%, #000 calc(var(--bump) - 0.5px), transparent var(--bump)) 0 0 / calc(var(--bump) * 2) var(--bump) round no-repeat,
-      linear-gradient(#000 0 0) 0 var(--bump) / 100% calc(100% - var(--bump)) no-repeat;
+      linear-gradient(#000 0 0) 0 calc(var(--bump) - 1px) / 100% calc(100% - var(--bump) + 1px) no-repeat;
     mask:
       radial-gradient(circle at 50% 100%, #000 calc(var(--bump) - 0.5px), transparent var(--bump)) 0 0 / calc(var(--bump) * 2) var(--bump) round no-repeat,
-      linear-gradient(#000 0 0) 0 var(--bump) / 100% calc(100% - var(--bump)) no-repeat;
+      linear-gradient(#000 0 0) 0 calc(var(--bump) - 1px) / 100% calc(100% - var(--bump) + 1px) no-repeat;
   }
   /* The shadow under a masked sheet has to come from a wrapper. */
   .lift {

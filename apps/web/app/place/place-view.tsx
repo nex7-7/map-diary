@@ -182,222 +182,224 @@ export function PlaceView({ diary, placeId }: { diary: Diary; placeId: string })
         <div className={p.wideOnly}>{bleeder}</div>
       </aside>
 
-      <article className={`page scalloped lift ${p.main}`}>
-        <Link href="/" className={`${styles.back} ${p.wideOnly}`}>
-          <Icon name="chevronLeft" size="m" />
-          Places
-        </Link>
-        <header key={myStatus ?? "none"} className={p.head}>
-          <p className="kicker rise">{[style.label, place.cuisine, outlets ? undefined : area(place.address)].filter(Boolean).join(" · ")}</p>
-          <h1 className="display flip-wrap text-[42px] leading-[0.98]">
-            <span className="flip" style={{ animationDelay: "0.05s" }}>
-              {place.name}
-            </span>
-          </h1>
-          {outlets ? (
-            <p className="sub">{outlets.length} locations</p>
-          ) : (
-            (place.address || place.isPrivate) && (
-              <p className="sub">
-                {[place.address, place.isPrivate ? "Dropped pin, only on your boards" : undefined].filter(Boolean).join(" · ")}
-              </p>
-            )
-          )}
-          {myStatus === "visited" && myStatusOpinion && (
-            <div className={`seal slam ${p.stamp} flex-col gap-[3px] [--r:-12deg]`} style={{ animationDelay: "0.35s" }} aria-label={`Visited ${sealDate(myStatusOpinion.updatedAt)}`}>
-              <span className="text-[9.5px] tracking-[0.18em]">Visited</span>
-              <span className="text-[24px]">{sealDate(myStatusOpinion.updatedAt)}</span>
-              <span className="text-[9.5px] tracking-[0.18em]">{new Date(myStatusOpinion.updatedAt).getFullYear()}</span>
-            </div>
-          )}
-          {myStatus === "want" && (
-            <div className={`slot pop ${p.stamp} flex-col gap-0.5 text-[10.5px] font-bold tracking-[0.14em] uppercase`}>
-              Want to
-              <span className="hand text-[14px] tracking-normal text-seal normal-case">not yet!</span>
-            </div>
-          )}
-        </header>
+      <div className={`lift ${p.sheet}`}>
+        <article className={`page scalloped ${p.main}`}>
+          <Link href="/" className={`${styles.back} ${p.wideOnly}`}>
+            <Icon name="chevronLeft" size="m" />
+            Places
+          </Link>
+          <header key={myStatus ?? "none"} className={p.head}>
+            <p className="kicker rise">{[style.label, place.cuisine, outlets ? undefined : area(place.address)].filter(Boolean).join(" · ")}</p>
+            <h1 className="display flip-wrap text-[42px] leading-[0.98]">
+              <span className="flip" style={{ animationDelay: "0.05s" }}>
+                {place.name}
+              </span>
+            </h1>
+            {outlets ? (
+              <p className="sub">{outlets.length} locations</p>
+            ) : (
+              (place.address || place.isPrivate) && (
+                <p className="sub">
+                  {[place.address, place.isPrivate ? "Dropped pin, only on your boards" : undefined].filter(Boolean).join(" · ")}
+                </p>
+              )
+            )}
+            {myStatus === "visited" && myStatusOpinion && (
+              <div className={`seal slam ${p.stamp} flex-col gap-[3px] [--r:-12deg]`} style={{ animationDelay: "0.35s" }} aria-label={`Visited ${sealDate(myStatusOpinion.updatedAt)}`}>
+                <span className="text-[9.5px] tracking-[0.18em]">Visited</span>
+                <span className="text-[24px]">{sealDate(myStatusOpinion.updatedAt)}</span>
+                <span className="text-[9.5px] tracking-[0.18em]">{new Date(myStatusOpinion.updatedAt).getFullYear()}</span>
+              </div>
+            )}
+            {myStatus === "want" && (
+              <div className={`slot pop ${p.stamp} flex-col gap-0.5 text-[10.5px] font-bold tracking-[0.14em] uppercase`}>
+                Want to
+                <span className="hand text-[14px] tracking-normal text-seal normal-case">not yet!</span>
+              </div>
+            )}
+          </header>
 
-        <StatusToggle label="Your status" value={myStatus} onChange={(s: Status) => run(() => setStatus(diary, place.id, s, boards))} />
-        {myStatus === null && <p className="hand -mt-2 text-[16px] text-ink-2">Stamp it Want to or Visited to put it on your list.</p>}
+          <StatusToggle label="Your status" value={myStatus} onChange={(s: Status) => run(() => setStatus(diary, place.id, s, boards))} />
+          {myStatus === null && <p className="hand -mt-2 text-[16px] text-ink-2">Stamp it Want to or Visited to put it on your list.</p>}
 
-        <div className={p.narrowOnly}>{bleeder}</div>
-        {!outlets && links(place)}
+          <div className={p.narrowOnly}>{bleeder}</div>
+          {!outlets && links(place)}
 
-        {outlets && (
+          {outlets && (
+            <section className={styles.section}>
+              <h2>Locations</h2>
+              <ul className={p.outlets}>
+                {outlets.map((o) => (
+                  <li key={o.id} className={o.id === at.id ? `${p.outlet} ${p.outletFocus}` : p.outlet}>
+                    <button type="button" className={p.outletName} onClick={() => setFocusId(o.id)} aria-pressed={o.id === at.id}>
+                      <Icon name="pin" size="s" />
+                      <span>
+                        <strong>{outletLabel(place, o)}</strong>
+                        {o.address && <span className="sub"> · {o.address}</span>}
+                      </span>
+                    </button>
+                    {links(o, true)}
+                  </li>
+                ))}
+              </ul>
+            </section>
+          )}
+
+          <hr className={p.rule} />
+
+          {error && (
+            <p className={styles.error} role="alert">
+              {error}
+            </p>
+          )}
+          {notice && (
+            <p className={styles.note} role="status">
+              {notice}
+            </p>
+          )}
+
           <section className={styles.section}>
-            <h2>Locations</h2>
-            <ul className={p.outlets}>
-              {outlets.map((o) => (
-                <li key={o.id} className={o.id === at.id ? `${p.outlet} ${p.outletFocus}` : p.outlet}>
-                  <button type="button" className={p.outletName} onClick={() => setFocusId(o.id)} aria-pressed={o.id === at.id}>
-                    <Icon name="pin" size="s" />
-                    <span>
-                      <strong>{outletLabel(place, o)}</strong>
-                      {o.address && <span className="sub"> · {o.address}</span>}
-                    </span>
-                  </button>
-                  {links(o, true)}
-                </li>
-              ))}
-            </ul>
-          </section>
-        )}
-
-        <hr className={p.rule} />
-
-        {error && (
-          <p className={styles.error} role="alert">
-            {error}
-          </p>
-        )}
-        {notice && (
-          <p className={styles.note} role="status">
-            {notice}
-          </p>
-        )}
-
-        <section className={styles.section}>
-          <h2>Shown on</h2>
-          <BoardPicker
-            boards={choices}
-            value={boards}
-            noPublic={place.isPrivate}
-            onChange={(next) => {
-              setBoardEdit(next);
-              // Moving the status moves the place on the person's list for those boards too.
-              if (myStatus !== null) run(() => setStatus(diary, place.id, myStatus, next));
-            }}
-          />
-        </section>
-
-        {of("status").some((o) => o.authorId !== me) && (
-          <section className={styles.section}>
-            <h2>Who else</h2>
-            <Others snapshot={snapshot} me={me} opinions={of("status").filter((o) => o.authorId !== me)} render={(o: StatusOpinion) => (o.status === "visited" ? "has been" : "wants to go")} />
-          </section>
-        )}
-
-        <section className={styles.section}>
-          <h2>Tags</h2>
-          {othersTags.length > 0 && (
-            <div className={styles.chips}>
-              {othersTags.map((o, i) => {
-                const t = snapshot.tags.find((x) => x.id === o.tagId);
-                const tilt = TILTS[i % TILTS.length];
-                return (
-                  <span key={o.id} className="sticker pop" style={{ "--r": tilt, transform: `rotate(${tilt})`, animationDelay: `${650 + i * 110}ms` } as CSSProperties} title={t?.description || undefined}>
-                    {t ? `${t.emoji ? `${t.emoji} ` : ""}${t.name}` : "A tag you can't see"}
-                    <span className="hand text-[13px] font-normal text-ink-2">{personName(snapshot, me, o)}</span>
-                    {o.boards.map((id) => {
-                      const b = board(id);
-                      return b ? <BoardBadge key={id} kind={b.kind} name={b.name} /> : null;
-                    })}
-                  </span>
-                );
-              })}
-            </div>
-          )}
-          <TagPicker
-            tags={snapshot.tags}
-            selected={myTagIds}
-            disabled={myStatus === null}
-            onToggle={(tagId) => run(() => (myTagIds.has(tagId) ? unapplyTag(diary, place.id, tagId) : tag(tagId)))}
-            onCreate={(def) => run(async () => applyTag(diary, place.id, await defineTag(diary, def, tagBoards), tagBoards))}
-          />
-          {myStatus !== null && (
-            <FollowBoards what="Tags" boards={choices} statusBoards={boards} value={tagBoardEdit && tagBoards} onChange={setTagBoardEdit} noPublic={place.isPrivate} />
-          )}
-        </section>
-
-        <section className={styles.section}>
-          <h2>In the margin</h2>
-          {comments.length === 0 && <p className="hand m-0 text-[16px] text-ink-3">Nothing written here yet.</p>}
-          {comments.length > 0 && (
-            <ul className={p.comments}>
-              {comments.map((c) => (
-                <CommentRow
-                  key={c.id}
-                  comment={c}
-                  snapshot={snapshot}
-                  mine={c.authorId === me}
-                  scope={scopeOf(c)}
-                  onEdit={(text) => run(() => editComment(diary, c.id, c.placeId ?? place.id, text))}
-                  onDelete={() => run(() => removeOpinion(diary, c.id))}
-                />
-              ))}
-            </ul>
-          )}
-          <form
-            className={p.composer}
-            onSubmit={(e) => {
-              e.preventDefault();
-              const text = draft;
-              const about = outlets && commentScope !== "all" && outlets.some((o) => o.id === commentScope) ? commentScope : undefined;
-              run(async () => {
-                await addComment(diary, about ?? place.id, text, commentBoards, outlets !== undefined && about === undefined);
-                setDraft("");
-              });
-            }}
-          >
-            <textarea
-              className={p.lined}
-              aria-label="New comment"
-              placeholder={myStatus === null ? "Stamp a status first" : "Write in the margin…"}
-              disabled={myStatus === null}
-              rows={3}
-              value={draft}
-              onChange={(e) => setDraft(e.target.value)}
+            <h2>Shown on</h2>
+            <BoardPicker
+              boards={choices}
+              value={boards}
+              noPublic={place.isPrivate}
+              onChange={(next) => {
+                setBoardEdit(next);
+                // Moving the status moves the place on the person's list for those boards too.
+                if (myStatus !== null) run(() => setStatus(diary, place.id, myStatus, next));
+              }}
             />
-            {outlets && myStatus !== null && (
-              <label className={styles.row}>
-                <span className={styles.label}>About</span>
-                <select className={styles.input} value={commentScope} onChange={(e) => setCommentScope(e.target.value)}>
-                  <option value="all">All locations</option>
-                  {outlets.map((o) => (
-                    <option key={o.id} value={o.id}>
-                      {outletLabel(place, o)}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            )}
-            {myStatus !== null && (
-              <FollowBoards what="Comment" boards={choices} statusBoards={boards} value={commentBoardEdit && commentBoards} onChange={setCommentBoardEdit} noPublic={place.isPrivate} />
-            )}
-            <div className={styles.row}>
-              <button type="submit" className={buttonClass({ size: "m" })} disabled={myStatus === null || !draft.trim()}>
-                Add comment
-              </button>
-            </div>
-          </form>
-        </section>
-
-        {canEdit && (
-          <section className={styles.section}>
-            <div className={styles.row}>
-              <button type="button" className="chip soft" onClick={() => setEditing(true)}>
-                <Icon name="pencil" size="s" />
-                {focus ? `Edit ${outletLabel(place, focus)}` : "Edit details"}
-              </button>
-              <button
-                type="button"
-                className="chip soft text-seal-deep"
-                onClick={() => {
-                  const what = focus ? `the ${outletLabel(place, focus)} location of ${place.name}` : place.name;
-                  if (!confirm(`Delete ${what} and your notes on it?`)) return;
-                  run(async () => {
-                    await deletePlace(diary, item.id);
-                    router.push("/");
-                  });
-                }}
-              >
-                {focus ? "Delete this location" : "Delete place"}
-              </button>
-            </div>
           </section>
-        )}
-      </article>
+
+          {of("status").some((o) => o.authorId !== me) && (
+            <section className={styles.section}>
+              <h2>Who else</h2>
+              <Others snapshot={snapshot} me={me} opinions={of("status").filter((o) => o.authorId !== me)} render={(o: StatusOpinion) => (o.status === "visited" ? "has been" : "wants to go")} />
+            </section>
+          )}
+
+          <section className={styles.section}>
+            <h2>Tags</h2>
+            {othersTags.length > 0 && (
+              <div className={styles.chips}>
+                {othersTags.map((o, i) => {
+                  const t = snapshot.tags.find((x) => x.id === o.tagId);
+                  const tilt = TILTS[i % TILTS.length];
+                  return (
+                    <span key={o.id} className="sticker pop" style={{ "--r": tilt, transform: `rotate(${tilt})`, animationDelay: `${650 + i * 110}ms` } as CSSProperties} title={t?.description || undefined}>
+                      {t ? `${t.emoji ? `${t.emoji} ` : ""}${t.name}` : "A tag you can't see"}
+                      <span className="hand text-[13px] font-normal text-ink-2">{personName(snapshot, me, o)}</span>
+                      {o.boards.map((id) => {
+                        const b = board(id);
+                        return b ? <BoardBadge key={id} kind={b.kind} name={b.name} /> : null;
+                      })}
+                    </span>
+                  );
+                })}
+              </div>
+            )}
+            <TagPicker
+              tags={snapshot.tags}
+              selected={myTagIds}
+              disabled={myStatus === null}
+              onToggle={(tagId) => run(() => (myTagIds.has(tagId) ? unapplyTag(diary, place.id, tagId) : tag(tagId)))}
+              onCreate={(def) => run(async () => applyTag(diary, place.id, await defineTag(diary, def, tagBoards), tagBoards))}
+            />
+            {myStatus !== null && (
+              <FollowBoards what="Tags" boards={choices} statusBoards={boards} value={tagBoardEdit && tagBoards} onChange={setTagBoardEdit} noPublic={place.isPrivate} />
+            )}
+          </section>
+
+          <section className={styles.section}>
+            <h2>In the margin</h2>
+            {comments.length === 0 && <p className="hand m-0 text-[16px] text-ink-3">Nothing written here yet.</p>}
+            {comments.length > 0 && (
+              <ul className={p.comments}>
+                {comments.map((c) => (
+                  <CommentRow
+                    key={c.id}
+                    comment={c}
+                    snapshot={snapshot}
+                    mine={c.authorId === me}
+                    scope={scopeOf(c)}
+                    onEdit={(text) => run(() => editComment(diary, c.id, c.placeId ?? place.id, text))}
+                    onDelete={() => run(() => removeOpinion(diary, c.id))}
+                  />
+                ))}
+              </ul>
+            )}
+            <form
+              className={p.composer}
+              onSubmit={(e) => {
+                e.preventDefault();
+                const text = draft;
+                const about = outlets && commentScope !== "all" && outlets.some((o) => o.id === commentScope) ? commentScope : undefined;
+                run(async () => {
+                  await addComment(diary, about ?? place.id, text, commentBoards, outlets !== undefined && about === undefined);
+                  setDraft("");
+                });
+              }}
+            >
+              <textarea
+                className={p.lined}
+                aria-label="New comment"
+                placeholder={myStatus === null ? "Stamp a status first" : "Write in the margin…"}
+                disabled={myStatus === null}
+                rows={3}
+                value={draft}
+                onChange={(e) => setDraft(e.target.value)}
+              />
+              {outlets && myStatus !== null && (
+                <label className={styles.row}>
+                  <span className={styles.label}>About</span>
+                  <select className={styles.input} value={commentScope} onChange={(e) => setCommentScope(e.target.value)}>
+                    <option value="all">All locations</option>
+                    {outlets.map((o) => (
+                      <option key={o.id} value={o.id}>
+                        {outletLabel(place, o)}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              )}
+              {myStatus !== null && (
+                <FollowBoards what="Comment" boards={choices} statusBoards={boards} value={commentBoardEdit && commentBoards} onChange={setCommentBoardEdit} noPublic={place.isPrivate} />
+              )}
+              <div className={styles.row}>
+                <button type="submit" className={buttonClass({ size: "m" })} disabled={myStatus === null || !draft.trim()}>
+                  Add comment
+                </button>
+              </div>
+            </form>
+          </section>
+
+          {canEdit && (
+            <section className={styles.section}>
+              <div className={styles.row}>
+                <button type="button" className="chip soft" onClick={() => setEditing(true)}>
+                  <Icon name="pencil" size="s" />
+                  {focus ? `Edit ${outletLabel(place, focus)}` : "Edit details"}
+                </button>
+                <button
+                  type="button"
+                  className="chip soft text-seal-deep"
+                  onClick={() => {
+                    const what = focus ? `the ${outletLabel(place, focus)} location of ${place.name}` : place.name;
+                    if (!confirm(`Delete ${what} and your notes on it?`)) return;
+                    run(async () => {
+                      await deletePlace(diary, item.id);
+                      router.push("/");
+                    });
+                  }}
+                >
+                  {focus ? "Delete this location" : "Delete place"}
+                </button>
+              </div>
+            </section>
+          )}
+        </article>
+      </div>
     </div>
   );
 }
