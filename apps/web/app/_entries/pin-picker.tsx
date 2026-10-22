@@ -6,7 +6,7 @@ import { useEffect, useRef, useState } from "react";
 import { addAttribution } from "@/lib/map/attribution";
 import { loadMapFile } from "@/lib/map/map-file";
 import { registerProtocol } from "@/lib/map/protocol";
-import { basemapStyle, MUMBAI_CENTER } from "@/lib/map/style";
+import { basemapStyle, drawMapImage, MUMBAI_CENTER } from "@/lib/map/style";
 import type { LngLat } from "@/lib/places/types";
 import styles from "./entries.module.css";
 
@@ -33,7 +33,6 @@ export function PinPicker({ value, onChange }: Props) {
   useEffect(() => {
     const abort = new AbortController();
     let map: MapLibre | undefined;
-    const dark = window.matchMedia("(prefers-color-scheme: dark)");
 
     loadMapFile((loaded, total) => setState({ kind: "loading", loaded, total }), abort.signal)
       .then((file) => {
@@ -42,7 +41,7 @@ export function PinPicker({ value, onChange }: Props) {
         const start = latest.current.value;
         map = new MapLibre({
           container: container.current,
-          style: basemapStyle(location.origin, dark.matches),
+          style: basemapStyle(location.origin),
           center: start ? [start.lng, start.lat] : MUMBAI_CENTER,
           zoom: start ? 16 : 11,
           minZoom: 9,
@@ -50,6 +49,11 @@ export function PinPicker({ value, onChange }: Props) {
           attributionControl: false,
         });
         addAttribution(map);
+        map.setMissingStyleImageResolver((id) => {
+          const ratio = window.devicePixelRatio || 1;
+          const image = drawMapImage(id, ratio);
+          if (image && map && !map.hasImage(id)) map.addImage(id, image, { pixelRatio: ratio });
+        });
         map.on("moveend", (e) => {
           // Only the person's own moves drop the pin, not programmatic jumps.
           if (!map || !("originalEvent" in e) || !e.originalEvent) return;
@@ -99,9 +103,10 @@ export function PinPicker({ value, onChange }: Props) {
       <div ref={container} className={styles.pickermap} role="region" aria-label="Move the map to put the pin on the place" />
       {state.kind === "ready" && (
         <>
-          <span className={styles.crosshair} aria-hidden>
-            📍
-          </span>
+          <svg className={styles.crosshair} viewBox="0 0 30 40" aria-hidden>
+            <path d="M15 38C15 38 3 23.5 3 14.5a12 12 0 0 1 24 0C27 23.5 15 38 15 38Z" fill="var(--seal)" stroke="var(--ink)" strokeWidth="2" strokeLinejoin="round" />
+            <circle cx="15" cy="14.5" r="4.5" fill="var(--cream)" stroke="var(--ink)" strokeWidth="1.5" />
+          </svg>
           <button type="button" className={styles.pickerhere} onClick={here} disabled={locating}>
             {locating ? "Locating…" : "I'm here"}
           </button>

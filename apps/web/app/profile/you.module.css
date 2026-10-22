@@ -1,0 +1,116 @@
+/* You: the inside cover of the diary. */
+
+/* A dotted page with a red margin rule, taped in. */
+.cover {
+  position: relative;
+  background-color: var(--page);
+  background-image:
+    linear-gradient(90deg, transparent 30px, rgb(198 55 48 / 0.32) 30px, rgb(198 55 48 / 0.32) 31px, transparent 31px),
+    radial-gradient(circle, rgb(46 75 90 / 0.2) 0.9px, transparent 1.3px), var(--paper-tex);
+  background-size: 100% 100%, 14px 14px, 256px 256px;
+  background-position: 0 0, 3px 3px, 0 0;
+  border: 1.5px solid var(--ink);
+  border-radius: 6px 18px 18px 6px;
+  padding: 26px 18px 22px 46px;
+  box-shadow: 0 5px 0 rgb(32 31 27 / 0.14);
+}
+
+.polaroid {
+  position: relative;
+  flex: none;
+  width: 92px;
+  padding: 7px 7px 20px;
+  background: #fff;
+  box-shadow: 0 3px 8px rgb(40 28 12 / 0.2);
+  transform: rotate(5deg);
+}
+
+.stats {
+  display: flex;
+  background: var(--page);
+  border: 1.5px solid var(--ink);
+  border-radius: 14px;
+}
+
+.stat {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 10px 4px;
+  border-left: 1.5px dashed var(--rule-ink);
+}
+
+.stat:first-child {
+  border-left: 0;
+}
+
+.stamps {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px 10px;
+  padding: 16px 10px;
+  background: var(--page);
+  border: 1.5px solid var(--rule);
+  border-radius: 14px;
+}
+
+.empty {
+  margin: 0;
+  padding: 22px 16px;
+  border: 1.5px dashed var(--rule-ink);
+  border-radius: 14px;
+  background: var(--page);
+  font-family: var(--hand);
+  font-size: 16px;
+  color: var(--ink-3);
+  text-align: center;
+}
+
+/* A line of the contents page: title, dotted leader, value. */
+.toc {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  width: 100%;
+  border: 0;
+  background: none;
+  padding: 13px 0;
+  font: inherit;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--ink);
+  text-align: left;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.lead {
+  flex: 1;
+  min-width: 20px;
+  border-bottom: 1.5px dotted #b9ab90;
+  transform: translateY(-4px);
+}
+
+.val {
+  font-family: var(--serif);
+  font-weight: 400;
+  font-style: italic;
+  font-size: 16px;
+  color: var(--ink-2);
+}
+
+.toc:hover > span:first-child {
+  color: var(--seal);
+}
+
+.chev {
+  display: inline-grid;
+  align-self: center;
+  transition: transform 0.35s var(--ease-spring);
+}
+
+.toc[data-state="open"] .chev {
+  transform: rotate(90deg);
+}

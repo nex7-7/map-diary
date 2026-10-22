@@ -8,7 +8,7 @@ import { loadMapFile } from "@/lib/map/map-file";
 import { registerProtocol } from "@/lib/map/protocol";
 import {
   basemapStyle,
-  drawPin,
+  drawMapImage,
   HERE_SOURCE,
   hereCollection,
   MUMBAI_BOUNDS,
@@ -20,6 +20,7 @@ import {
 } from "@/lib/map/style";
 import type { ListedPlace } from "@/lib/places/filter";
 import type { LngLat } from "@/lib/places/types";
+import { Button } from "@/lib/ui";
 
 const LONG_PRESS_MS = 600;
 
@@ -45,16 +46,13 @@ export function PlacesMap({ listed, here, selectedId, onSelect, onLongPress }: P
   useEffect(() => {
     const abort = new AbortController();
     let map: MapLibre | undefined;
-    const dark = window.matchMedia("(prefers-color-scheme: dark)");
-
-    // Runs on every style load (first load and light/dark switches).
+    // Runs when the style loads.
     const syncData = () => {
       if (!map) return;
       const { listed, here, selectedId } = latest.current;
       map.getSource<GeoJSONSource>(PINS_SOURCE)?.setData(pinsCollection(listed, selectedId));
       map.getSource<GeoJSONSource>(HERE_SOURCE)?.setData(hereCollection(here));
     };
-    const onScheme = () => map?.setStyle(basemapStyle(location.origin, dark.matches));
 
     loadMapFile((loaded, total) => setState({ kind: "loading", loaded, total }), abort.signal)
       .then((file) => {
@@ -62,7 +60,7 @@ export function PlacesMap({ listed, here, selectedId, onSelect, onLongPress }: P
         registerProtocol(file);
         map = new MapLibre({
           container: container.current,
-          style: basemapStyle(location.origin, dark.matches),
+          style: basemapStyle(location.origin),
           center: MUMBAI_CENTER,
           zoom: 11,
           minZoom: 9,
@@ -74,7 +72,7 @@ export function PlacesMap({ listed, here, selectedId, onSelect, onLongPress }: P
         // Pin images are drawn the first time each status, emoji and size is needed.
         map.setMissingStyleImageResolver((id) => {
           const ratio = window.devicePixelRatio || 1;
-          const image = drawPin(id, ratio);
+          const image = drawMapImage(id, ratio);
           if (image && map && !map.hasImage(id)) map.addImage(id, image, { pixelRatio: ratio });
         });
         addAttribution(map);
@@ -89,7 +87,6 @@ export function PlacesMap({ listed, here, selectedId, onSelect, onLongPress }: P
         addLongPress(map, (at) => latest.current.onLongPress?.(at));
         map.on("mouseenter", PIN_LAYER, () => map && (map.getCanvas().style.cursor = "pointer"));
         map.on("mouseleave", PIN_LAYER, () => map && (map.getCanvas().style.cursor = ""));
-        dark.addEventListener("change", onScheme);
         mapRef.current = map;
         setState({ kind: "ready" });
       })
@@ -100,7 +97,6 @@ export function PlacesMap({ listed, here, selectedId, onSelect, onLongPress }: P
 
     return () => {
       abort.abort();
-      dark.removeEventListener("change", onScheme);
       map?.remove();
       mapRef.current = null;
     };
@@ -133,21 +129,29 @@ export function PlacesMap({ listed, here, selectedId, onSelect, onLongPress }: P
   }, [selectedId]);
 
   return (
-    <div className="map-wrap">
-      <div ref={container} className="map" role="region" aria-label="Map of places" />
+    <div className="paper relative size-full">
+      <div ref={container} className="ink-map size-full" role="region" aria-label="Map of places" />
       {state.kind === "loading" && (
-        <div className="map-overlay" role="status">
-          <p>Saving the Mumbai map to this device…</p>
-          <p className="muted">{progressLabel(state.loaded, state.total)}</p>
-          {state.total !== undefined && <progress value={state.loaded} max={state.total} />}
+        <div className="absolute inset-0 grid place-items-center p-6" role="status">
+          <div className="page pop flex w-full max-w-[300px] flex-col gap-2 rounded-[16px] border-[1.5px] border-ink p-5 text-center shadow-[0_4px_0_var(--ink)] [--r:-1deg]">
+            <p className="font-serif text-[20px] leading-tight">Inking the Mumbai map onto this device…</p>
+            <p className="hand text-[15px] text-ink-3">{progressLabel(state.loaded, state.total)}</p>
+            {state.total !== undefined && (
+              <span className="h-2 overflow-hidden rounded-full border border-ink bg-paper-deep">
+                <span className="block h-full bg-seal transition-[width]" style={{ width: `${Math.round((state.loaded / state.total) * 100)}%` }} />
+              </span>
+            )}
+          </div>
         </div>
       )}
       {state.kind === "failed" && (
-        <div className="map-overlay" role="alert">
-          <p>{state.message}</p>
-          <button type="button" onClick={() => setAttempt((n) => n + 1)}>
-            Try again
-          </button>
+        <div className="absolute inset-0 grid place-items-center p-6" role="alert">
+          <div className="page flex max-w-[300px] flex-col items-center gap-3 rounded-[16px] border-[1.5px] border-ink p-5 text-center shadow-[0_4px_0_var(--ink)]">
+            <p className="font-serif text-[19px] leading-tight">{state.message}</p>
+            <Button size="m" variant="secondary" onClick={() => setAttempt((n) => n + 1)}>
+              Try again
+            </Button>
+          </div>
         </div>
       )}
     </div>

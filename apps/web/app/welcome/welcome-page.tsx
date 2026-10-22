@@ -34,7 +34,7 @@ function Onboarding({ diary }: { diary: Diary }) {
   return (
     <main className={styles.page}>
       <header style={{ display: "grid", gap: 4 }}>
-        <p className="overline">{step === "profile" ? "Step 1 of 2" : "Step 2 of 2"}</p>
+        <p className="kicker">{step === "profile" ? "Step 1 of 2" : "Step 2 of 2"}</p>
         <h1 className="display">{step === "profile" ? "How friends see you" : "You're in"}</h1>
         <p className="sub" style={{ margin: 0 }}>
           {step === "profile"

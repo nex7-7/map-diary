@@ -11,6 +11,7 @@ import { getPendingQueue, MAX_QUERY_LENGTH, type PendingItem } from "@/lib/pendi
 import type { TagDefPayload } from "@/lib/places/payloads";
 import type { Category, LngLat, Status } from "@/lib/places/types";
 import { BoardPicker, boardChoices, CategoryPicker, FollowBoards, StatusToggle, TagPicker, type TagChoice } from "./fields";
+import { Icon } from "@/lib/ui";
 import { useItems } from "./use-items";
 import styles from "./entries.module.css";
 
@@ -32,7 +33,7 @@ export interface AddInitial {
 interface Props {
   diary: Diary;
   initial?: AddInitial;
-  onSaved: (placeId: string) => void;
+  onSaved: (placeId: string, saved: { name: string; status: Status }) => void;
   /** Saved without a location: it waits in the Inbox for the resolver. */
   onQueued: () => void;
   onCancel?: () => void;
@@ -179,7 +180,7 @@ export function AddForm({ diary, initial, onSaved, onQueued, onCancel }: Props) 
         id = await addPlace(diary, { kind, facts: result.facts, ...opinions });
       }
       if (initial?.pending) await (await getPendingQueue(diary)).dismiss(initial.pending.id);
-      onSaved(id);
+      onSaved(id, { name: result.facts.name, status });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not save the place");
       setSaving(false);
@@ -200,8 +201,7 @@ export function AddForm({ diary, initial, onSaved, onQueued, onCancel }: Props) 
         </label>
         <textarea
           id="add-input"
-          className={styles.textarea}
-          style={{ minHeight: "3em" }}
+          className={styles.headline}
           rows={text.includes("\n") ? 3 : 1}
           autoFocus={!initial?.text && !initial?.location}
           placeholder="Bastian Worli, or paste a Google Maps link"
@@ -268,11 +268,11 @@ export function AddForm({ diary, initial, onSaved, onQueued, onCancel }: Props) 
             </p>
           </>
         ) : findLater ? (
-          <p className={styles.note}>⏳ It goes in the Inbox until it&apos;s found. Only the {parsed.link ? (nameEdit?.trim() ? "name and link" : "link") : "name"} is sent to look it up.</p>
+          <p className={styles.note}>It waits in your Inbox until it&apos;s found. Only the {parsed.link ? (nameEdit?.trim() ? "name and link" : "link") : "name"} is sent to look it up.</p>
         ) : (
           location && (
             <p className={styles.note}>
-              📍 {location.lat.toFixed(5)}, {location.lng.toFixed(5)} {fromLink ? "from the link" : "· dropped pin, stays private"}
+              {location.lat.toFixed(5)}, {location.lng.toFixed(5)} {fromLink ? "from the link" : "· dropped pin, stays private"}
             </p>
           )
         )}
@@ -331,7 +331,8 @@ export function AddForm({ diary, initial, onSaved, onQueued, onCancel }: Props) 
             </button>
           )}
           <button type="submit" className={`${styles.primary} ${styles.grow}`} disabled={saving || (!location && !findLater)}>
-            {saving ? "Saving…" : location ? "Save" : findLater ? "Save and find it" : expansion.kind === "loading" ? "Opening the link…" : "Drop a pin to save"}
+            {saving ? "Saving…" : location ? "Save it" : findLater ? "Save and find it" : expansion.kind === "loading" ? "Opening the link…" : "Drop a pin to save"}
+            {!saving && (location || findLater) && <Icon name="check" size="m" />}
           </button>
         </div>
       </div>

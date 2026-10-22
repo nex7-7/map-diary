@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useRef, type ReactNode } from "react";
-import s from "./ui.module.css";
 
 /**
  * A horizontally scrolling row of chips. A mouse wheel scrolls it sideways too, since a
@@ -25,7 +24,7 @@ export function ChipRow({ label, children }: { label: string; children: ReactNod
     return () => el.removeEventListener("wheel", wheel);
   }, []);
   return (
-    <div ref={row} className={s.chips} role="group" aria-label={label}>
+    <div ref={row} className="flex gap-2 overflow-x-auto pt-1 pb-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden" role="group" aria-label={label}>
       {children}
     </div>
   );

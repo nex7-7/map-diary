@@ -39,7 +39,7 @@ export function Welcome() {
       </div>
       <div className={s.welcomeBody}>
         <div style={{ display: "grid", gap: 10 }}>
-          <p className="overline">Private · end-to-end encrypted</p>
+          <p className="kicker">Private · end-to-end encrypted</p>
           <h1 className="display-xl">Mumbai Places Diary</h1>
           <p className={s.lede}>Where you’ve been and where you want to go, shared only with the people you choose.</p>
         </div>
@@ -72,49 +72,71 @@ export function Welcome() {
   );
 }
 
-/** A sketch of South Mumbai, drawn in the map's colours. */
+/** A sketch of South Mumbai in pen and ink: a hatched sea, inked roads and pressed seals. */
 function MapArt() {
+  const coast =
+    "M0 0 L1440 0 L1440 110 L1190 150 L1160 250 L1220 290 L1160 320 L1215 370 L1150 410 L1120 500 C1080 590 1000 640 960 700 L915 820 C895 900 880 950 860 1000 L720 1000 C735 920 720 850 690 790 C660 730 620 690 600 640 L560 600 C640 560 680 470 690 380 C695 300 640 220 540 190 C440 170 300 250 150 330 C110 300 80 220 0 160 Z";
+  const roads = [
+    ["M585 612 C660 565 702 470 708 380 C712 300 655 215 545 200", 11],
+    ["M820 0 C800 200 790 400 772 600 C756 750 776 880 790 1000", 10],
+    ["M960 0 C945 200 930 380 905 560 C890 660 860 720 840 800", 9],
+    ["M700 420 C850 430 1000 440 1120 465", 7],
+    ["M690 300 C850 300 1000 310 1160 330", 7],
+    ["M660 140 C800 150 1000 140 1190 150", 8],
+    ["M772 600 C840 610 900 600 960 620", 5],
+    ["M730 520 C800 520 860 510 910 530", 5],
+  ] as const;
   return (
-    <svg viewBox="600 80 600 800" preserveAspectRatio="xMidYMid slice" aria-hidden style={{ background: "var(--sea-soft)" }}>
-      <path
-        fill="var(--paper)"
-        d="M0 0 L1440 0 L1440 110 L1190 150 L1160 250 L1220 290 L1160 320 L1215 370 L1150 410 L1120 500 C1080 590 1000 640 960 700 L915 820 C895 900 880 950 860 1000 L720 1000 C735 920 720 850 690 790 C660 730 620 690 600 640 L560 600 C640 560 680 470 690 380 C695 300 640 220 540 190 C440 170 300 250 150 330 C110 300 80 220 0 160 Z"
-      />
-      <g fill="var(--visited-soft)">
+    <svg viewBox="600 80 600 800" preserveAspectRatio="xMidYMid slice" aria-hidden>
+      <defs>
+        <pattern id="welcome-hatch" width="9" height="9" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+          <line x1="0" y1="0" x2="0" y2="9" stroke="#2e4b5a" strokeOpacity="0.35" strokeWidth="1.2" />
+        </pattern>
+      </defs>
+      <rect x="0" y="0" width="1440" height="1000" fill="#d6e0df" />
+      <rect x="0" y="0" width="1440" height="1000" fill="url(#welcome-hatch)" />
+      <path fill="#f1ead9" stroke="var(--indigo)" strokeWidth="2" d={coast} />
+      <g fill="#dfe3c8" stroke="#3d3934" strokeOpacity="0.4" strokeWidth="1.2">
         <path d="M700 330 L790 320 L800 470 L712 480 Z" />
         <path d="M850 190 L960 180 L975 290 L862 300 Z" />
       </g>
-      <g stroke="var(--surface)" fill="none" strokeLinecap="round">
-        <path d="M585 612 C660 565 702 470 708 380 C712 300 655 215 545 200" strokeWidth="9" />
-        <path d="M820 0 C800 200 790 400 772 600 C756 750 776 880 790 1000" strokeWidth="8" />
-        <path d="M960 0 C945 200 930 380 905 560 C890 660 860 720 840 800" strokeWidth="7" />
-        <path d="M700 420 C850 430 1000 440 1120 465" strokeWidth="6" />
-        <path d="M690 300 C850 300 1000 310 1160 330" strokeWidth="6" />
-        <path d="M660 140 C800 150 1000 140 1190 150" strokeWidth="7" />
-        <path d="M772 600 C840 610 900 600 960 620" strokeWidth="4" />
-        <path d="M730 520 C800 520 860 510 910 530" strokeWidth="4" />
+      <g fill="none" strokeLinecap="round">
+        {roads.map(([d, w]) => (
+          <path key={d} d={d} stroke="#3d3934" strokeWidth={w + 3} />
+        ))}
+        {roads.map(([d, w]) => (
+          <path key={`${d}-fill`} d={d} stroke="#fbf6ea" strokeWidth={w} />
+        ))}
       </g>
-      <g fill="var(--ink-3)" style={{ font: "600 11px var(--sans)", letterSpacing: "1.5px" }}>
+      <g fill="var(--ink-2)" style={{ font: "600 11px var(--sans)", letterSpacing: "1.5px" }}>
         <text x="930" y="385">FORT</text>
         <text x="845" y="545">KALA GHODA</text>
         <text x="760" y="850">COLABA</text>
         <text x="640" y="265">CHURCHGATE</text>
       </g>
-      <text x="610" y="560" fill="var(--sea)" opacity="0.75" style={{ font: "italic 21px var(--serif)" }}>
+      <text x="610" y="560" fill="var(--indigo)" style={{ font: "italic 22px var(--serif)" }}>
         Back Bay
       </text>
       {(
         [
-          [1035, 255, "var(--visited)"],
-          [752, 400, "var(--visited)"],
-          [790, 640, "var(--want)"],
-          [830, 700, "var(--want)"],
-          [870, 520, "var(--group)"],
-          [770, 150, "var(--visited)"],
+          [1035, 255, "seal"],
+          [752, 400, "seal"],
+          [790, 640, "want"],
+          [830, 700, "want"],
+          [870, 520, "plum"],
+          [770, 150, "seal"],
         ] as const
-      ).map(([x, y, fill]) => (
-        <circle key={`${x}-${y}`} cx={x} cy={y} r="13" fill={fill} stroke="var(--surface)" strokeWidth="3" />
-      ))}
+      ).map(([x, y, kind]) =>
+        kind === "want" ? (
+          <circle key={`${x}-${y}`} cx={x} cy={y} r="12" fill="var(--page)" stroke="var(--graphite)" strokeWidth="2.4" strokeDasharray="4 3" />
+        ) : (
+          <g key={`${x}-${y}`}>
+            <circle cx={x} cy={y + 2.5} r="14" fill="var(--ink)" />
+            <circle cx={x} cy={y} r="14" fill={kind === "seal" ? "var(--seal)" : "var(--plum)"} stroke="var(--ink)" strokeWidth="2" />
+            <circle cx={x} cy={y} r="8.5" fill="none" stroke="var(--cream)" strokeWidth="1.4" />
+          </g>
+        ),
+      )}
     </svg>
   );
 }

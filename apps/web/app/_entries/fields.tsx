@@ -1,20 +1,24 @@
 "use client";
 
-import { useState } from "react";
+import { useState, type CSSProperties } from "react";
 import { oneEmoji } from "@/lib/entries/emoji";
 import { customCategory } from "@/lib/entries/facts";
 import { pickBoard } from "@/lib/places/boards";
-import { CATEGORY_STYLES, categoryStyle } from "@/lib/places/categories";
+import { CATEGORY_STYLES, categoryStyle, STATUS_LABELS } from "@/lib/places/categories";
 import type { TagDefPayload } from "@/lib/places/payloads";
 import { BUILTIN_CATEGORIES, type Category, type Status } from "@/lib/places/types";
-import { Icon, StatusChip } from "@/lib/ui";
+import { Icon } from "@/lib/ui";
 import styles from "./entries.module.css";
 
-export function StatusToggle({ value, onChange, disabled }: { value: Status | null; onChange: (s: Status) => void; disabled?: boolean }) {
+/** Want to and Visited as two rubber stamps; the one that is on is inked in. */
+export function StatusToggle({ value, onChange, disabled, label = "Status" }: { value: Status | null; onChange: (s: Status) => void; disabled?: boolean; label?: string }) {
   return (
-    <div className={styles.row} role="group" aria-label="Status">
+    <div className={styles.stamps} role="group" aria-label={label}>
       {(["want", "visited"] as const).map((s) => (
-        <StatusChip key={s} status={s} on={value === s} onClick={() => onChange(s)} disabled={disabled === true} />
+        <button key={s} type="button" className={styles.stampbtn} aria-pressed={value === s} disabled={disabled} onClick={() => value !== s && onChange(s)}>
+          <span className={s === "want" ? styles.stampwant : `grit ${styles.stampvisited}`} aria-hidden />
+          {STATUS_LABELS[s]}
+        </button>
       ))}
     </div>
   );
@@ -36,12 +40,14 @@ export function CategoryPicker({ value, onChange }: { value: Category; onChange:
     <div className={styles.chips} role="group" aria-label="Category">
       {BUILTIN_CATEGORIES.map((c) => (
         <button key={c} type="button" className={styles.chip} aria-pressed={value === c} onClick={() => onChange(c)}>
-          {CATEGORY_STYLES[c].emoji} {CATEGORY_STYLES[c].label}
+          <Icon name={CATEGORY_STYLES[c].glyph} size="s" />
+          {CATEGORY_STYLES[c].label}
         </button>
       ))}
       {isCustom && (
         <button type="button" className={styles.chip} aria-pressed onClick={() => setAdding(true)}>
-          {categoryStyle(value).emoji} {categoryStyle(value).label}
+          <Icon name={categoryStyle(value).glyph} size="s" />
+          {categoryStyle(value).label}
         </button>
       )}
       {adding ? (
@@ -171,6 +177,12 @@ export interface BoardChoice {
 }
 
 const BOARD_ICONS = { personal: "lock", master: "globe", group: "users" } as const;
+/** The ink each board's stamp is pressed in. */
+const BOARD_INK: Record<BoardChoice["kind"], CSSProperties> = {
+  personal: { "--stamp": "var(--ink)", "--stamp-wash": "var(--page)" } as CSSProperties,
+  master: { "--stamp": "var(--indigo)", "--stamp-wash": "var(--indigo-wash)" } as CSSProperties,
+  group: { "--stamp": "var(--plum)", "--stamp-wash": "var(--plum-wash)" } as CSSProperties,
+};
 const BOARD_SHORT: Record<BoardChoice["kind"], string> = { personal: "Only you", master: "Everyone", group: "This group" };
 
 const BOARD_HINTS: Record<BoardChoice["kind"], string> = {
@@ -210,6 +222,7 @@ export function BoardPicker({
               type="button"
               className={styles.bopt}
               aria-pressed={on}
+              style={BOARD_INK[b.kind]}
               disabled={noPublic && b.kind === "master"}
               onClick={() => {
                 const next = pickBoard(boards, value, b.id);
