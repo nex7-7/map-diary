@@ -12,13 +12,5 @@
   // The API Worker serves map.snehilsinha.com/api/* through a route that runs
   // before this Custom Domain; everything else is the web app.
   "routes": [{ "pattern": "map.snehilsinha.com", "custom_domain": true }],
-  "observability": { "enabled": true },
-  "env": {
-    // A preview of a redesign beside the live site: its own Worker on its own subdomain,
-    // talking to the same API (the API Worker also routes v2.map.snehilsinha.com/api/*).
-    "v2": {
-      "name": "map-diary-web-v2",
-      "routes": [{ "pattern": "v2.map.snehilsinha.com", "custom_domain": true }]
-    }
-  }
+  "observability": { "enabled": true }
 }

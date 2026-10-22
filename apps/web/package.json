@@ -10,7 +10,6 @@
     "typecheck": "tsc --noEmit",
     "preview": "opennextjs-cloudflare build && opennextjs-cloudflare preview",
     "deploy": "opennextjs-cloudflare build && opennextjs-cloudflare deploy",
-    "deploy:v2": "opennextjs-cloudflare build && opennextjs-cloudflare deploy --env v2",
     "cf-typegen": "wrangler types --env-interface CloudflareEnv cloudflare-env.d.ts",
     "test": "vitest run",
     "map:dev": "scripts/dev-map-file.sh"
