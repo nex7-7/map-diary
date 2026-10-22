@@ -11,10 +11,12 @@
   position: relative;
   margin: max(16px, env(safe-area-inset-top)) 16px 0;
   height: 240px;
-  border-radius: 24px;
+  border-radius: 18px;
   overflow: hidden;
-  box-shadow: 0 0 0 1px var(--line);
-  background: var(--sea-soft);
+  border: 1.5px solid var(--ink);
+  box-shadow: 0 4px 0 var(--ink);
+  background: #d6e0df;
+  transform: rotate(-0.6deg);
 }
 
 .welcomeArt svg {
@@ -34,8 +36,10 @@
 
 .welcomeBody .lede {
   margin: 0;
+  font-family: var(--hand);
   color: var(--ink-2);
-  font-size: 15px;
+  font-size: 18px;
+  line-height: 1.35;
 }
 
 .welcomeButtons {
@@ -62,8 +66,11 @@
   .welcomeArt {
     margin: 0;
     height: auto;
+    border: 0;
+    border-right: 1.5px solid var(--ink);
     border-radius: 0;
     box-shadow: none;
+    transform: none;
   }
 
   .welcomeBody {
