@@ -60,7 +60,11 @@ export interface DiaryStorage {
 }
 
 /** Shared by both implementations so their rules cannot drift. */
-export function shouldReplace(existing: DiaryItem | undefined, incoming: DiaryItem, deletePending: boolean): boolean {
+export function shouldReplace(
+  existing: Pick<DiaryItem, "updatedAt"> | undefined,
+  incoming: Pick<DiaryItem, "updatedAt">,
+  deletePending: boolean,
+): boolean {
   if (deletePending) return false;
   return !existing || incoming.updatedAt > existing.updatedAt;
 }

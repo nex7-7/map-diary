@@ -67,7 +67,7 @@ Next.js, React and TypeScript on Cloudflare, with all decryption in the browser.
 
 - **Web app:** Next.js + React + TypeScript (strict), deployed to Cloudflare Workers (OpenNext adapter; evaluate vinext). Mostly client-rendered, since the server cannot read the data.
 - **API Worker:** a separate small Worker (Hono) for sync, invites, key backups, the resolver queue and the MCP server.
-- **On-device store:** IndexedDB holding decrypted items; keys as non-extractable WebCrypto keys where possible.
+- **On-device store:** IndexedDB holding the device's keys, decrypted items and pending places, each record sealed (AES-GCM) under a per-browser key made with WebCrypto as non-extractable, so a copy of the browser's files cannot be read elsewhere. Code running inside the open app can still use it.
 - **Crypto:** libsodium (libsodium-wrappers).
 - **Map:** MapLibre GL with a Mumbai PMTiles file from R2.
 - **Android:** Capacitor shell plus a custom Kotlin geofencing plugin. Target device: CMF Phone 1 (Nothing OS).

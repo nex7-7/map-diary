@@ -1,4 +1,13 @@
-import type { Envelope } from "@map-diary/crypto";
+import {
+  generateAtRestKey,
+  isAtRestKey,
+  isAtRestSealed,
+  openAtRest,
+  sealAtRest,
+  type AtRestKey,
+  type AtRestSealed,
+  type Envelope,
+} from "@map-diary/crypto";
 import { isCurrentDeviceState, type DeviceState } from "./device";
 import { shouldReplace, type DiaryItem, type DiaryStorage, type PulledPage } from "./storage";
 
@@ -14,6 +23,14 @@ const ALL = [DEVICE, ITEMS, OUTBOX, DELETES, META];
 
 const SELF = "self";
 const CURSOR = "cursor";
+const AT_REST_KEY = "atRestKey";
+const SEALED_FLAG = "sealed";
+
+/** An item as stored: id and time in the clear for the sync rules, the rest sealed. */
+interface StoredItem extends AtRestSealed {
+  id: string;
+  updatedAt: number;
+}
 
 function request<T>(req: IDBRequest<T>): Promise<T> {
   return new Promise((resolve, reject) => {
@@ -28,6 +45,25 @@ function done(tx: IDBTransaction): Promise<void> {
     tx.onerror = () => reject(tx.error);
     tx.onabort = () => reject(tx.error ?? new Error("IndexedDB transaction aborted"));
   });
+}
+
+/**
+ * The database's at-rest key, made on first use and kept in `store` under a fixed name. The
+ * browser stores the key itself, never its bytes. Read on every use, so a store cleared in
+ * another tab gets a new key rather than a stale one.
+ */
+export async function loadAtRestKey(db: IDBDatabase, store: string): Promise<AtRestKey> {
+  const read = db.transaction(store, "readonly");
+  const existing: unknown = await request(read.objectStore(store).get(AT_REST_KEY));
+  if (isAtRestKey(existing)) return existing;
+  const fresh = await generateAtRestKey();
+  // Another tab may have made one meanwhile: keep whichever was stored first.
+  const tx = db.transaction(store, "readwrite");
+  const s = tx.objectStore(store);
+  const raced: unknown = await request(s.get(AT_REST_KEY));
+  if (!isAtRestKey(raced)) s.put(fresh, AT_REST_KEY);
+  await done(tx);
+  return isAtRestKey(raced) ? raced : fresh;
 }
 
 export function openDiaryDb(factory: IDBFactory = indexedDB, name = IDB_NAME): Promise<IDBDatabase> {
@@ -48,18 +84,25 @@ export function openDiaryDb(factory: IDBFactory = indexedDB, name = IDB_NAME): P
 }
 
 /**
- * The browser store. Decrypted items and this device's keys live here and nowhere else;
- * the app must be installed to the Home Screen on iOS so Safari does not evict it.
+ * The browser store. Items and this device's keys live here and nowhere else, sealed under
+ * the database's at-rest key (see `loadAtRestKey`); outbox envelopes are already ciphertext.
+ * The app must be installed to the Home Screen on iOS so Safari does not evict it.
  */
 export class IdbStorage implements DiaryStorage {
   constructor(private readonly db: IDBDatabase) {}
 
   static async open(factory?: IDBFactory, name?: string): Promise<IdbStorage> {
-    return new IdbStorage(await openDiaryDb(factory, name));
+    const storage = new IdbStorage(await openDiaryDb(factory, name));
+    await storage.sealPlainRecords();
+    return storage;
   }
 
   close(): void {
     this.db.close();
+  }
+
+  private key(): Promise<AtRestKey> {
+    return loadAtRestKey(this.db, META);
   }
 
   private async read<T>(store: string, fn: (s: IDBObjectStore) => IDBRequest<T>): Promise<T> {
@@ -69,15 +112,55 @@ export class IdbStorage implements DiaryStorage {
     return result;
   }
 
+  private async sealItem(key: AtRestKey, item: DiaryItem): Promise<StoredItem> {
+    return { id: item.id, updatedAt: item.updatedAt, ...(await sealAtRest(key, `${ITEMS}:${item.id}`, item)) };
+  }
+
+  /** Opens a stored item; one stored before sealing existed is returned as it is. */
+  private async openItem(key: AtRestKey, stored: unknown): Promise<DiaryItem | undefined> {
+    if (stored === undefined) return undefined;
+    if (!isAtRestSealed(stored)) return stored as DiaryItem;
+    const { id } = stored as StoredItem;
+    return (await openAtRest(key, `${ITEMS}:${id}`, stored)) as DiaryItem;
+  }
+
+  /** Seals the device and items a version of the app before sealing stored in the clear. */
+  private async sealPlainRecords(): Promise<void> {
+    if ((await this.read<unknown>(META, (s) => s.get(SEALED_FLAG))) === true) return;
+    const key = await this.key();
+    const device = await this.read<unknown>(DEVICE, (s) => s.get(SELF) as IDBRequest<unknown>);
+    const items = await this.read<unknown[]>(ITEMS, (s) => s.getAll());
+    const sealedDevice =
+      device !== undefined && !isAtRestSealed(device) ? await sealAtRest(key, `${DEVICE}:${SELF}`, device) : undefined;
+    const sealedItems = await Promise.all(
+      items.filter((i) => !isAtRestSealed(i)).map((i) => this.sealItem(key, i as DiaryItem)),
+    );
+    const tx = this.db.transaction([DEVICE, ITEMS, META], "readwrite");
+    if (sealedDevice) tx.objectStore(DEVICE).put(sealedDevice, SELF);
+    for (const item of sealedItems) tx.objectStore(ITEMS).put(item);
+    tx.objectStore(META).put(true, SEALED_FLAG);
+    await done(tx);
+  }
+
   async loadDevice() {
     const stored = await this.read<unknown>(DEVICE, (s) => s.get(SELF) as IDBRequest<unknown>);
+    let device: unknown = stored;
+    if (isAtRestSealed(stored)) {
+      try {
+        device = await openAtRest(await this.key(), `${DEVICE}:${SELF}`, stored);
+      } catch {
+        // Sealed under a key that is gone (storage cleared in another tab): sign in again.
+        return undefined;
+      }
+    }
     // An older device format cannot unwrap account-wrapped board keys; it signs in again.
-    return isCurrentDeviceState(stored) ? stored : undefined;
+    return isCurrentDeviceState(device) ? device : undefined;
   }
 
   async saveDevice(device: DeviceState) {
+    const sealed = await sealAtRest(await this.key(), `${DEVICE}:${SELF}`, device);
     const tx = this.db.transaction(DEVICE, "readwrite");
-    tx.objectStore(DEVICE).put(device, SELF);
+    tx.objectStore(DEVICE).put(sealed, SELF);
     await done(tx);
   }
 
@@ -88,11 +171,16 @@ export class IdbStorage implements DiaryStorage {
   }
 
   async listItems() {
-    return this.read<DiaryItem[]>(ITEMS, (s) => s.getAll() as IDBRequest<DiaryItem[]>);
+    const key = await this.key();
+    const stored = await this.read<unknown[]>(ITEMS, (s) => s.getAll());
+    const items = await Promise.all(stored.map((s) => this.openItem(key, s).catch(() => undefined)));
+    return items.filter((i): i is DiaryItem => i !== undefined);
   }
 
   async getItem(id: string) {
-    return this.read<DiaryItem | undefined>(ITEMS, (s) => s.get(id) as IDBRequest<DiaryItem | undefined>);
+    const key = await this.key();
+    const stored = await this.read<unknown>(ITEMS, (s) => s.get(id));
+    return this.openItem(key, stored).catch(() => undefined);
   }
 
   async getCursor() {
@@ -101,15 +189,18 @@ export class IdbStorage implements DiaryStorage {
   }
 
   async applyPull(page: PulledPage) {
+    // Seal first: a transaction closes if it waits on anything but its own requests.
+    const key = await this.key();
+    const sealed = await Promise.all(page.items.map((item) => this.sealItem(key, item)));
     const tx = this.db.transaction([ITEMS, OUTBOX, DELETES, META], "readwrite");
     const items = tx.objectStore(ITEMS);
     const outbox = tx.objectStore(OUTBOX);
     const deletes = tx.objectStore(DELETES);
     const changed: string[] = [];
 
-    for (const item of page.items) {
+    for (const item of sealed) {
       const [existing, pendingDelete] = await Promise.all([
-        request(items.get(item.id) as IDBRequest<DiaryItem | undefined>),
+        request(items.get(item.id) as IDBRequest<{ updatedAt: number } | undefined>),
         request(deletes.count(item.id)),
       ]);
       if (shouldReplace(existing, item, pendingDelete > 0)) {
@@ -129,8 +220,9 @@ export class IdbStorage implements DiaryStorage {
   }
 
   async writeLocal(item: DiaryItem, envelope: Envelope) {
+    const sealed = await this.sealItem(await this.key(), item);
     const tx = this.db.transaction([ITEMS, OUTBOX], "readwrite");
-    tx.objectStore(ITEMS).put(item);
+    tx.objectStore(ITEMS).put(sealed);
     tx.objectStore(OUTBOX).put(envelope);
     await done(tx);
   }
