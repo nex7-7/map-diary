@@ -111,7 +111,7 @@ export function PlaceView({ diary, placeId }: { diary: Diary; placeId: string })
     // Applying one's own tag to the wider boards widens its definition to match.
     if (
       fit.canWiden &&
-      (await ask({ title: `Show “${def.name}” on ${where} too?`, body: `The tag isn't visible on ${where} yet.`, confirmLabel: `Show it on ${where}`, cancelLabel: "Not now" }))
+      (await ask({ title: `Show “${def.name}” on ${where} too?`, body: `The tag isn't visible on ${where} yet.`, confirmLabel: `Show it on ${where}` }))
     ) {
       return applyTag(diary, place.id, tagId, tagBoards, visibleOn);
     }
