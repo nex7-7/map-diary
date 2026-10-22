@@ -9,7 +9,7 @@ import { useItems } from "@/app/_entries/use-items";
 import styles from "@/app/_entries/entries.module.css";
 import { Avatar } from "@/app/_account/parts";
 import { sealDate } from "@/app/diary/places-list";
-import { BoardBadge, buttonClass, Icon } from "@/lib/ui";
+import { BoardBadge, buttonClass, Icon, useConfirm } from "@/lib/ui";
 import { PlaceMap } from "./place-map";
 import p from "./place.module.css";
 import type { Diary } from "@/lib/device";
@@ -40,6 +40,7 @@ export function PlaceView({ diary, placeId }: { diary: Diary; placeId: string })
   const router = useRouter();
   const { loaded, items, snapshot } = useItems(diary);
   const [editing, setEditing] = useState(false);
+  const [ask, confirmSheet] = useConfirm();
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
@@ -108,7 +109,10 @@ export function PlaceView({ diary, placeId }: { diary: Diary; placeId: string })
     if (fit.outside.length === 0) return applyTag(diary, place.id, tagId, tagBoards, visibleOn);
     const where = fit.outside.map((id) => boardName(snapshot, id)).join(", ");
     // Applying one's own tag to the wider boards widens its definition to match.
-    if (fit.canWiden && confirm(`“${def.name}” isn't visible on ${where}. Show the tag on ${where} too?`)) {
+    if (
+      fit.canWiden &&
+      (await ask({ title: `Show “${def.name}” on ${where} too?`, body: `The tag isn't visible on ${where} yet.`, confirmLabel: `Show it on ${where}`, cancelLabel: "Not now" }))
+    ) {
       return applyTag(diary, place.id, tagId, tagBoards, visibleOn);
     }
     if (fit.fits.length === 0) throw new EntryError(`“${def.name}” isn't visible on ${where}, so it can't be applied there.`);
@@ -384,9 +388,9 @@ export function PlaceView({ diary, placeId }: { diary: Diary; placeId: string })
                 <button
                   type="button"
                   className="chip soft text-seal-deep"
-                  onClick={() => {
+                  onClick={async () => {
                     const what = focus ? `the ${outletLabel(place, focus)} location of ${place.name}` : place.name;
-                    if (!confirm(`Delete ${what} and your notes on it?`)) return;
+                    if (!(await ask({ title: `Delete ${what}?`, body: "Your notes on it are deleted too.", confirmLabel: "Delete", danger: true }))) return;
                     run(async () => {
                       await deletePlace(diary, item.id);
                       router.push("/");
@@ -400,6 +404,7 @@ export function PlaceView({ diary, placeId }: { diary: Diary; placeId: string })
           )}
         </article>
       </div>
+      {confirmSheet}
     </div>
   );
 }
@@ -447,6 +452,7 @@ interface CommentRowProps {
 function CommentRow({ comment, snapshot, mine, scope, onEdit, onDelete }: CommentRowProps) {
   const [editing, setEditing] = useState(false);
   const [text, setText] = useState(comment.text);
+  const [ask, confirmSheet] = useConfirm();
   const me = mine ? comment.authorId : "";
 
   return (
@@ -493,8 +499,8 @@ function CommentRow({ comment, snapshot, mine, scope, onEdit, onDelete }: Commen
                 <button
                   type="button"
                   className={styles.textbutton}
-                  onClick={() => {
-                    if (confirm("Delete this comment?")) onDelete();
+                  onClick={async () => {
+                    if (await ask({ title: "Delete this comment?", confirmLabel: "Delete", danger: true })) onDelete();
                   }}
                 >
                   Delete
@@ -504,6 +510,7 @@ function CommentRow({ comment, snapshot, mine, scope, onEdit, onDelete }: Commen
           </div>
         </>
       )}
+      {confirmSheet}
     </li>
   );
 }

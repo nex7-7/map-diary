@@ -1,4 +1,4 @@
-import type { JsonValue } from "@map-diary/crypto";
+import { MUMBAI_BOUNDS, type JsonValue } from "@map-diary/crypto";
 import { readPayload, type PlacePayload } from "../places/payloads";
 import { normaliseChainName } from "../places/chains";
 import type { Category, LngLat, PlaceChain } from "../places/types";
@@ -36,6 +36,7 @@ export function buildFacts(form: FactsForm, chainFor?: (name: string) => PlaceCh
   const name = form.name.trim();
   if (!name) return { ok: false, message: "Give the place a name" };
   if (!form.location) return { ok: false, message: "Put the place on the map" };
+  if (!inMumbai(form.location)) return { ok: false, message: "That's outside Mumbai. The diary only covers Mumbai for now." };
 
   const facts: PlacePayload = {
     name: name.slice(0, 120),
@@ -100,4 +101,10 @@ export function customCategory(label: string): Category | null {
     .replace(/^-+|-+$/g, "")
     .slice(0, 40);
   return slug ? `custom:${slug}` : null;
+}
+
+/** The same bounds the resolver and the Claude tools check: a place outside them never enters the catalogue. */
+function inMumbai({ lng, lat }: LngLat): boolean {
+  const [west, south, east, north] = MUMBAI_BOUNDS;
+  return lng >= west && lng <= east && lat >= south && lat <= north;
 }

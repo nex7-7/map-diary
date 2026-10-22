@@ -127,6 +127,8 @@ describe("buildFacts", () => {
   it("needs a name and a location", () => {
     expect(buildFacts(form({ name: " " }))).toMatchObject({ ok: false });
     expect(buildFacts(form({ location: null }))).toMatchObject({ ok: false });
+    // Shaniwar Wada, Pune: a Google Maps link outside Mumbai.
+    expect(buildFacts(form({ location: { lng: 73.8553, lat: 18.5195 } }))).toMatchObject({ ok: false, message: expect.stringContaining("outside Mumbai") });
   });
 
   it("keeps the wallet bleeder to food and drink, and needs both halves", () => {
