@@ -1,0 +1,89 @@
+/* Boards: postcards from friends and the board's list, on the notebook page. */
+
+.scroll {
+  scrollbar-width: none;
+}
+
+.scroll::-webkit-scrollbar {
+  display: none;
+}
+
+.face {
+  flex: none;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  font-family: var(--serif);
+  color: var(--cream);
+  object-fit: cover;
+}
+
+.ring {
+  background: var(--page);
+  color: var(--ink-2);
+  border: 1.6px dashed var(--graphite);
+  font-family: var(--sans);
+}
+
+.mini {
+  box-shadow: 0 0 0 2px var(--page);
+}
+
+.cards {
+  display: flex;
+  gap: 14px;
+  overflow-x: auto;
+  padding: 10px 16px 18px 48px;
+}
+
+.postcard {
+  flex: none;
+  width: 156px;
+  background: var(--page);
+  border: 1.5px solid var(--ink);
+  border-radius: 10px;
+  overflow: hidden;
+  box-shadow: 0 4px 0 rgb(32 31 27 / 0.16);
+  color: var(--ink);
+  text-decoration: none;
+  display: flex;
+  flex-direction: column;
+  transition: transform 0.35s var(--ease-spring);
+}
+
+.postcard:hover {
+  transform: rotate(0deg) translateY(-4px) !important;
+}
+
+/* The postcard's picture: a scrap of the ink map, hatched sea and a pin. */
+.win {
+  position: relative;
+  height: 92px;
+  overflow: hidden;
+  border-bottom: 1.5px solid var(--ink);
+  background:
+    repeating-linear-gradient(135deg, transparent 0 7px, rgb(46 75 90 / 0.28) 7px 8px) 0 0 / 38% 100% no-repeat,
+    linear-gradient(90deg, #d6e0df 38%, transparent 38%),
+    linear-gradient(0deg, transparent 47%, #fbf6ea 47%, #fbf6ea 53%, transparent 53%),
+    linear-gradient(90deg, transparent 63%, #fbf6ea 63%, #fbf6ea 67%, transparent 67%),
+    #f1ead9;
+}
+
+.pinVisited,
+.pinWant {
+  position: absolute;
+  left: 64px;
+  top: 28px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+}
+
+.pinVisited {
+  filter: drop-shadow(0 2px 0 var(--ink));
+}
+
+.pinWant {
+  outline: 1.6px dashed var(--graphite);
+  outline-offset: 3px;
+}

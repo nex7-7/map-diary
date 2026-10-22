@@ -27,7 +27,8 @@
   justify-self: start;
   margin-bottom: -14px;
   color: var(--ink-2);
-  font-size: 13px;
+  font-family: var(--hand);
+  font-size: 16px;
   text-decoration: none;
 }
 
@@ -59,10 +60,14 @@
   align-content: start;
 }
 
+/* An index card: page paper with an inked edge. */
 .card {
-  background: var(--surface);
-  border: 1px solid var(--line);
-  border-radius: 16px;
+  background: var(--page) var(--paper-tex);
+  background-size: 256px;
+  background-blend-mode: multiply;
+  border: 1.5px solid var(--ink);
+  border-radius: 14px;
+  box-shadow: 0 4px 0 rgb(32 31 27 / 0.14);
   padding: 16px;
   display: grid;
   gap: 12px;
@@ -76,7 +81,8 @@
 }
 
 .card.ready {
-  border: 1.5px solid var(--visited);
+  border: 2px solid var(--seal);
+  box-shadow: 0 4px 0 var(--seal);
 }
 
 /* A card that is one big button, like "Add a device". */
@@ -91,7 +97,12 @@
 }
 
 .action:hover {
-  border-color: var(--ink-3);
+  transform: translateY(-2px) rotate(-0.4deg);
+  box-shadow: 0 6px 0 rgb(32 31 27 / 0.18);
+}
+
+.action {
+  transition: transform 0.25s var(--ease-spring), box-shadow 0.2s;
 }
 
 .actions2 {
@@ -131,7 +142,7 @@
   gap: 12px;
   align-items: center;
   padding: 12px 0;
-  border-bottom: 1px solid var(--line);
+  border-bottom: 1px dashed var(--rule-ink);
   min-width: 0;
 }
 
@@ -161,8 +172,8 @@
 
 .name {
   font-family: var(--serif);
-  font-weight: 600;
-  font-size: 18px;
+  font-weight: 400;
+  font-size: 19px;
   line-height: 1.2;
   overflow-wrap: anywhere;
 }
@@ -181,9 +192,9 @@
 }
 
 .linkRow:hover .name {
-  text-decoration: underline;
-  text-decoration-thickness: 1px;
-  text-underline-offset: 3px;
+  text-decoration: underline wavy var(--seal);
+  text-decoration-thickness: 1.2px;
+  text-underline-offset: 4px;
 }
 
 .iconTile {
@@ -192,19 +203,22 @@
   place-items: center;
   width: 40px;
   height: 40px;
-  border-radius: 12px;
-  background: var(--surface-2);
+  border-radius: 10px;
+  border: 1.5px solid var(--ink);
+  background: var(--page);
   color: var(--ink);
 }
 
 .iconTile.claude {
-  background: var(--claude-soft);
-  color: var(--claude);
+  border-color: var(--clay);
+  background: var(--clay-wash);
+  color: var(--clay);
 }
 
 .iconTile.danger {
-  background: var(--danger-soft);
-  color: var(--danger);
+  border-color: var(--seal-deep);
+  background: var(--seal-wash);
+  color: var(--seal-deep);
 }
 
 .iconTile.large {
@@ -219,9 +233,9 @@
   width: 36px;
   height: 36px;
   border-radius: 50%;
-  border: 1px solid var(--line);
-  background: none;
-  color: var(--ink-2);
+  border: 1.5px solid var(--ink);
+  background: var(--page);
+  color: var(--ink);
   cursor: pointer;
   padding: 0;
 }
@@ -266,27 +280,31 @@
 }
 
 .label {
-  font-size: 12px;
-  font-weight: 500;
-  color: var(--ink-2);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--ink-3);
 }
 
 .input {
   width: 100%;
   min-width: 0;
-  background: var(--paper);
-  border: 1px solid var(--line);
+  background: var(--page);
+  border: 1.5px solid var(--ink);
   border-radius: 12px;
-  padding: 12px 14px;
+  box-shadow: 0 3px 0 var(--ink);
+  padding: 11px 14px;
   font: inherit;
   font-size: 16px; /* 16px keeps iOS Safari from zooming in */
   color: var(--ink);
+  transition: box-shadow 0.12s, transform 0.12s;
 }
 
 .input:focus {
   outline: none;
-  border-color: var(--ink);
-  box-shadow: inset 0 0 0 0.5px var(--ink);
+  box-shadow: 0 1px 0 var(--ink);
+  transform: translateY(2px);
 }
 
 .input::placeholder {
@@ -319,29 +337,33 @@ textarea.input {
 
 .hint {
   margin: 0;
-  font-size: 13px;
+  font-family: var(--hand);
+  font-size: 15px;
+  line-height: 1.35;
   color: var(--ink-3);
 }
 
 .error {
   margin: 0;
-  font-size: 13px;
-  color: var(--danger);
+  font-family: var(--hand);
+  font-size: 15.5px;
+  color: var(--seal-deep);
 }
 
 .okText {
   margin: 0;
-  font-size: 13px;
-  color: var(--visited);
+  font-family: var(--hand);
+  font-size: 15.5px;
+  color: var(--forest);
 }
 
 /* A short code read across from one screen to another. */
 .bigCode {
   margin: 0;
   padding: 14px;
-  border: 1px dashed var(--line);
+  border: 1.5px dashed var(--ink-3);
   border-radius: 12px;
-  background: var(--paper);
+  background: var(--page);
   font-family: ui-monospace, "SF Mono", Menlo, monospace;
   font-size: 26px;
   letter-spacing: 0.12em;
@@ -361,15 +383,17 @@ textarea.input {
   display: flex;
   gap: 10px;
   align-items: flex-start;
-  background: var(--claude-soft);
+  background: var(--clay-wash);
+  border: 1.5px dashed var(--clay);
   border-radius: 12px;
   padding: 12px;
-  font-size: 13px;
+  font-size: 13.5px;
   margin: 0;
 }
 
 .note.warn {
-  background: var(--want-soft);
+  background: var(--seal-wash);
+  border-color: var(--seal-deep);
 }
 
 .note > :global(svg) {
@@ -383,6 +407,8 @@ textarea.input {
   border-radius: 12px;
   background: #fff;
   padding: 8px;
+  border: 1.5px solid var(--ink);
+  box-shadow: 0 4px 0 var(--ink);
 }
 
 /* People */
@@ -393,7 +419,7 @@ textarea.input {
   width: 34px;
   height: 34px;
   border-radius: 50%;
-  border: 2px solid var(--surface);
+  border: 1.5px solid var(--ink);
   font-weight: 600;
   font-size: 13px;
 }
@@ -408,7 +434,7 @@ textarea.input {
 .avatar.small {
   width: 22px;
   height: 22px;
-  border: 0;
+  border-width: 1px;
   font-size: 10px;
 }
 
@@ -445,8 +471,8 @@ img.avatar {
 }
 
 .tone3 {
-  background: var(--visited-soft);
-  color: var(--visited);
+  background: var(--clay-wash);
+  color: var(--clay);
 }
 
 .faces {
@@ -486,14 +512,15 @@ img.avatar {
 .meter {
   height: 6px;
   border-radius: 3px;
-  background: var(--surface-2);
+  border: 1px solid var(--ink);
+  background: var(--page);
   overflow: hidden;
 }
 
 .meter > span {
   display: block;
   height: 100%;
-  background: var(--visited);
+  background: var(--seal);
 }
 
 /* The first line of a sheet: an icon or title, and its close button. */
