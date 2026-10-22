@@ -22,7 +22,7 @@ import { groupNames, profilesOf } from "@/lib/places/items-source";
 import type { AvatarPayload } from "@/lib/places/payloads";
 import { memberName } from "./people";
 
-export { GroupError, inviteSecretFrom, GROUP_NAME_MAX, MAX_GROUP_MEMBERS, type OpenedInvite } from "@map-diary/sync";
+export { GroupError, inviteSecretFrom, readInviteSecret, GROUP_NAME_MAX, MAX_GROUP_MEMBERS, type OpenedInvite } from "@map-diary/sync";
 
 export interface Group {
   id: string;

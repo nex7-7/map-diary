@@ -83,6 +83,7 @@ export {
   createGroup,
   createGroupInvite,
   inviteSecretFrom,
+  readInviteSecret,
   leaveGroup,
   listGroups,
   readGroupInvite,

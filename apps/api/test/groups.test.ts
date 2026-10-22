@@ -21,6 +21,7 @@ import {
   createGroup,
   createGroupInvite,
   inviteSecretFrom,
+  readInviteSecret,
   leaveGroup,
   listGroups,
   readGroupInvite,
@@ -143,6 +144,7 @@ describe("groups", () => {
     const { secret } = await createGroupInvite(api, snehil.device, groupId, "Bandra lot");
     const link = `https://map.snehilsinha.com/join#${secret}`;
     expect(inviteSecretFrom(link)).toBe(secret);
+    expect(await readInviteSecret(link)).toBe(secret);
 
     // The Worker never saw the secret or the token, only values derived from it.
     const invite = await env.DB.prepare("SELECT * FROM invites WHERE id = ?").bind(groupInviteId(secret)).first();

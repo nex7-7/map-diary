@@ -5,7 +5,7 @@ import { useEffect, useRef, useState } from "react";
 import { AccountPage, IconTile, accountStyles as s } from "@/app/_account/parts";
 import { groupErrorMessage } from "@/app/groups/messages";
 import type { Diary } from "@/lib/device";
-import { inviteSecretFrom, joinGroup, previewInvite, type OpenedInvite } from "@/lib/groups";
+import { joinGroup, previewInvite, readInviteSecret, type OpenedInvite } from "@/lib/groups";
 import { Button, ButtonLink } from "@/lib/ui";
 
 /** `/join#<secret>`: a group invite link. The secret after the `#` never reaches the server. */
@@ -23,16 +23,27 @@ function Join({ diary }: { diary: Diary }) {
   const [invite, setInvite] = useState<OpenedInvite | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const read = useRef<string | null | undefined>(undefined);
+  const read = useRef<Promise<string | null> | undefined>(undefined);
 
   useEffect(() => {
-    read.current ??= inviteSecretFrom(window.location.hash);
-    const secretRead = read.current;
-    setSecret(secretRead);
-    // Keep the secret out of the address bar and history once read.
-    if (secretRead) window.history.replaceState(null, "", window.location.pathname);
-    if (!secretRead) return;
-    previewInvite(diary, secretRead).then(setInvite, (err: unknown) => setError(groupErrorMessage(err)));
+    // Read the hash once, and only after libsodium has loaded: checking the secret needs it,
+    // and on a freshly opened link it may not be ready yet.
+    read.current ??= readInviteSecret(window.location.hash);
+    let live = true;
+    void read.current.then((secretRead) => {
+      if (!live) return;
+      setSecret(secretRead);
+      // Keep the secret out of the address bar and history once read.
+      if (secretRead) window.history.replaceState(null, "", window.location.pathname);
+      if (!secretRead) return;
+      previewInvite(diary, secretRead).then(
+        (opened) => live && setInvite(opened),
+        (err: unknown) => live && setError(groupErrorMessage(err)),
+      );
+    });
+    return () => {
+      live = false;
+    };
   }, [diary]);
 
   async function join() {

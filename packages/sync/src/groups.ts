@@ -147,6 +147,12 @@ export function inviteSecretFrom(text: string): string | null {
   return isGroupInviteSecret(candidate) ? candidate : null;
 }
 
+/** `inviteSecretFrom` for a page that may run before libsodium has loaded, such as a freshly opened `/join` link. */
+export async function readInviteSecret(text: string): Promise<string | null> {
+  await ready();
+  return inviteSecretFrom(text);
+}
+
 export interface OpenedInvite {
   groupId: string;
   groupName: string;
