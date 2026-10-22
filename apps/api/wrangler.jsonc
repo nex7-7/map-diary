@@ -24,5 +24,23 @@
   // Bearer token for the resolver (Claude's scheduled task). Set with
   // `wrangler secret put RESOLVER_TOKEN`; tests bind a fixed value.
   "secrets": { "required": ["RESOLVER_TOKEN"] },
-  "observability": { "enabled": true }
+  "observability": { "enabled": true },
+  "env": {
+    // A full copy for pre-launch testing on its own subdomain and empty database, so
+    // tests and wipes never touch production. Pairs with the web Worker's `staging` env.
+    "staging": {
+      "name": "map-diary-api-staging",
+      "routes": [{ "pattern": "staging.map.snehilsinha.com/api/*", "zone_name": "snehilsinha.com" }],
+      "d1_databases": [
+        {
+          "binding": "DB",
+          "database_name": "map-diary-staging",
+          "database_id": "406992d3-89ea-45df-89d6-1eb5061fe2f1",
+          "migrations_dir": "migrations"
+        }
+      ],
+      "r2_buckets": [{ "binding": "TILES", "bucket_name": "map-diary-tiles" }],
+      "triggers": { "crons": ["17 * * * *"] }
+    }
+  }
 }
