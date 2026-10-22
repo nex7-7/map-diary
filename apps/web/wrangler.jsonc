@@ -12,5 +12,12 @@
   // The API Worker serves map.snehilsinha.com/api/* through a route that runs
   // before this Custom Domain; everything else is the web app.
   "routes": [{ "pattern": "map.snehilsinha.com", "custom_domain": true }],
-  "observability": { "enabled": true }
+  "observability": { "enabled": true },
+  "env": {
+    // Pre-launch testing copy; the API Worker's `staging` env serves its /api/*.
+    "staging": {
+      "name": "map-diary-web-staging",
+      "routes": [{ "pattern": "staging.map.snehilsinha.com", "custom_domain": true }]
+    }
+  }
 }
