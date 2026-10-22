@@ -34,7 +34,7 @@ interface AdminData {
   members: MemberView[];
 }
 
-function Admin({ diary }: { diary: Diary }) {
+export function Admin({ diary }: { diary: Diary }) {
   const [data, setData] = useState<AdminData | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notes, setNotes] = useState<Record<string, string>>({});

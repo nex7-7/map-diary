@@ -6,6 +6,8 @@ import { useItems } from "@/app/_entries/use-items";
 import { AccountPage, accountStyles as s } from "@/app/_account/parts";
 import { ProfileEditor } from "@/app/_account/profile-editor";
 import { sealDate } from "@/app/diary/places-list";
+import { Admin } from "@/app/admin/admin-page";
+import { Devices } from "@/app/devices/devices-page";
 import { listDevices, type Diary } from "@/lib/device";
 import { useGroups } from "@/lib/groups";
 import { profilesOf } from "@/lib/places/items-source";
@@ -53,13 +55,13 @@ function You({ diary }: { diary: Diary }) {
   const master = canChooseBoards ? snapshot.boards.find((b) => b.kind === "master") : undefined;
   const avatar = mine?.avatar;
 
-  const contents: { href: string; title: string; value: string; claude?: boolean }[] = [
+  const contents: { href: string; title: string; value: string }[] = [
     { href: "/boards", title: "Boards and groups", value: String(snapshot.boards.length || (groups ? groups.length + 2 : "")) },
     { href: "/tags", title: "Tags", value: loaded ? String(mineTags) : "" },
-    { href: "/devices", title: "Devices", value: devices ? String(devices.count) : "" },
-    { href: "/devices", title: "Claude", value: devices ? (devices.claude ? "connected" : "not connected") : "", claude: devices?.claude === true },
-    ...(isAdmin ? [{ href: "/admin", title: "Admin", value: "only you" }] : []),
   ];
+  /** Which contents line is open: devices (and Claude, which is one of them), admin, or the profile. */
+  const [open, setOpen] = useState<"devices" | "admin" | "profile" | null>(null);
+  const toggle = (k: NonNullable<typeof open>) => (o: boolean) => setOpen(o ? k : null);
 
   return (
     <>
@@ -143,13 +145,43 @@ function You({ diary }: { diary: Diary }) {
           <Link key={c.title} href={c.href} className={y.toc}>
             <span>{c.title}</span>
             <span className={y.lead} aria-hidden />
-            <span className={y.val} style={c.claude ? { color: "var(--clay)" } : undefined}>
-              {c.value}
-            </span>
+            <span className={y.val}>{c.value}</span>
           </Link>
         ))}
+        <Collapsible open={open === "devices"} onOpenChange={toggle("devices")}>
+          <CollapsibleTrigger className={y.toc}>
+            <span>Devices and Claude</span>
+            <span className={y.lead} aria-hidden />
+            <span className={y.val} style={devices?.claude ? { color: "var(--clay)" } : undefined}>
+              {devices ? `${devices.count}${devices.claude ? ", Claude connected" : ""}` : ""}
+            </span>
+            <span className={y.chev}>
+              <Icon name="chevronRight" size="m" />
+            </span>
+          </CollapsibleTrigger>
+          <CollapsibleContent className="rise grid gap-6 pb-4">
+            <p className="hand m-0 text-[15.5px] text-ink-2">Each device holds its own key. Remove one you&apos;ve lost and your other devices move to new keys.</p>
+            <Devices diary={diary} />
+          </CollapsibleContent>
+        </Collapsible>
+        {isAdmin && (
+          <Collapsible open={open === "admin"} onOpenChange={toggle("admin")}>
+            <CollapsibleTrigger className={y.toc}>
+              <span>Admin</span>
+              <span className={y.lead} aria-hidden />
+              <span className={y.val}>only you</span>
+              <span className={y.chev}>
+                <Icon name="chevronRight" size="m" />
+              </span>
+            </CollapsibleTrigger>
+            <CollapsibleContent className="rise grid gap-6 pb-4">
+              <p className="hand m-0 text-[15.5px] text-ink-2">You can change shared facts and membership. You still can&apos;t read other people&apos;s boards.</p>
+              <Admin diary={diary} />
+            </CollapsibleContent>
+          </Collapsible>
+        )}
         {loaded && (
-          <Collapsible>
+          <Collapsible open={open === "profile"} onOpenChange={toggle("profile")}>
             <CollapsibleTrigger className={y.toc}>
               <span>Name and picture</span>
               <span className={y.lead} aria-hidden />

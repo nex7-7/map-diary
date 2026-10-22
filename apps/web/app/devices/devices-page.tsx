@@ -45,7 +45,7 @@ export function DevicesPage() {
 
 type Open = { kind: "add" } | { kind: "claude" } | { kind: "remove"; device: ListedDevice } | { kind: "passphrase" } | null;
 
-function Devices({ diary }: { diary: Diary }) {
+export function Devices({ diary }: { diary: Diary }) {
   const [overview, setOverview] = useState<AccountOverview | null>(null);
   const [loadFailed, setLoadFailed] = useState(false);
   const [open, setOpen] = useState<Open>(null);
