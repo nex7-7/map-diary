@@ -83,7 +83,7 @@
   color: var(--ink);
   text-align: left;
   text-decoration: none;
-  cursor: pointer;
+  cursor: var(--cursor-press);
 }
 
 .lead {

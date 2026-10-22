@@ -113,7 +113,7 @@
   background: var(--seal);
   color: var(--cream);
   box-shadow: 0 3px 0 var(--ink);
-  cursor: pointer;
+  cursor: var(--cursor-press);
   text-align: center;
   text-decoration: none;
 }
@@ -125,7 +125,7 @@
 
 .button:disabled {
   opacity: 0.5;
-  cursor: default;
+  cursor: var(--cursor);
 }
 
 .secondary {
