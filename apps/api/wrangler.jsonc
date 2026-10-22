@@ -8,7 +8,11 @@
   "workers_dev": false,
   // The web app owns map.snehilsinha.com as a Custom Domain; this route runs in
   // front of it for /api only, so both share one origin.
-  "routes": [{ "pattern": "map.snehilsinha.com/api/*", "zone_name": "snehilsinha.com" }],
+  "routes": [
+    { "pattern": "map.snehilsinha.com/api/*", "zone_name": "snehilsinha.com" },
+    // The design preview (the web Worker's `v2` env) talks to this same API on its own origin.
+    { "pattern": "v2.map.snehilsinha.com/api/*", "zone_name": "snehilsinha.com" }
+  ],
   "d1_databases": [
     {
       "binding": "DB",
