@@ -28,3 +28,6 @@ Thumbs.db
 # Web app: local map file for next dev, and the copied MapLibre worker
 apps/web/public/dev/
 apps/web/public/map/maplibre/
+
+# Private notes kept only on the owner's machine
+security/
