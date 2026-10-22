@@ -62,6 +62,9 @@ backupFetch.post("/key-backup/fetch", readBody, async (c) => {
   const body = c.var.body;
   const lookup = isObject(body) ? body.lookup : undefined;
   if (!isB64(lookup, LOOKUP_B64) || lookup.length !== LOOKUP_B64) return fail(c, 400, "bad_request");
+  // Each try is one passphrase guess, so a client gets only a few a minute.
+  const { success } = await c.env.BACKUP_LOOKUPS.limit({ key: c.req.header("cf-connecting-ip") ?? "unknown" });
+  if (!success) return fail(c, 429, "too_many_tries");
   const row = await c.env.DB.prepare(
     `SELECT k.account_id, k.v, k.kdf, k.kdf_salt, k.kdf_ops, k.kdf_mem, k.nonce, k.ciphertext
        FROM key_backups k JOIN accounts a ON a.id = k.account_id

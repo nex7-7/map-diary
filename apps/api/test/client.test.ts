@@ -47,7 +47,15 @@ await ready();
 const FAST_KDF = { opsLimit: 1, memLimit: 8 << 20 };
 const PASSPHRASE = "chai at marine drive";
 
-const api = new Api({ origin: "https://map.snehilsinha.com", fetch: (r) => exports.default.fetch(r) });
+// Each request looks like a new client, so the per-client lookup limit (tested in sync.test.ts)
+// does not trip across the many sign-ins here.
+let clientIp = 0;
+const asNewClient = (r: Request) => {
+  const headers = new Headers(r.headers);
+  headers.set("CF-Connecting-IP", `198.51.100.${++clientIp % 250}`);
+  return new Request(r, { headers });
+};
+const api = new Api({ origin: "https://map.snehilsinha.com", fetch: (r) => exports.default.fetch(asNewClient(r)) });
 
 async function expectSetupError(p: Promise<unknown>, code: string) {
   const err = await p.then(

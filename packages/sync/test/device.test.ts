@@ -27,8 +27,10 @@ describe("key bundle", () => {
 });
 
 describe("passphrase rules", () => {
-  it("needs at least 12 characters", () => {
-    expect(() => checkPassphrase("short one")).toThrow(SetupError);
-    expect(() => checkPassphrase("vada pav at 4am")).not.toThrow();
+  it("needs at least 12 characters and a hard-to-guess passphrase", async () => {
+    await expect(checkPassphrase("short one")).rejects.toThrow(SetupError);
+    await expect(checkPassphrase("password1234")).rejects.toMatchObject({ code: "passphrase_too_weak" });
+    await expect(checkPassphrase("qwertyuiop123")).rejects.toMatchObject({ code: "passphrase_too_weak" });
+    await expect(checkPassphrase("vada pav at 4am")).resolves.toBeUndefined();
   });
 });
