@@ -23,9 +23,9 @@ import {
   inviteSecretFrom,
   readInviteSecret,
   leaveGroup,
+  rotateGroupKey,
   listGroups,
   readGroupInvite,
-  removeGroupMember,
   type DeviceState,
   type DiaryItem,
 } from "@map-diary/sync";
@@ -186,7 +186,13 @@ describe("groups", () => {
     ).rejects.toThrow(/no key/);
   });
 
-  it("removes a member: their items go, and the group moves to a key they never get", async () => {
+  it("lets nobody remove another member; a member who leaves takes their items, and the key moves on", async () => {
+    // Members can only leave: there is no route for removing someone else.
+    const remove = await exports.default.fetch(
+      new Request(`https://map.snehilsinha.com/api/groups/${groupId}/members/${ravi.device.accountId}/remove`, { method: "POST", body: "{}" }),
+    );
+    expect(remove.status).toBe(404);
+
     const ravisComment = await ravi.write({
       type: "comment",
       placeId: "place-1",
@@ -203,7 +209,8 @@ describe("groups", () => {
     await asha.sync();
     expect((await asha.listItems()).map((i) => i.id)).toEqual(expect.arrayContaining([ravisComment.id, ravisBoth.id]));
 
-    await removeGroupMember(snehil, api, groupId, ravi.device.accountId);
+    await leaveGroup(ravi, api, groupId);
+    await asha.sync();
     const groups = await listGroups(api, snehil.device);
     expect(groups[0]!.keyVersion).toBe(2);
     expect(groups[0]!.members.map((m) => m.accountId).sort()).toEqual([asha.device.accountId, snehil.device.accountId].sort());
@@ -276,7 +283,7 @@ describe("groups", () => {
 
   it("drops open invites when the key moves on", async () => {
     const { secret } = await createGroupInvite(api, snehil.device, groupId, "Bandra lot");
-    await removeGroupMember(snehil, api, groupId, asha.device.accountId);
+    await rotateGroupKey(api, snehil.device, groupId);
     await expectGroupError(readGroupInvite(api, ravi.device, secret), "invite_not_found");
   });
 });

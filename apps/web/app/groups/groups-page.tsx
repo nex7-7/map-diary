@@ -10,7 +10,6 @@ import {
   inviteSecretFrom,
   leave,
   newGroup,
-  removeMember,
   renameGroupTo,
   useGroups,
   type Group,
@@ -27,7 +26,8 @@ export function GroupsPage() {
   );
 }
 
-type Confirm = { kind: "remove"; group: Group; accountId: string; name: string } | { kind: "leave"; group: Group } | null;
+/** Members can only leave a group; nobody removes anyone else. */
+type Confirm = { kind: "leave"; group: Group } | null;
 
 function Groups({ diary }: { diary: Diary }) {
   const { groups, failed, reload } = useGroups(diary);
@@ -54,7 +54,7 @@ function Groups({ diary }: { diary: Diary }) {
           <PasteInvite />
         </div>
       </div>
-      <Sheet open={confirm !== null} onClose={() => setConfirm(null)} label={confirm?.kind === "leave" ? "Leave a group" : "Remove a member"}>
+      <Sheet open={confirm !== null} onClose={() => setConfirm(null)} label="Leave a group">
         {confirm && (
           <ConfirmSheet
             diary={diary}
@@ -147,13 +147,9 @@ function GroupCard({
                   <span className={s.rowText}>
                     <span className={s.plainName}>{m.name}</span>
                   </span>
-                  {you ? (
+                  {you && (
                     <Button variant="ghost" size="m" className={s.dangerText} onClick={() => onConfirm({ kind: "leave", group })}>
                       Leave
-                    </Button>
-                  ) : (
-                    <Button variant="ghost" size="m" onClick={() => onConfirm({ kind: "remove", group, accountId: m.accountId, name: m.name })}>
-                      Remove
                     </Button>
                   )}
                 </li>
@@ -213,14 +209,12 @@ function ConfirmSheet({ diary, confirm, onCancel, onDone }: { diary: Diary; conf
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const group = confirm.group.name || "this group";
-  const leaving = confirm.kind === "leave";
 
   async function go() {
     setBusy(true);
     setError(null);
     try {
-      if (confirm.kind === "leave") await leave(diary, confirm.group.id);
-      else await removeMember(diary, confirm.group.id, confirm.accountId);
+      await leave(diary, confirm.group.id);
       onDone();
     } catch (err) {
       setError(groupErrorMessage(err));
@@ -234,18 +228,16 @@ function ConfirmSheet({ diary, confirm, onCancel, onDone }: { diary: Diary; conf
         <IconTile name="users" tone="danger" large />
         <CloseButton onClick={onCancel} />
       </div>
-      <h2 className="heading-m">{leaving ? `Leave ${group}?` : `Remove ${confirm.name} from ${group}?`}</h2>
+      <h2 className="heading-m">{`Leave ${group}?`}</h2>
       <p style={{ margin: 0, color: "var(--ink-2)" }}>
-        {leaving
-          ? "Everything you posted to it disappears for everyone in it, and the group gets a new key."
-          : `Everything ${confirm.name} posted to this group disappears for everyone, and the group gets a new key so they can’t see anything new.`}
+        Everything you posted to it disappears for everyone in it, and the group gets a new key.
       </p>
       {error && <p className={s.error}>{error}</p>}
       <Button variant="danger" block disabled={busy} onClick={() => void go()}>
-        {busy ? (leaving ? "Leaving…" : "Removing…") : leaving ? "Leave group" : "Remove"}
+        {busy ? "Leaving…" : "Leave group"}
       </Button>
       <Button variant="ghost" block disabled={busy} onClick={onCancel}>
-        {leaving ? "Stay" : "Keep them"}
+        Stay
       </Button>
     </>
   );

@@ -415,39 +415,6 @@ groups.post("/groups/:id/rotate", readBody, requireDevice, async (c) => {
 });
 
 /**
- * Removes another member. Their envelopes leave the group's board and the group moves to
- * a new key, wrapped for the remaining members, in one step. Any member may remove another.
- */
-groups.post("/groups/:id/members/:accountId/remove", readBody, requireDevice, async (c) => {
-  const body = c.var.body;
-  if (!isObject(body)) return fail(c, 400, "bad_request");
-  const { keyVersion } = body;
-  const keys = parseMemberKeys(body.memberKeys);
-  if (!isPositiveInt(keyVersion) || !keys) return fail(c, 400, "bad_request");
-  const target = c.req.param("accountId");
-  const { accountId } = c.var.device;
-  if (target === accountId) return fail(c, 400, "use_leave");
-  const db = c.env.DB;
-  const group = await loadGroup(db, c.req.param("id"), accountId);
-  if (!group) return fail(c, 404, "not_found");
-  if (!group.members.some((m) => m.account_id === target)) return fail(c, 404, "not_member");
-  const remaining = group.members.filter((m) => m.account_id !== target);
-  if (keyVersion !== group.board.key_version + 1 || !keysMatchMembers(keys, remaining)) {
-    return fail(c, 409, "stale");
-  }
-  const now = Date.now();
-  try {
-    await db.batch([
-      ...rotateStatements(db, group.board, keyVersion, keys, now),
-      ...leaveBoardStatements(db, group.board.id, target, now),
-    ]);
-  } catch {
-    return fail(c, 409, "stale");
-  }
-  return c.json({ id: group.board.id, keyVersion, removed: target });
-});
-
-/**
  * Leaves a group. The caller's envelopes leave its board at once. The caller must not pick
  * the next key, so the group is marked for rotation and a remaining member's device rotates
  * it on its next sync.

@@ -475,15 +475,6 @@ export class Api {
     );
   }
 
-  removeGroupMember(groupId: string, accountId: string, body: { keyVersion: number; memberKeys: MemberKeyBody[] }, signer: Signer) {
-    return this.call<{ id: string; keyVersion: number; removed: string }>(
-      "POST",
-      `/api/groups/${encodeURIComponent(groupId)}/members/${encodeURIComponent(accountId)}/remove`,
-      body,
-      signer,
-    );
-  }
-
   leaveGroup(groupId: string, signer: Signer) {
     return this.call<{ id: string; left: true }>("POST", `/api/groups/${encodeURIComponent(groupId)}/leave`, undefined, signer);
   }

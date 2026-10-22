@@ -87,7 +87,6 @@ export {
   leaveGroup,
   listGroups,
   readGroupInvite,
-  removeGroupMember,
   renameGroup,
   rotateGroupKey,
   type GroupErrorCode,

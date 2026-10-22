@@ -134,7 +134,7 @@ Keys sit at three levels: each board has a symmetric key, board keys are wrapped
 - **Passphrase backup:** the recovery seed and board keys, encrypted with a key derived from a passphrase (Argon2id) and stored on the server. Optional for friends (they can set one later); the recovery phrase is mandatory for everyone.
 - **Devices screen and revocation:** each person sees their devices (name, kind, added, last seen) and can revoke any other one. The server refuses the revoked device at once; one of the person's remaining devices then moves the account keys to the next version, re-wraps them for the remaining devices, and rotates every board the person is in (personal, master and their groups) so the revoked device cannot read anything new. Confirming a revoke needs the passphrase or the recovery phrase, because the next account keys and personal board key are derived from the recovery seed, which devices do not keep. The Worker enforces this: the new account key must carry a signature by the account signing key, which is also derived from the seed, and so must a replacement passphrase backup. The whole revoke is one Worker call; the other devices collect their copy of the new account key on their next sync, and a write sealed under the old key is refused and re-sealed. The admin can revoke any device on the app but still cannot read anyone's boards.
 - **Lost devices and recovery:** with another device, revoke the lost one there. With no other device, sign in with the passphrase or the recovery phrase on a new device, then revoke the old ones. The recovery phrase restores every board, because shared board keys are wrapped to account keys the seed derives. Losing every device, the passphrase and the recovery phrase means the data is unrecoverable; the admin cannot help.
-- **Removing a member:** the group key is rotated and re-wrapped for the remaining members. Removing someone from the app entirely also rotates the master key.
+- **Leaving a group:** nobody can remove another member from a group; people only leave. When someone leaves, a remaining member's device rotates the group key and re-wraps it for the others. When the admin removes someone from the app entirely, that person leaves all their groups and the master and group keys rotate.
 - **Devices as members:** my phone, my laptop browser, the Android app and the Claude connector are each separate devices (kind `web`, `android` or `claude`) with their own key, so any one can be revoked alone.
 - **Sync engine: custom, on libsodium.** Every item has exactly one author, so two people never edit the same item. Sync is last-write-wins per envelope, with no CRDT needed. Jazz (v2 trusts the server for access control; classic is in maintenance) and Evolu (single-secret shared owners, no per-member revocation, relay not on Workers) were considered and rejected.
 
@@ -157,7 +157,7 @@ Adding saves instantly on the device; everything slow happens afterwards.
 - **Inbox:** pending resolutions, results that need a choice between matches, and new items from friends.
 - **Place page:** all visible tags and comments with author and board badge, links, and Open in Google Maps.
 - **Tags:** create, edit and set the boards of custom tags and their descriptions.
-- **Groups:** create a group, invite by link, remove a member.
+- **Groups:** create a group, invite by link, leave a group (nobody can remove someone else).
 
 **View**
 
