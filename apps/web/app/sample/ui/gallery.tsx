@@ -14,11 +14,12 @@ import {
   MarkVisited,
   Pin,
   PlaceRow,
+  Seal,
   StatusChips,
   type IconName,
 } from "@/lib/ui";
 
-const SWATCHES = ["paper", "surface", "surface-2", "line", "ink", "ink-2", "ink-3", "visited", "want", "sea", "group", "danger", "claude"];
+const SWATCHES = ["paper", "page", "paper-deep", "rule-ink", "ink", "ink-2", "ink-3", "seal", "graphite", "indigo", "plum", "marker", "clay", "cover"];
 
 export function ComponentGallery() {
   const [status, setStatus] = useState<Status | undefined>("want");
@@ -29,7 +30,7 @@ export function ComponentGallery() {
     <AppShell current="map" inboxCount={3} who="Sample · admin" isAdmin>
       <div style={{ maxWidth: 880, margin: "0 auto", padding: "24px 20px 40px", display: "grid", gap: 32 }}>
         <div>
-          <p className="overline">Design system</p>
+          <p className="kicker">Design system</p>
           <h1 className="display-xl">Components</h1>
           <p className="sub">Tokens, type, icons and the shared pieces every screen is built from.</p>
         </div>
@@ -52,7 +53,7 @@ export function ComponentGallery() {
           <p className="heading-s">Kyani &amp; Co.</p>
           <p className="quote">“Closed on Sundays. Go before 1 pm or the pulav runs out.”</p>
           <p style={{ margin: 0 }}>Body text in Inter, for everything that isn&apos;t a heading or a place name.</p>
-          <p className="overline">Wallet bleeder</p>
+          <p className="kicker">Wallet bleeder</p>
         </Section>
 
         <Section title="Icons">
@@ -116,35 +117,34 @@ export function ComponentGallery() {
             <Badge tone="warn">Pending</Badge>
           </div>
           <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
-            <Pin kind="visited" emoji="🍛" />
-            <Pin kind="want" emoji="☕" />
-            <Pin kind="friend" emoji="🎬" />
-            <Pin kind="pending" emoji="📍" />
-            <Pin kind="visited" emoji="🍛" large />
+            <Pin kind="visited" category="restaurant" />
+            <Pin kind="want" category="cafe-bar" />
+            <Pin kind="friend" category="movies" />
+            <Pin kind="pending" category="custom:other" />
+            <Pin kind="visited" category="restaurant" large />
           </div>
         </Section>
 
         <Section title="Place rows">
-          <div style={{ border: "1px solid var(--line)", borderRadius: 16, overflow: "hidden" }}>
+          <div className="dot-grid" style={{ border: "1px solid var(--line)", overflow: "hidden" }}>
             <PlaceRow
-              emoji="🍛"
+              category="restaurant"
               name="Britannia & Co."
-              kind="visited"
               meta="Restaurant · Parsi · 1.6 km"
               dish={{ name: "Berry pulav", priceInr: 650 }}
               onOpen={() => {}}
               current
+              action={<Seal date="12 OCT" />}
             />
             <PlaceRow
-              emoji="🍢"
+              category="restaurant"
               name="Bademiya"
-              kind="want"
               meta="Restaurant · Mughlai · 70 m"
               dish={{ name: "Chicken baida roti", priceInr: 220 }}
               onOpen={() => {}}
               action={<MarkVisited placeName="Bademiya" onClick={() => {}} />}
             />
-            <PlaceRow emoji="☕" name="Kala Ghoda Café" kind="friend" meta="Aarav wants to go · Café/Bar" onOpen={() => {}} />
+            <PlaceRow category="cafe-bar" name="Kala Ghoda Café" meta="Aarav wants to go · Café/Bar" onOpen={() => {}} />
           </div>
         </Section>
       </div>

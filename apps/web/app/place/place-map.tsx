@@ -6,7 +6,7 @@ import { useEffect, useRef } from "react";
 import { addAttribution } from "@/lib/map/attribution";
 import { loadMapFile } from "@/lib/map/map-file";
 import { registerProtocol } from "@/lib/map/protocol";
-import { basemapStyle, drawPin, PINS_SOURCE, pinsCollection, type PinKind } from "@/lib/map/style";
+import { basemapStyle, drawMapImage, PINS_SOURCE, pinsCollection, type PinKind } from "@/lib/map/style";
 import type { LngLat, PlaceView } from "@/lib/places/types";
 
 /**
@@ -24,7 +24,6 @@ export function PlaceMap({ place, focus, kind, className }: { place: PlaceView; 
   useEffect(() => {
     const abort = new AbortController();
     let map: MapLibre | undefined;
-    const dark = window.matchMedia("(prefers-color-scheme: dark)");
     const center: [number, number] = [at.lng, at.lat];
     const show = () => {
       const place = latest.current;
@@ -33,7 +32,6 @@ export function PlaceMap({ place, focus, kind, className }: { place: PlaceView; 
       const listed = [{ place, status, mine: kind !== "friend", addedAt: "" }] as const;
       map?.getSource<GeoJSONSource>(PINS_SOURCE)?.setData(pinsCollection(listed, place.id));
     };
-    const onScheme = () => map?.setStyle(basemapStyle(location.origin, dark.matches));
 
     // The same on-device copy the main map reads (downloaded once, if it isn't saved yet).
     loadMapFile(() => {}, abort.signal)
@@ -42,7 +40,7 @@ export function PlaceMap({ place, focus, kind, className }: { place: PlaceView; 
         registerProtocol(file);
         map = new MapLibre({
           container: container.current,
-          style: basemapStyle(location.origin, dark.matches),
+          style: basemapStyle(location.origin),
           center,
           zoom: 15,
           interactive: false,
@@ -51,18 +49,16 @@ export function PlaceMap({ place, focus, kind, className }: { place: PlaceView; 
         addAttribution(map);
         map.setMissingStyleImageResolver((id) => {
           const ratio = window.devicePixelRatio || 1;
-          const image = drawPin(id, ratio);
+          const image = drawMapImage(id, ratio);
           if (image && map && !map.hasImage(id)) map.addImage(id, image, { pixelRatio: ratio });
         });
         map.on("style.load", show);
-        dark.addEventListener("change", onScheme);
       })
       .catch(() => {
         // No map file yet: the paper background stands in.
       });
     return () => {
       abort.abort();
-      dark.removeEventListener("change", onScheme);
       map?.remove();
     };
     // Rebuilt only when the place or its pin changes, not on every sync.

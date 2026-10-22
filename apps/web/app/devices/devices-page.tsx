@@ -117,13 +117,13 @@ function Devices({ diary }: { diary: Diary }) {
         <>
           {self && (
             <section className={s.sec}>
-              <h2 className="overline">This device</h2>
+              <h2 className="kicker">This device</h2>
               <ul className={s.list}>{row(self)}</ul>
             </section>
           )}
           {others.length > 0 && (
             <section className={s.sec}>
-              <h2 className="overline">Other devices</h2>
+              <h2 className="kicker">Other devices</h2>
               <ul className={s.list}>{others.map(row)}</ul>
             </section>
           )}
@@ -132,7 +132,7 @@ function Devices({ diary }: { diary: Diary }) {
 
       {overview && !loadFailed && (
         <section className={s.sec}>
-          <h2 className="overline">Keys</h2>
+          <h2 className="kicker">Keys</h2>
           <ul className={s.list}>
             <li className={s.row}>
               <IconTile name="key" />
@@ -356,10 +356,10 @@ function ConnectClaude({ diary, onClose, onConnected }: { diary: Diary; onClose:
         </p>
       </div>
       <div className={s.card} style={{ background: "var(--paper)" }}>
-        <p className="overline">Claude can read and add to</p>
+        <p className="kicker">Claude can read and add to</p>
         {line(true, "Public board", <BoardBadge kind="master" name="Public" />)}
         {line(true, "Your Personal board", <BoardBadge kind="personal" name="Personal" />)}
-        <p className="overline" style={{ marginTop: 4 }}>
+        <p className="kicker" style={{ marginTop: 4 }}>
           Claude can never see
         </p>
         {(groups ?? []).map((g) => (
@@ -371,7 +371,7 @@ function ConnectClaude({ diary, onClose, onConnected }: { diary: Diary; onClose:
       {secret ? (
         <>
           <section className={s.sec}>
-            <h3 className="overline">Paste these into Claude</h3>
+            <h3 className="kicker">Paste these into Claude</h3>
             <p className="sub" style={{ margin: 0 }}>
               In claude.ai, open Settings, then Connectors, and add a new custom connector. Keep the Map diary
               resolver connector as it is; this one is separate.

@@ -129,7 +129,7 @@ export function PlaceView({ diary, placeId }: { diary: Diary; placeId: string })
   const bleeder = place.signatureDish && (
     <div className={p.bleeder}>
       <div>
-        <p className="overline">Wallet bleeder</p>
+        <p className="kicker">Wallet bleeder</p>
         <p className="heading-m">{place.signatureDish.name}</p>
         <p className="sub">Their signature dish, one serving</p>
       </div>
@@ -174,7 +174,7 @@ export function PlaceView({ diary, placeId }: { diary: Diary; placeId: string })
           Places
         </Link>
         <header className={p.head}>
-          <p className="overline">
+          <p className="kicker">
             <span aria-hidden>{style.emoji}</span>&nbsp; {[style.label, place.cuisine].filter(Boolean).join(" · ")}
           </p>
           <h1 className="display-xl">{place.name}</h1>

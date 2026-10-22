@@ -1,7 +1,22 @@
 /**
- * Line icons from Lucide (ISC licence, https://lucide.dev), drawn on a 24px grid with a
- * 1.75 stroke. The same set is in the Figma file as Icon/* components.
+ * Line icons on a 24px grid. Most are from Lucide (ISC licence, https://lucide.dev); the
+ * navigation and category glyphs are the diary's own pencil drawings, written as plain paths
+ * so the map can draw them on its pins too (see CATEGORY_GLYPHS).
  */
+
+/** The category glyphs as bare path data, so the map can draw them with Path2D. */
+export const CATEGORY_GLYPHS = {
+  bowl: ["M3 12.5h18a9 9 0 0 1-18 0Z", "M8.5 9c0-1.7 1.2-1.7 1.2-3.6M12.7 9c0-1.7 1.2-1.7 1.2-3.6"],
+  cup: ["M5 9.5h12v4.2a6 6 0 0 1-12 0Z", "M17 10.8h1.6a2.4 2.4 0 0 1 0 4.8H17", "M9 4.2c0 1.4 1 1.4 1 3M13 4.2c0 1.4 1 1.4 1 3"],
+  film: ["M5.3 7h13.4a1.8 1.8 0 0 1 1.8 1.8v8.4a1.8 1.8 0 0 1-1.8 1.8H5.3a1.8 1.8 0 0 1-1.8-1.8V8.8A1.8 1.8 0 0 1 5.3 7Z", "m4 7 3.6-3.6M10 7l3.6-3.6M16 7l3.6-3.6"],
+  arch: ["M3.5 20.5h17M5.5 20.5V10L12 4.8l6.5 5.2v10.5", "M9.5 20.5v-5.4a2.5 2.5 0 0 1 5 0v5.4"],
+  umbrella: ["M4 11a8 8 0 0 1 16 0Z", "M12 11v7", "M3 20.5c1.5-1 3-1 4.5 0s3 1 4.5 0 3-1 4.5 0 3 1 4.5 0"],
+  spot: ["M12 21s-6.5-5.6-6.5-11a6.5 6.5 0 0 1 13 0c0 5.4-6.5 11-6.5 11Z", "M12 12.2a2.2 2.2 0 1 0 0-4.4 2.2 2.2 0 0 0 0 4.4Z"],
+} as const;
+
+export type GlyphName = keyof typeof CATEGORY_GLYPHS;
+
+const glyph = (name: GlyphName): string => CATEGORY_GLYPHS[name].map((d) => `<path d="${d}"/>`).join("");
 
 export const ICON_PATHS = {
   map: `<path d="M14.106 5.553a2 2 0 0 0 1.788 0l3.659-1.83A1 1 0 0 1 21 4.619v12.764a1 1 0 0 1-.553.894l-4.553 2.277a2 2 0 0 1-1.788 0l-4.212-2.106a2 2 0 0 0-1.788 0l-3.659 1.83A1 1 0 0 1 3 19.381V6.618a1 1 0 0 1 .553-.894l4.553-2.277a2 2 0 0 1 1.788 0z"/><path d="M15 5.764v15"/><path d="M9 3.236v15"/>`,
@@ -40,6 +55,18 @@ export const ICON_PATHS = {
   logout: `<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" x2="9" y1="12" y2="12"/>`,
   alert: `<circle cx="12" cy="12" r="10"/><line x1="12" x2="12" y1="8" y2="12"/><line x1="12" x2="12.01" y1="16" y2="16"/>`,
   layers: `<path d="m12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83Z"/><path d="m22 17.65-9.17 4.16a2 2 0 0 1-1.66 0L2 17.65"/><path d="m22 12.65-9.17 4.16a2 2 0 0 1-1.66 0L2 12.65"/>`,
+  // Navigation: a folded map, a ringed notebook, a pinboard and an envelope.
+  mapFold: `<path d="M3 6.5 9 4l6 2.5L21 4v13.5L15 20l-6-2.5L3 20Z"/><path d="M9 4v13.5M15 6.5V20"/>`,
+  notebook: `<path d="M6 3.5h11.5a1.5 1.5 0 0 1 1.5 1.5v15.5H7.5A1.5 1.5 0 0 1 6 19Z"/><path d="M4 7h3M4 11h3M4 15h3M10 8h6M10 12h4"/>`,
+  pinboard: `<rect x="3.5" y="5" width="17" height="14" rx="2"/><path d="M7.5 9.5h4v4h-4ZM14 9.5h3M14 13h2.5"/><circle cx="12" cy="5" r="1.4"/>`,
+  envelope: `<rect x="3" y="5.5" width="18" height="13" rx="2"/><path d="m3.5 7 8.5 6 8.5-6"/>`,
+  // Categories.
+  bowl: glyph("bowl"),
+  cup: glyph("cup"),
+  film: glyph("film"),
+  arch: glyph("arch"),
+  umbrella: glyph("umbrella"),
+  spot: glyph("spot"),
 } as const;
 
 export type IconName = keyof typeof ICON_PATHS;

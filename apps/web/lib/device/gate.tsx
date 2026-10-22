@@ -39,7 +39,7 @@ export function Welcome() {
       </div>
       <div className={s.welcomeBody}>
         <div style={{ display: "grid", gap: 10 }}>
-          <p className="overline">Private · end-to-end encrypted</p>
+          <p className="kicker">Private · end-to-end encrypted</p>
           <h1 className="display-xl">Mumbai Places Diary</h1>
           <p className={s.lede}>Where you’ve been and where you want to go, shared only with the people you choose.</p>
         </div>

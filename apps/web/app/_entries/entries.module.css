@@ -145,8 +145,8 @@
 }
 
 .segmented button[aria-pressed="true"] {
-  background: var(--fg);
-  color: var(--bg);
+  background: var(--ink);
+  color: var(--page);
 }
 
 .dot {
@@ -292,7 +292,7 @@
 }
 
 .links a {
-  color: var(--accent);
+  color: var(--indigo);
 }
 
 .newtag {

@@ -1,48 +1,58 @@
 "use client";
 
-import { useEffect, useId, useRef, useState, type ReactNode } from "react";
+import { useState, type ReactNode } from "react";
+import { Dialog as DialogPrimitive } from "radix-ui";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import { cn } from "@/lib/utils";
 import { Icon } from "./icon";
 import type { IconName } from "./icon-paths";
-import s from "./overlays.module.css";
 
 /**
- * A modal sheet: slides up from the bottom on phones, a centred dialog on desktop. Uses the
- * native dialog, so focus stays inside and Escape closes it.
+ * A modal sheet of paper: it slides up from the bottom on phones with a scalloped top edge,
+ * and is a centred card on desktop. Focus stays inside; Escape or the backdrop closes it.
  */
 export function Sheet({ open, onClose, label, children }: { open: boolean; onClose: () => void; label: string; children: ReactNode }) {
-  const ref = useRef<HTMLDialogElement>(null);
-  useEffect(() => {
-    const d = ref.current;
-    if (!d) return;
-    if (open && !d.open) d.showModal();
-    if (!open && d.open) d.close();
-  }, [open]);
   return (
-    <dialog
-      ref={ref}
-      className={s.sheet}
-      aria-label={label}
-      onClose={onClose}
-      onClick={(e) => {
-        // A tap on the backdrop lands on the dialog itself.
-        if (e.target === e.currentTarget) onClose();
-      }}
-    >
-      {open && (
-        <div className={s.sheetBody}>
-          <span className={s.grab} aria-hidden />
-          {children}
-        </div>
-      )}
-    </dialog>
+    <DialogPrimitive.Root open={open} onOpenChange={(o) => !o && onClose()}>
+      <DialogPrimitive.Portal>
+        <DialogPrimitive.Overlay className="fixed inset-0 z-50 bg-ink/40 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:animate-in data-[state=open]:fade-in-0" />
+        <DialogPrimitive.Content
+          aria-describedby={undefined}
+          className={cn(
+            "lift fixed inset-x-0 bottom-0 z-50 max-h-[92dvh] outline-none",
+            "data-[state=open]:animate-[sheetUp_0.55s_var(--ease-page)_both] data-[state=closed]:animate-out data-[state=closed]:slide-out-to-bottom",
+            "min-[900px]:inset-x-auto min-[900px]:bottom-auto min-[900px]:top-1/2 min-[900px]:left-1/2 min-[900px]:w-[min(34rem,calc(100vw-4rem))] min-[900px]:-translate-x-1/2 min-[900px]:-translate-y-1/2",
+            "min-[900px]:data-[state=open]:animate-in min-[900px]:data-[state=open]:fade-in-0 min-[900px]:data-[state=open]:zoom-in-95",
+          )}
+        >
+          <DialogPrimitive.Title className="visually-hidden">{label}</DialogPrimitive.Title>
+          <div className="page scalloped flex max-h-[92dvh] flex-col gap-4 overflow-y-auto px-5 pb-[max(24px,env(safe-area-inset-bottom))] [--pad-top:14px] min-[900px]:rounded-b-[22px]">
+            {children}
+          </div>
+        </DialogPrimitive.Content>
+      </DialogPrimitive.Portal>
+    </DialogPrimitive.Root>
   );
 }
 
 /** A close button for the top of a sheet. */
 export function CloseButton({ onClick }: { onClick: () => void }) {
   return (
-    <button type="button" className={s.iconButton} onClick={onClick} aria-label="Close">
-      <Icon name="x" size="l" />
+    <button
+      type="button"
+      className="grid size-10 shrink-0 place-items-center rounded-full border-[1.5px] border-ink bg-page shadow-[0_2px_0_var(--ink)] transition-transform active:translate-y-0.5"
+      onClick={onClick}
+      aria-label="Close"
+    >
+      <Icon name="x" size="m" />
     </button>
   );
 }
@@ -56,56 +66,23 @@ export interface MenuItem {
 
 /** A ⋯ button that opens a short list of actions. */
 export function MoreMenu({ label, items }: { label: string; items: MenuItem[] }) {
-  const [open, setOpen] = useState(false);
-  const wrap = useRef<HTMLDivElement>(null);
-  const id = useId();
-  useEffect(() => {
-    if (!open) return;
-    const away = (e: PointerEvent) => {
-      if (!wrap.current?.contains(e.target as Node)) setOpen(false);
-    };
-    const esc = (e: KeyboardEvent) => e.key === "Escape" && setOpen(false);
-    document.addEventListener("pointerdown", away);
-    document.addEventListener("keydown", esc);
-    wrap.current?.querySelector<HTMLButtonElement>("[role=menuitem]")?.focus();
-    return () => {
-      document.removeEventListener("pointerdown", away);
-      document.removeEventListener("keydown", esc);
-    };
-  }, [open]);
   return (
-    <div className={s.menuWrap} ref={wrap}>
-      <button
-        type="button"
-        className={s.roundButton}
+    <DropdownMenu>
+      <DropdownMenuTrigger
+        className="grid size-9 shrink-0 place-items-center rounded-full border-[1.5px] border-rule-ink bg-page text-ink-2 hover:border-ink hover:text-ink data-[state=open]:border-ink"
         aria-label={label}
-        aria-haspopup="menu"
-        aria-expanded={open}
-        aria-controls={open ? id : undefined}
-        onClick={() => setOpen((o) => !o)}
       >
         <Icon name="more" size="m" />
-      </button>
-      {open && (
-        <div className={s.menu} role="menu" id={id}>
-          {items.map((it) => (
-            <button
-              key={it.label}
-              type="button"
-              role="menuitem"
-              className={it.danger ? s.danger : undefined}
-              onClick={() => {
-                setOpen(false);
-                it.onSelect();
-              }}
-            >
-              <Icon name={it.icon} size="m" />
-              {it.label}
-            </button>
-          ))}
-        </div>
-      )}
-    </div>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end">
+        {items.map((it) => (
+          <DropdownMenuItem key={it.label} variant={it.danger ? "destructive" : "default"} onSelect={it.onSelect}>
+            <Icon name={it.icon} size="m" />
+            {it.label}
+          </DropdownMenuItem>
+        ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }
 
@@ -117,8 +94,7 @@ export interface PickOption<T extends string> {
 
 /**
  * A select drawn in the app's own style: the trigger looks like whatever `className` makes
- * it (a chip, a text link) and the choices open in a small menu, not the browser's list.
- * The menu is fixed to the screen so a scrolling chip row can't clip it.
+ * it (a chip, a text link) and the choices open in a small paper menu.
  */
 export function Picker<T extends string>({
   label,
@@ -135,98 +111,33 @@ export function Picker<T extends string>({
   className?: string;
   align?: "left" | "right";
 }) {
-  const [at, setAt] = useState<{ top: number; left?: number; right?: number } | null>(null);
-  const open = at !== null;
-  const wrap = useRef<HTMLDivElement>(null);
-  const id = useId();
-  const toggle = () => {
-    const r = wrap.current?.getBoundingClientRect();
-    if (open || !r) return setAt(null);
-    setAt(align === "left" ? { top: r.bottom + 6, left: r.left } : { top: r.bottom + 6, right: window.innerWidth - r.right });
-  };
-  useEffect(() => {
-    if (!open) return;
-    const close = () => setAt(null);
-    const away = (e: PointerEvent) => {
-      if (!wrap.current?.contains(e.target as Node)) close();
-    };
-    const esc = (e: KeyboardEvent) => {
-      if (e.key !== "Escape") return;
-      close();
-      wrap.current?.querySelector<HTMLButtonElement>("button")?.focus();
-    };
-    document.addEventListener("pointerdown", away);
-    document.addEventListener("keydown", esc);
-    // The menu is pinned where it opened, so it closes rather than drift when things move.
-    window.addEventListener("resize", close);
-    window.addEventListener("scroll", close, true);
-    wrap.current?.querySelector<HTMLButtonElement>("[role=option][aria-selected=true]")?.focus({ preventScroll: true });
-    return () => {
-      document.removeEventListener("pointerdown", away);
-      document.removeEventListener("keydown", esc);
-      window.removeEventListener("resize", close);
-      window.removeEventListener("scroll", close, true);
-    };
-  }, [open]);
   const current = options.find((o) => o.value === value);
   return (
-    <div className={s.menuWrap} ref={wrap}>
-      <button
-        type="button"
-        className={`${s.pickButton}${className ? ` ${className}` : ""}`}
-        aria-label={`${label}: ${current?.label ?? ""}`}
-        aria-haspopup="listbox"
-        aria-expanded={open}
-        aria-controls={open ? id : undefined}
-        onClick={toggle}
-      >
+    <DropdownMenu>
+      <DropdownMenuTrigger className={cn("chip", className)} aria-label={`${label}: ${current?.label ?? ""}`}>
         {current?.label}
         <Icon name="chevronDown" size="s" />
-      </button>
-      {open && (
-        <div
-          className={`${s.menu} ${s.pickMenu}`}
-          style={at}
-          role="listbox"
-          id={id}
-          aria-label={label}
-          onKeyDown={(e) => {
-            if (e.key !== "ArrowDown" && e.key !== "ArrowUp") return;
-            e.preventDefault();
-            const items = [...(wrap.current?.querySelectorAll<HTMLButtonElement>("[role=option]:not(:disabled)") ?? [])];
-            const i = items.indexOf(document.activeElement as HTMLButtonElement);
-            items[(i + (e.key === "ArrowDown" ? 1 : items.length - 1)) % items.length]?.focus({ preventScroll: true });
-          }}
-        >
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align={align === "left" ? "start" : "end"} aria-label={label}>
+        <DropdownMenuRadioGroup value={value} onValueChange={(v) => v !== value && onChange(v as T)}>
           {options.map((o) => (
-            <button
-              key={o.value}
-              type="button"
-              role="option"
-              aria-selected={o.value === value}
-              disabled={o.disabled}
-              onClick={() => {
-                setAt(null);
-                if (o.value !== value) onChange(o.value);
-              }}
-            >
-              <span>{o.label}</span>
-              {o.value === value && <Icon name="check" size="m" />}
-            </button>
+            <DropdownMenuRadioItem key={o.value} value={o.value} disabled={o.disabled}>
+              {o.label}
+            </DropdownMenuRadioItem>
           ))}
-        </div>
-      )}
-    </div>
+        </DropdownMenuRadioGroup>
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }
 
-/** A secret or link in a dark box; tapping copies it. */
+/** A secret or link on an inked slip; tapping copies it. */
 export function CopyCode({ value, shown, label }: { value: string; shown?: string; label: string }) {
   const [copied, setCopied] = useState(false);
   return (
     <button
       type="button"
-      className={s.code}
+      className="flex w-full items-center gap-3 rounded-[12px] border-[1.5px] border-ink bg-ink px-3.5 py-3 text-left font-mono text-[13px] break-all text-page shadow-[0_3px_0_var(--seal)] active:translate-y-0.5"
       aria-label={copied ? `${label} copied` : `Copy ${label}`}
       onClick={() =>
         void navigator.clipboard?.writeText(value).then(
@@ -235,13 +146,13 @@ export function CopyCode({ value, shown, label }: { value: string; shown?: strin
         )
       }
     >
-      <span>{shown ?? value}</span>
+      <span className="min-w-0 flex-1">{shown ?? value}</span>
       <Icon name={copied ? "check" : "copy"} size="m" />
     </button>
   );
 }
 
-/** Two or three options in one pill. */
+/** Two or three options as chips; one is always chosen. */
 export function Segmented<T extends string>({
   label,
   options,
@@ -254,12 +165,12 @@ export function Segmented<T extends string>({
   onChange: (v: T) => void;
 }) {
   return (
-    <div className={s.seg} role="group" aria-label={label}>
+    <ToggleGroup type="single" aria-label={label} value={value} onValueChange={(v) => v && onChange(v as T)}>
       {options.map(([v, text]) => (
-        <button key={v} type="button" aria-pressed={value === v} onClick={() => onChange(v)}>
+        <ToggleGroupItem key={v} value={v}>
           {text}
-        </button>
+        </ToggleGroupItem>
       ))}
-    </div>
+    </ToggleGroup>
   );
 }

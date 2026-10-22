@@ -14,7 +14,6 @@ describe("map pins", () => {
       const item = listed[i]!;
       const kind = item.mine ? item.status : "friend";
       expect(f.properties.icon).toContain(`|${kind}|`);
-      expect(f.properties.iconDark.startsWith("pin|dark|")).toBe(true);
     }
     expect(listed.some((l) => !l.mine)).toBe(true);
   });
@@ -23,10 +22,10 @@ describe("map pins", () => {
     const id = listed[0]!.place.id;
     const selected = pinsCollection(listed, id).features.find((f) => f.properties.id === id)!;
     expect(selected.properties.selected).toBe(true);
-    expect(selected.properties.icon.split("|")[3]).toBe("1");
+    expect(selected.properties.icon.split("|")[2]).toBe("1");
   });
 
-  it("keeps emoji with joiners intact in the image name", () => {
-    expect(pinImageId("want", "🏖️", false, false)).toBe("pin|light|want|0|🏖️");
+  it("names the image by status, size and category glyph", () => {
+    expect(pinImageId("want", "umbrella", false)).toBe("pin|want|0|umbrella");
   });
 });

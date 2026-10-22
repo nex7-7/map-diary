@@ -295,7 +295,7 @@ function CreateGroup({ diary, onDone }: { diary: Diary; onDone: () => void }) {
 
   return (
     <form className={s.sec} onSubmit={(e) => void submit(e)}>
-      <label className="overline" htmlFor="group-name">
+      <label className="kicker" htmlFor="group-name">
         Make a group
       </label>
       <div className={s.inline}>
@@ -328,7 +328,7 @@ function PasteInvite() {
         if (secret) window.location.assign(`/join#${secret}`);
       }}
     >
-      <label className="overline" htmlFor="invite-link">
+      <label className="kicker" htmlFor="invite-link">
         Got an invite?
       </label>
       <div className={s.inline}>

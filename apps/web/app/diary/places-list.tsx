@@ -1,25 +1,38 @@
 "use client";
 
-import { useRef, useState, type PointerEvent } from "react";
+import { useRef, useState, type CSSProperties, type PointerEvent } from "react";
 import { categoryStyle, STATUS_LABELS } from "@/lib/places/categories";
 import { formatDistance, type ListedPlace } from "@/lib/places/filter";
 import type { DiarySnapshot, Status } from "@/lib/places/types";
-import { Icon, MarkVisited, PlaceRow } from "@/lib/ui";
+import { MarkVisited, PlaceRow, Seal, StatusDot } from "@/lib/ui";
 
 interface Props {
   listed: readonly ListedPlace[];
   snapshot: DiarySnapshot;
   selectedId: string | null;
+  /** Places stamped Visited a moment ago, which get a handwritten "stamped!". */
+  justStamped: ReadonlySet<string>;
   onSelect: (id: string) => void;
   onSetStatus: (id: string, status: Status) => void;
 }
 
-export function PlacesList({ listed, snapshot, selectedId, onSelect, onSetStatus }: Props) {
-  if (listed.length === 0) return <p className="empty sub">Nothing matches these filters.</p>;
+export function PlacesList({ listed, snapshot, selectedId, justStamped, onSelect, onSetStatus }: Props) {
+  if (listed.length === 0) {
+    return <p className="hand py-10 pr-6 pl-12 text-[18px] text-ink-3">Nothing on this page matches.</p>;
+  }
   return (
-    <ul className="places" aria-label="Places">
-      {listed.map((l) => (
-        <SwipeRow key={l.place.id} item={l} snapshot={snapshot} selected={l.place.id === selectedId} onSelect={onSelect} onSetStatus={onSetStatus} />
+    <ul className="m-0 list-none p-0 pb-6" aria-label="Places">
+      {listed.map((l, i) => (
+        <SwipeRow
+          key={l.place.id}
+          index={i}
+          item={l}
+          snapshot={snapshot}
+          selected={l.place.id === selectedId}
+          stamped={justStamped.has(l.place.id)}
+          onSelect={onSelect}
+          onSetStatus={onSetStatus}
+        />
       ))}
     </ul>
   );
@@ -35,13 +48,30 @@ export function friendLine(item: ListedPlace, snapshot: DiarySnapshot): string |
   return item.status === "visited" ? `${name} has been` : `${name} wants to go`;
 }
 
-/** A place row; swipe it right to mark it visited. */
-function SwipeRow({ item, snapshot, selected, onSelect, onSetStatus }: { item: ListedPlace; selected: boolean } & Omit<Props, "listed" | "selectedId">) {
+/** "12 OCT", the date on a Visited seal. */
+export function sealDate(iso: string): string {
+  const d = new Date(iso);
+  return `${String(d.getDate()).padStart(2, "0")} ${MONTHS[d.getMonth()]}`;
+}
+
+const MONTHS = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"];
+
+/** A place row; swipe it right to stamp it Visited. */
+function SwipeRow({
+  item,
+  index,
+  snapshot,
+  selected,
+  stamped,
+  onSelect,
+  onSetStatus,
+}: { item: ListedPlace; index: number; selected: boolean; stamped: boolean } & Omit<Props, "listed" | "selectedId" | "justStamped">) {
   const { place, status, mine, distanceM } = item;
   const style = categoryStyle(place.category);
   const start = useRef<{ x: number; y: number; id: number } | null>(null);
   const [dx, setDx] = useState(0);
   const visitedByMe = mine && status === "visited";
+  const myStatus = place.opinions.find((o) => o.kind === "status" && o.authorId === snapshot.me.id);
 
   const onPointerDown = (e: PointerEvent) => {
     if (e.pointerType === "mouse") return;
@@ -62,45 +92,60 @@ function SwipeRow({ item, snapshot, selected, onSelect, onSetStatus }: { item: L
   };
 
   const outlets = place.outlets && place.outlets.length > 1 ? `${place.outlets.length} locations` : undefined;
-  const meta = [friendLine(item, snapshot), style.label, place.cuisine, outlets, distanceM !== undefined ? formatDistance(distanceM) : undefined]
+  const meta = [friendLine(item, snapshot), place.cuisine ?? style.label, outlets, distanceM !== undefined ? formatDistance(distanceM) : undefined]
     .filter(Boolean)
     .join(" · ");
+  // A few rows deal in one after another; the rest are already there.
+  const delay = index < 10 ? 80 + index * 60 : 0;
 
   return (
-    <li className="place-row">
-      <div className="swipe-hint" aria-hidden style={{ opacity: Math.min(1, dx / SWIPE_PX) }}>
-        <Icon name="check" />
-        Visited
+    <li className="deal relative overflow-hidden border-t border-ink/[0.07] first:border-t-0" style={{ animationDelay: `${delay}ms` } as CSSProperties}>
+      <div className="absolute inset-0 flex items-center gap-2 bg-seal pl-12 font-worn text-[15px] tracking-[0.12em] text-cream uppercase" aria-hidden style={{ opacity: Math.min(1, dx / SWIPE_PX) }}>
+        Stamp it visited
       </div>
       <div
-        className="place-row-body"
-        style={{ transform: dx ? `translateX(${dx}px)` : undefined }}
+        className="relative touch-pan-y bg-transparent transition-transform duration-150 ease-out"
+        style={{ transform: dx ? `translateX(${dx}px)` : undefined, background: dx ? "var(--page)" : undefined }}
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
         onPointerUp={onPointerEnd}
         onPointerCancel={onPointerEnd}
       >
         <PlaceRow
-          emoji={style.emoji}
+          category={place.category}
           name={
             <>
+              {place.isPrivate && <span className="label-ink mr-2 align-[2px] text-[9px] font-bold tracking-[0.1em] [font-family:var(--sans)]">PIN</span>}
               {place.name}
-              {place.isPrivate && <span className="pin-badge">Pin</span>}
             </>
           }
-          kind={mine ? status : "friend"}
           meta={
-            <>
+            <span className="inline-flex items-center gap-1.5">
+              {!mine && <StatusDot kind="friend" small />}
               {mine && <span className="visually-hidden">{STATUS_LABELS[status]}. </span>}
               {meta}
-            </>
+            </span>
           }
           dish={place.signatureDish}
           current={selected}
           onOpen={() => onSelect(place.id)}
-          action={!visitedByMe ? <MarkVisited placeName={place.name} onClick={() => onSetStatus(place.id, "visited")} /> : undefined}
+          action={
+            visitedByMe ? (
+              <Seal date={sealDate(myStatus?.updatedAt ?? item.addedAt)} tilt={TILTS[index % TILTS.length] ?? "-8deg"} />
+            ) : (
+              <MarkVisited placeName={place.name} onClick={() => onSetStatus(place.id, "visited")} />
+            )
+          }
         />
+        {stamped && (
+          <span className="hand pop pointer-events-none absolute top-1.5 right-16 text-[15px] text-seal [--r:-6deg]" aria-hidden>
+            stamped!
+          </span>
+        )}
       </div>
     </li>
   );
 }
+
+/** Seals go on by hand, so each one sits at its own angle. */
+const TILTS = ["-9deg", "6deg", "-4deg", "10deg", "-12deg"];
