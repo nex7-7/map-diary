@@ -130,6 +130,16 @@ async function boardKeysAllowed(db: D1Database, accountId: string, keys: readonl
 export const accounts = new Hono<SignedEnv>();
 
 /**
+ * Whether first-run setup is still open, so /setup can say the diary is taken before it makes
+ * keys and shows a recovery phrase. It reveals only whether any account exists, which a setup
+ * attempt would reveal anyway.
+ */
+accounts.get("/setup", async (c) => {
+  const row = await c.env.DB.prepare("SELECT EXISTS (SELECT 1 FROM accounts) AS taken").first<{ taken: number }>();
+  return c.json({ open: (row?.taken ?? 0) === 0 });
+});
+
+/**
  * Creates an account with its first device, its personal board with the key wrapped to the
  * account's box key, and (optionally, for invited friends) the passphrase key backup. Invited
  * accounts also join the master board with every key version wrapped to them.

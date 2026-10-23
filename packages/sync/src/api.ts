@@ -335,6 +335,11 @@ export class Api {
     return this.call<{ accountId: string; deviceId: string; personalBoardId: string }>("POST", "/api/accounts", body, signer);
   }
 
+  /** Whether first-run (admin) setup is still open, i.e. no account exists yet. */
+  setupStatus() {
+    return this.call<{ open: boolean }>("GET", "/api/setup", undefined, null);
+  }
+
   registerDevice(body: { accountId: string; device: DeviceBody }, signer: Signer) {
     return this.call<{ accountId: string; deviceId: string }>("POST", "/api/devices", body, signer);
   }
