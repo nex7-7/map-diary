@@ -35,6 +35,11 @@ export interface PendingDraft {
   tagBoards?: string[];
   /** Where the note goes, when the person picked boards apart from the status's. */
   commentBoards?: string[];
+  /**
+   * Set when the admin looks a catalogue place up again: the match picked in the Inbox becomes
+   * that place's new facts, and no opinions are written.
+   */
+  refreshPlaceId?: string;
 }
 
 export type PendingState =
@@ -46,9 +51,15 @@ export type PendingState =
    * in the Inbox, or (for a chain) adds every outlet.
    */
   | { kind: "choose"; candidates: ResolvedPlace[]; chain?: ResolvedChain }
-  | { kind: "failed"; reason: FailReason }
+  /**
+   * `job` is kept while the failed job is still on the server, so if the admin puts it back in
+   * the queue its answer still reaches this device.
+   */
+  | { kind: "failed"; reason: FailReason; job?: WaitingJob }
   /** Found and written to the diary; shown in the Inbox for a few days. */
   | { kind: "added"; placeId: string; name: string };
+
+export type WaitingJob = Omit<Extract<PendingState, { kind: "waiting" }>, "kind">;
 
 export type FailReason = "not_found" | "expired" | "bad_result" | "rejected";
 

@@ -16,7 +16,7 @@ import { isFood } from "../entries/facts";
 import { chainFor } from "../places/chains";
 import type { PlaceChain } from "../places/types";
 import { readPayload, type PlacePayload } from "../places/payloads";
-import type { PendingDraft, PendingItem, PendingState, PendingStore } from "./store";
+import type { PendingDraft, PendingItem, PendingState, PendingStore, WaitingJob } from "./store";
 
 /** The resolver calls this needs; they are never signed, so no account is tied to a job. */
 export type ResolverApi = Pick<Api, "submitResolverJob" | "getResolverJob" | "deleteResolverJob">;
@@ -102,6 +102,7 @@ export class PendingQueue {
       try {
         if (item.state.kind === "unsent") await this.send(item);
         else if (item.state.kind === "waiting") await this.check(item, item.state);
+        else if (item.state.kind === "failed" && item.state.job) await this.check(item, item.state.job);
         else if (item.state.kind === "added" && this.now() - item.updatedAt > ADDED_KEEP_MS) {
           await this.store.delete(item.id);
           this.emit();
@@ -113,21 +114,29 @@ export class PendingQueue {
     }
   }
 
-  private async check(item: PendingItem, state: Extract<PendingState, { kind: "waiting" }>): Promise<void> {
+  /** Checks a job that is waiting, or failed but still on the server (the admin may retry it). */
+  private async check(item: PendingItem, state: WaitingJob): Promise<void> {
+    const failedBefore = item.state.kind === "failed";
     let job;
     try {
       job = await this.api.getResolverJob(state.jobId);
     } catch (err) {
       if (err instanceof ApiError && err.status === 404) {
-        await this.save(item, { kind: "failed", reason: "expired" });
+        await this.save(item, { kind: "failed", reason: failedBefore && item.state.kind === "failed" ? item.state.reason : "expired" });
         return;
       }
       throw err;
     }
-    if (job.status === "pending") return;
+    if (job.status === "pending") {
+      // Back in the queue after the admin retried it.
+      if (failedBefore) await this.save(item, { kind: "waiting", ...state });
+      return;
+    }
 
     if (job.status === "failed" || !job.sealedResult) {
-      await this.save(item, { kind: "failed", reason: "not_found" });
+      // Kept on the server until this device moves on, so the admin can put it back in the queue.
+      if (!failedBefore) await this.save(item, { kind: "failed", reason: "not_found", job: state });
+      return;
     } else {
       let result: ResolverResult;
       try {
@@ -140,8 +149,9 @@ export class PendingQueue {
       }
       const { candidates, chain } = result;
       // The result is on the device now; the one-time key is no longer needed. A chain always
-      // asks: every outlet, or only the one the link was for.
-      if (chain) await this.save(item, { kind: "choose", candidates, chain });
+      // asks: every outlet, or only the one the link was for. New facts for a place always ask.
+      if (item.draft.refreshPlaceId) await this.save(item, { kind: "choose", candidates });
+      else if (chain) await this.save(item, { kind: "choose", candidates, chain });
       else if (candidates.length === 1) await this.write(item, candidates[0]!);
       else await this.save(item, { kind: "choose", candidates });
     }
@@ -182,17 +192,28 @@ export class PendingQueue {
   }
 
   private async write(item: PendingItem, candidate: ResolvedPlace, chain?: ResolvedChain): Promise<string> {
+    if (item.draft.refreshPlaceId) {
+      const placeId = await refreshFacts(this.diary, item.draft.refreshPlaceId, candidate);
+      await this.save(item, { kind: "added", placeId, name: candidate.name });
+      return placeId;
+    }
     const label = chain ? chainFor(await this.diary.listItems(), chain.name) : undefined;
     const placeId = await writeResolved(this.diary, item.draft, candidate, label);
     await this.save(item, { kind: "added", placeId, name: candidate.name });
     return placeId;
   }
 
+  /** Saves a lookup of an existing catalogue place, whose answer becomes its new facts. */
+  async lookUpAgain(placeId: string, query: string, label: string): Promise<PendingItem> {
+    return this.add(query, { label, status: "want", tagIds: [], newTags: [], comment: "", refreshPlaceId: placeId });
+  }
+
   /** Asks the resolver again, with a new job. */
   async retry(id: string): Promise<void> {
     const item = await this.store.get(id);
     if (!item) return;
-    if (item.state.kind === "waiting") await this.forgetJob(item.state.jobId);
+    const open = jobOf(item.state);
+    if (open) await this.forgetJob(open.jobId);
     await this.send(await this.save(item, { kind: "unsent" }));
   }
 
@@ -200,10 +221,37 @@ export class PendingQueue {
   async dismiss(id: string): Promise<void> {
     const item = await this.store.get(id);
     if (!item) return;
-    if (item.state.kind === "waiting") await this.forgetJob(item.state.jobId);
+    const open = jobOf(item.state);
+    if (open) await this.forgetJob(open.jobId);
     await this.store.delete(id);
     this.emit();
   }
+}
+
+/** The job still open on the server for an item, if any. */
+function jobOf(state: PendingState): WaitingJob | undefined {
+  if (state.kind === "waiting") return state;
+  if (state.kind === "failed") return state.job;
+  return undefined;
+}
+
+/**
+ * Rewrites a catalogue place's facts from a fresh lookup (the admin's device only). The place
+ * keeps its chain, its merged duplicates and every link it had.
+ */
+export async function refreshFacts(w: DiaryWriter, placeId: string, c: ResolvedPlace): Promise<string> {
+  const item = (await w.listItems()).find((i) => i.id === placeId && i.type === "place");
+  const current = item && readPayload("place", item.payload);
+  if (!item || !current) throw new Error("That place isn't on this device any more");
+  const fresh = factsFromCandidate({ label: current.name, status: "want", tagIds: [], newTags: [], comment: "" }, c, current.chain);
+  const facts: PlacePayload = {
+    ...fresh,
+    sourceLinks: [...new Set([...current.sourceLinks, ...fresh.sourceLinks])],
+    ...(current.mergedFrom ? { mergedFrom: current.mergedFrom } : {}),
+  };
+  if (!readPayload("place", facts as unknown as JsonValue)) throw new Error("The match doesn't fit a place");
+  await w.write({ type: "place", placeId: null, payload: facts as unknown as JsonValue, id: placeId });
+  return placeId;
 }
 
 /** What the person can pick from: the matches, then a chain's other outlets. */

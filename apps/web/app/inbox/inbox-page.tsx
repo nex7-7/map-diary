@@ -106,9 +106,11 @@ function Inbox({ diary }: { diary: Diary }) {
                 </span>
               </div>
               <div className={styles.row}>
-                <Link href={`/add#pending=${encodeURIComponent(i.id)}`} className={styles.textbutton}>
-                  Drop a pin instead
-                </Link>
+                {!i.draft.refreshPlaceId && (
+                  <Link href={`/add#pending=${encodeURIComponent(i.id)}`} className={styles.textbutton}>
+                    Drop a pin instead
+                  </Link>
+                )}
                 <button type="button" className={styles.textbutton} onClick={() => run(() => queue.dismiss(i.id))}>
                   Remove
                 </button>
@@ -142,10 +144,12 @@ function Inbox({ diary }: { diary: Diary }) {
                 <Button variant="secondary" size="m" onClick={() => run(() => queue.retry(i.id))}>
                   Try again
                 </Button>
-                <Link href={`/add#pending=${encodeURIComponent(i.id)}`} className="chip soft">
-                  <Icon name="pin" size="s" />
-                  Drop a pin
-                </Link>
+                {!i.draft.refreshPlaceId && (
+                  <Link href={`/add#pending=${encodeURIComponent(i.id)}`} className="chip soft">
+                    <Icon name="pin" size="s" />
+                    Drop a pin
+                  </Link>
+                )}
                 <button type="button" className={styles.textbutton} onClick={() => run(() => queue.dismiss(i.id))}>
                   Remove
                 </button>
@@ -225,7 +229,7 @@ function ItemHead({ item }: { item: PendingItem }) {
   return (
     <div className="flex min-w-0 flex-col gap-0.5">
       <span className="font-serif text-[21px] leading-tight">{item.draft.label || item.query}</span>
-      <span className="text-[12px] text-ink-3">{STATUS_LABELS[item.draft.status]}</span>
+      <span className="text-[12px] text-ink-3">{item.draft.refreshPlaceId ? "New details for a place (admin)" : STATUS_LABELS[item.draft.status]}</span>
       {item.draft.link && item.draft.link !== item.draft.label && <span className={`text-[12px] text-ink-3 ${b.link}`}>{item.draft.link}</span>}
     </div>
   );
@@ -236,12 +240,19 @@ type LetterProps = { item: PendingItem; queue: PendingQueue; run: (a: () => Prom
 function ChooseLetter({ item, queue, run, style }: LetterProps) {
   if (item.state.kind !== "choose") return null;
   const n = item.state.candidates.length;
+  const refresh = item.draft.refreshPlaceId !== undefined;
   return (
     <Letter style={style}>
       <div className="flex flex-col gap-0.5">
-        <span className="text-[13px] text-ink-2">You typed</span>
+        <span className="text-[13px] text-ink-2">{refresh ? "New details for" : "You typed"}</span>
         <span className="font-serif text-[21px]">“{item.draft.label || item.query}”</span>
-        <span className="hand text-[15px] text-ink-2">{n === 1 ? "One place came back. Is this it?" : `${n} places came back. Which one did you mean?`}</span>
+        <span className="hand text-[15px] text-ink-2">
+          {refresh
+            ? "Pick the match to replace its details with. Its links, chain and everyone's notes stay."
+            : n === 1
+              ? "One place came back. Is this it?"
+              : `${n} places came back. Which one did you mean?`}
+        </span>
       </div>
       <ul className={b.candidates}>
         {item.state.candidates.map((c, i) => (
@@ -253,9 +264,11 @@ function ChooseLetter({ item, queue, run, style }: LetterProps) {
         ))}
       </ul>
       <div className={styles.row}>
-        <Link href={`/add#pending=${encodeURIComponent(item.id)}`} className={styles.textbutton}>
-          None of these, drop a pin
-        </Link>
+        {!refresh && (
+          <Link href={`/add#pending=${encodeURIComponent(item.id)}`} className={styles.textbutton}>
+            None of these, drop a pin
+          </Link>
+        )}
         <button type="button" className={styles.textbutton} onClick={() => run(() => queue.dismiss(item.id))}>
           Remove
         </button>

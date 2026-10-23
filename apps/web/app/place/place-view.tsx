@@ -27,6 +27,7 @@ import {
 } from "@/lib/entries/actions";
 import { boardName, opinionBoards, tagFit } from "@/lib/places/boards";
 import { chainFor, outletLabel, outletOf, viewOf } from "@/lib/places/chains";
+import { mergeTargets, resolvePlace } from "@/lib/places/merges";
 import { categoryStyle } from "@/lib/places/categories";
 import { readPayload } from "@/lib/places/payloads";
 import type { CommentOpinion, DiarySnapshot, Opinion, Outlet, PlaceView as Place, Status, StatusOpinion, TagOpinion } from "@/lib/places/types";
@@ -36,9 +37,11 @@ import type { CommentOpinion, DiarySnapshot, Opinion, Outlet, PlaceView as Place
  * owner's own status, tags and comments. A chain is one page with a row per location; its
  * status and tags count for every location, and each comment says which one it is about.
  */
-export function PlaceView({ diary, placeId }: { diary: Diary; placeId: string }) {
+export function PlaceView({ diary, placeId: asked }: { diary: Diary; placeId: string }) {
   const router = useRouter();
   const { loaded, items, snapshot } = useItems(diary);
+  // A merged duplicate opens the place it was merged into.
+  const placeId = resolvePlace(mergeTargets(items), asked);
   const [editing, setEditing] = useState(false);
   const [ask, confirmSheet] = useConfirm();
   const [error, setError] = useState<string | null>(null);
@@ -82,7 +85,7 @@ export function PlaceView({ diary, placeId }: { diary: Diary; placeId: string })
   const style = categoryStyle(place.category);
   const isAuthor = item.authorId === me;
   // A catalogue place's facts are the admin's to change once written; a dropped pin is its owner's.
-  const canEdit = isAuthor && (item.type === "private_place" || diary.device.isAdmin === true);
+  const canEdit = item.type === "place" ? diary.device.isAdmin === true : isAuthor;
   const of = <K extends Opinion["kind"]>(kind: K) => place.opinions.filter((o): o is Extract<Opinion, { kind: K }> => o.kind === kind);
   const myStatusOpinion = of("status").find((o) => o.authorId === me);
   const myStatus = myStatusOpinion?.status ?? null;
@@ -390,7 +393,11 @@ export function PlaceView({ diary, placeId }: { diary: Diary; placeId: string })
                   className="chip soft text-seal-deep"
                   onClick={async () => {
                     const what = focus ? `the ${outletLabel(place, focus)} location of ${place.name}` : place.name;
-                    if (!(await ask({ title: `Delete ${what}?`, body: "Your notes on it are deleted too.", confirmLabel: "Delete", danger: true }))) return;
+                    const body =
+                      item.type === "place" && place.opinions.some((o) => o.authorId !== me)
+                        ? "Your notes on it are deleted too. Other people's notes stay saved but stop showing. If it is a duplicate, merge it from Admin → Places instead."
+                        : "Your notes on it are deleted too.";
+                    if (!(await ask({ title: `Delete ${what}?`, body, confirmLabel: "Delete", danger: true }))) return;
                     run(async () => {
                       await deletePlace(diary, item.id);
                       router.push("/");

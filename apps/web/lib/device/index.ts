@@ -6,6 +6,18 @@ export { DeviceGate } from "./gate";
 export { currentDeviceKind } from "./kind";
 export { addDevice, choosePassphrase, connectClaudeDevice, listDevices, removeDevice, renameDevice, type AccountOverview, type ListedDevice } from "./devices";
 export {
+  allDevices,
+  exportSql,
+  lookUpAgain,
+  mergePlaces,
+  resolver,
+  retryAllFailed,
+  retryJob,
+  signOut,
+  storage,
+  type AdminDeviceView,
+  type AdminResolverView,
+  type AdminStorageView,
   cancelInvite,
   inviteFriend,
   inviteNotes,

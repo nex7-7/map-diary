@@ -12,7 +12,7 @@ import { readBody, type SignedEnv } from "./auth";
 import { unlockClaudeDevice } from "./claude";
 import { MAX_DECRYPTS, Reader, wipeSession, type ClaudeSession, type Item } from "./assistant-read";
 import { OPEN_THE_APP, WriteRefused, boardsOutOfReach, findByLinks, removeItems, writeItems } from "./assistant-write";
-import { fail, isObject, type JsonObject } from "./http";
+import { fail, isId, isObject, type JsonObject } from "./http";
 import { answerRpc, toolText, type McpServer, type ToolResult } from "./mcp-rpc";
 import { PROBLEMS } from "./mcp";
 
@@ -213,6 +213,10 @@ interface Place {
   sourceLinks: string[];
   /** The chain this place is one outlet of; the app shows a chain's outlets as one place. */
   chain?: string;
+  /** A duplicate the admin merged into another place: that place stands for it. */
+  mergedInto?: string;
+  /** Duplicates merged into this place; opinions left on them are this place's. */
+  mergedFrom: string[];
 }
 interface TagDef {
   name: string;
@@ -234,6 +238,7 @@ function readPlace(payload: JsonValue): Place | undefined {
     category,
     location: { lat: loc.lat, lng: loc.lng },
     sourceLinks: Array.isArray(p.sourceLinks) ? p.sourceLinks.filter((l): l is string => typeof l === "string") : [],
+    mergedFrom: Array.isArray(p.mergedFrom) ? p.mergedFrom.filter((id): id is string => typeof id === "string" && isId(id)).slice(0, 50) : [],
   };
   const address = str(p.address);
   const cuisine = str(p.cuisine);
@@ -243,6 +248,8 @@ function readPlace(payload: JsonValue): Place | undefined {
   if (dish && str(dish.name) && typeof dish.priceInr === "number") place.signatureDish = { name: str(dish.name)!, priceInr: dish.priceInr };
   const chain = str(obj(p.chain as JsonValue)?.name);
   if (chain) place.chain = chain;
+  const mergedInto = str(p.mergedInto);
+  if (mergedInto && isId(mergedInto)) place.mergedInto = mergedInto;
   return place;
 }
 
@@ -262,6 +269,8 @@ function readTagDef(payload: JsonValue): TagDef | undefined {
 const fold = (s: string) => s.normalize("NFD").replace(/\p{M}/gu, "").toLowerCase();
 
 const PLACE_TYPES = ["place", "private_place"];
+/** Merges followed from a merged duplicate to the place that stands for it. */
+const MAX_MERGE_HOPS = 5;
 
 // --- Tool calls ---
 
@@ -320,20 +329,32 @@ class Tools {
     return [...ids];
   }
 
-  private async place(placeId: string): Promise<Item & { facts: Place }> {
-    const { items } = await this.reader.load({ types: PLACE_TYPES, ids: [placeId] });
-    const item = items[0];
-    const facts = item && readPlace(item.payload);
-    if (!item || !facts) throw new ToolError("No place with that id is visible to Claude. Use search_places to find its id.");
-    return { ...item, facts };
+  /**
+   * A place by id; a merged duplicate gives the place it was merged into. `placeIds` are the
+   * place and its merged duplicates, where its opinions may be.
+   */
+  private async place(placeId: string): Promise<Item & { facts: Place; placeIds: string[] }> {
+    let id = placeId;
+    for (let hop = 0; hop < MAX_MERGE_HOPS; hop++) {
+      const { items } = await this.reader.load({ types: PLACE_TYPES, ids: [id] });
+      const item = items[0];
+      const facts = item && readPlace(item.payload);
+      if (!item || !facts) break;
+      if (facts.mergedInto) {
+        id = facts.mergedInto;
+        continue;
+      }
+      return { ...item, facts, placeIds: [item.id, ...facts.mergedFrom] };
+    }
+    throw new ToolError("No place with that id is visible to Claude. Use search_places to find its id.");
   }
 
-  private async myItems(type: string, placeId: string): Promise<Item[]> {
-    return (await this.reader.load({ types: [type], placeIds: [placeId], authorIds: [this.session.accountId] })).items;
+  private async myItems(type: string, placeIds: readonly string[]): Promise<Item[]> {
+    return (await this.reader.load({ types: [type], placeIds, authorIds: [this.session.accountId] })).items;
   }
 
-  private async requireStatus(placeId: string): Promise<void> {
-    if ((await this.myItems("status", placeId)).length === 0) {
+  private async requireStatus(placeIds: readonly string[]): Promise<void> {
+    if ((await this.myItems("status", placeIds)).length === 0) {
       throw new ToolError("Mark the place visited or want with set_status before tagging or commenting.");
     }
   }
@@ -382,6 +403,14 @@ class Tools {
       const loaded = await this.reader.load({ types: PLACE_TYPES, ids });
       places = loaded.items;
       truncated = mine.truncated || loaded.truncated;
+      // A status left on a merged duplicate counts for the place it was merged into.
+      const kept = new Set(places.map((p) => p.id));
+      const targets = [...new Set(places.flatMap((p) => readPlace(p.payload)?.mergedInto ?? []))].filter((t) => !kept.has(t));
+      if (targets.length > 0) {
+        const more = await this.reader.load({ types: PLACE_TYPES, ids: targets });
+        places = [...places, ...more.items];
+        truncated ||= more.truncated;
+      }
     } else {
       const loaded = await this.reader.load({ types: PLACE_TYPES });
       places = loaded.items;
@@ -393,7 +422,7 @@ class Tools {
     const matches: { item: Item; facts: Place }[] = [];
     for (const item of places) {
       const facts = readPlace(item.payload);
-      if (!facts) continue;
+      if (!facts || facts.mergedInto) continue;
       if (wantedCategory && fold(facts.category) !== wantedCategory) continue;
       const haystack = fold([facts.name, facts.cuisine, facts.address, facts.signatureDish?.name, facts.category].filter(Boolean).join(" "));
       if (words.every((w) => haystack.includes(w))) matches.push({ item, facts });
@@ -403,15 +432,18 @@ class Tools {
       const mine = await this.reader.load({
         types: ["status"],
         authorIds: [this.session.accountId],
-        placeIds: matches.map((m) => m.item.id),
+        placeIds: matches.flatMap((m) => [m.item.id, ...m.facts.mergedFrom]),
       });
       addStatuses(mine.items);
       truncated ||= mine.truncated;
     }
-    const kept = status === "none" ? matches.filter((m) => !statusOf.has(m.item.id)) : matches;
+    const statusFor = (m: { item: Item; facts: Place }) =>
+      [m.item.id, ...m.facts.mergedFrom].map((id) => statusOf.get(id)).find((s) => s !== undefined) ?? null;
+    const wanted = status === "visited" || status === "want" ? matches.filter((m) => statusFor(m) === status) : matches;
+    const kept = status === "none" ? wanted.filter((m) => statusFor(m) === null) : wanted;
     const shown = kept.slice(0, Math.min(limit, MAX_LIMIT));
     return toolText({
-      places: shown.map((m) => this.placeView(m.item, m.facts, statusOf.get(m.item.id) ?? null)),
+      places: shown.map((m) => this.placeView(m.item, m.facts, statusFor(m))),
       total: kept.length,
       ...(truncated ? { incomplete: `Read only the newest ${MAX_DECRYPTS} items in one call; some matches may be missing. Narrow the search.` } : {}),
     });
@@ -419,7 +451,7 @@ class Tools {
 
   async getPlace(args: JsonObject): Promise<ToolResult> {
     const place = await this.place(argString(args, "placeId", 64, true));
-    const { items: opinions, truncated } = await this.reader.load({ types: ["status", "tag", "comment"], placeIds: [place.id] });
+    const { items: opinions, truncated } = await this.reader.load({ types: ["status", "tag", "comment"], placeIds: place.placeIds });
     const tagIds = [...new Set(opinions.flatMap((o) => (o.type === "tag" ? [readTagId(o.payload) ?? ""] : [])))].filter(Boolean);
     const authors = [...new Set(opinions.map((o) => o.authorId))];
     const [tags, people, claudeDevices] = await Promise.all([
@@ -513,16 +545,17 @@ class Tools {
   async setStatus(args: JsonObject): Promise<ToolResult> {
     const place = await this.place(argString(args, "placeId", 64, true));
     const status = argStatus(args);
-    const mine = await this.myItems("status", place.id);
+    const mine = await this.myItems("status", place.placeIds);
     const latest = mine[0];
     // A status Claude cannot read (on a group board only), or one also on a group, would be
     // left behind or dropped from the group: leave those to the app.
-    if ((await this.hiddenStatuses(place.id, mine)) || (latest && (await boardsOutOfReach(this.db, this.session, latest.id)) > 0)) {
+    if ((await this.hiddenStatuses(place.placeIds, mine)) || (latest && (await boardsOutOfReach(this.db, this.session, latest.id)) > 0)) {
       throw new ToolError("The owner's status on this place is shared with a group, which Claude cannot write to. Change it in the app.");
     }
     const boards = this.boardIds(args, latest?.boardIds);
     await writeItems(this.db, this.session, [
-      { type: "status", placeId: place.id, payload: { status }, boardIds: boards, ...(latest ? { id: latest.id, createdAt: latest.createdAt } : {}) },
+      // An edit stays on the place it was first set on (a merged duplicate's status included).
+      { type: "status", placeId: latest?.placeId ?? place.id, payload: { status }, boardIds: boards, ...(latest ? { id: latest.id, createdAt: latest.createdAt } : {}) },
     ]);
     // A sync race can leave two; keep one.
     await removeItems(this.db, this.session, mine.slice(1).map((s) => s.id));
@@ -531,7 +564,7 @@ class Tools {
 
   async addTag(args: JsonObject): Promise<ToolResult> {
     const place = await this.place(argString(args, "placeId", 64, true));
-    await this.requireStatus(place.id);
+    await this.requireStatus(place.placeIds);
     const boards = this.boardIds(args);
     const tagIdArg = argString(args, "tagId", 64);
     const newTag = args.newTag;
@@ -566,7 +599,7 @@ class Tools {
       }
       tagId = defItem.id;
       label = `${def.emoji} ${def.name}`.trim();
-      const already = (await this.myItems("tag", place.id)).some((t) => readTagId(t.payload) === tagId);
+      const already = (await this.myItems("tag", place.placeIds)).some((t) => readTagId(t.payload) === tagId);
       if (already) return toolText({ placeId: place.id, tagId, tag: label, note: "Already tagged." });
     }
     await writeItems(this.db, this.session, [{ type: "tag", placeId: place.id, payload: { tagId }, boardIds: boards }]);
@@ -576,17 +609,20 @@ class Tools {
   async addComment(args: JsonObject): Promise<ToolResult> {
     const place = await this.place(argString(args, "placeId", 64, true));
     const text = argString(args, "text", COMMENT_MAX, true);
-    await this.requireStatus(place.id);
+    await this.requireStatus(place.placeIds);
     const boards = this.boardIds(args);
     const [id] = await writeItems(this.db, this.session, [{ type: "comment", placeId: place.id, payload: { text }, boardIds: boards }]);
     return toolText({ placeId: place.id, commentId: id, boards: boards.map((b) => this.boardName(b)) });
   }
 
   /** Whether the owner has a status on the place that Claude cannot read. Uses metadata only. */
-  private async hiddenStatuses(placeId: string, visible: readonly Item[]): Promise<boolean> {
+  private async hiddenStatuses(placeIds: readonly string[], visible: readonly Item[]): Promise<boolean> {
     const { results } = await this.db
-      .prepare("SELECT id FROM envelopes WHERE type = 'status' AND author_id = ? AND place_id = ? AND deleted_at IS NULL")
-      .bind(this.session.accountId, placeId)
+      .prepare(
+        `SELECT id FROM envelopes WHERE type = 'status' AND author_id = ? AND deleted_at IS NULL
+           AND place_id IN (SELECT value FROM json_each(?))`,
+      )
+      .bind(this.session.accountId, JSON.stringify(placeIds))
       .all<{ id: string }>();
     return results.some((r) => !visible.some((v) => v.id === r.id));
   }

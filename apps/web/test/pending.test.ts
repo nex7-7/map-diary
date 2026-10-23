@@ -170,9 +170,12 @@ describe("PendingQueue", () => {
     const [firstId, first] = api.only();
     first.status = "failed";
     await queue.poll();
-    expect((await queue.list())[0]!.state).toEqual({ kind: "failed", reason: "not_found" });
+    expect((await queue.list())[0]!.state).toMatchObject({ kind: "failed", reason: "not_found", job: { jobId: firstId } });
+    // The failed job stays on the server, so the admin can put it back in the queue.
+    expect(api.jobs.has(firstId)).toBe(true);
 
     await queue.retry(item.id);
+    expect(api.jobs.has(firstId)).toBe(false);
     const [secondId, second] = api.only();
     expect(secondId).not.toBe(firstId);
     expect(second.replyPublicKey).not.toBe(first.replyPublicKey);
@@ -180,6 +183,46 @@ describe("PendingQueue", () => {
     api.jobs.clear();
     await queue.poll();
     expect((await queue.list())[0]!.state).toEqual({ kind: "failed", reason: "expired" });
+  });
+
+  it("picks up a failed job the admin put back in the queue", async () => {
+    const { api, diary, queue } = setup();
+    await queue.add("Kyani", draft());
+    const [jobId, job] = api.only();
+    job.status = "failed";
+    await queue.poll();
+    expect((await queue.list())[0]!.state.kind).toBe("failed");
+
+    job.status = "pending";
+    await queue.poll();
+    expect((await queue.list())[0]!.state).toMatchObject({ kind: "waiting", jobId });
+
+    api.answer([kyani]);
+    await queue.poll();
+    expect((await queue.list())[0]!.state.kind).toBe("added");
+    expect(places(diary).map((p) => readPayload("place", p.payload)?.name)).toEqual(["Kyani & Co."]);
+  });
+
+  it("looks a place up again and replaces only its facts", async () => {
+    const { api, diary, queue } = setup();
+    const old = await diary.write({
+      type: "place",
+      placeId: null,
+      payload: { name: "Kyani", category: "cafe-bar", location: { lat: 18.94, lng: 72.82 }, sourceLinks: ["https://example.com/kyani"], chain: { id: "c1", name: "Kyani" } },
+    });
+    const item = await queue.lookUpAgain(old.id, "Kyani & Co., Marine Lines", "Kyani");
+    expect(api.only()[1].query).toBe("Kyani & Co., Marine Lines");
+    api.answer([kyani]);
+    await queue.poll();
+    // Even one match waits for the admin to confirm it.
+    expect((await queue.list())[0]!.state.kind).toBe("choose");
+    expect(await queue.choose(item.id, 0)).toBe(old.id);
+
+    const facts = readPayload("place", diary.items.get(old.id)!.payload)!;
+    expect(facts).toMatchObject({ name: "Kyani & Co.", category: "restaurant", chain: { id: "c1", name: "Kyani" } });
+    expect(facts.sourceLinks).toEqual(["https://example.com/kyani", ...kyani.sourceLinks]);
+    // No opinions, and no second place.
+    expect([...diary.items.values()].map((i) => i.type)).toEqual(["place"]);
   });
 
   it("refuses a result sealed to another key", async () => {
