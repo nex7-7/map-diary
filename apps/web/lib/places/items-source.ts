@@ -180,8 +180,12 @@ export function snapshotFromItems(
     tags,
     places: folded,
   });
-  // People are the authors of what this device can see, named by their profiles.
+  // People are the authors of what this device can see, everyone with a profile, and every
+  // member of the device's groups (who may have posted nothing it can read yet), named by
+  // their profiles.
   for (const p of snapshot.places) for (const o of p.opinions) authors.add(o.authorId);
+  for (const id of profiles.keys()) authors.add(id);
+  for (const b of snapshot.boards) for (const id of b.memberIds ?? []) authors.add(id);
   let unnamed = 0;
   const people = [...authors].map((id): Person => {
     const profile = profiles.get(id);
