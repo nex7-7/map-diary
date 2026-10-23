@@ -12,6 +12,12 @@ import { mergeTargets, withMerged } from "@/lib/places/merges";
 import { readPayload, type PlacePayload } from "@/lib/places/payloads";
 import { Badge, Button, CloseButton, Glyph, MoreMenu, Sheet, useConfirm } from "@/lib/ui";
 
+/** Every word of the query is in one of the fields, ignoring case, accents and punctuation. */
+function matches(query: string, fields: (string | undefined)[]): boolean {
+  const hay = normaliseChainName(fields.filter(Boolean).join(" "));
+  return normaliseChainName(query).split(" ").filter(Boolean).every((w) => hay.includes(w));
+}
+
 interface Row {
   id: string;
   facts: PlacePayload;
@@ -61,11 +67,7 @@ export function AdminPlaces({ diary }: { diary: Diary }) {
     return [...byName.values()].filter((g) => g.length > 1 && new Set(g.map((r) => r.facts.chain?.id ?? r.id)).size > 1);
   }, [rows]);
 
-  const words = query.trim().toLowerCase().split(/\s+/).filter(Boolean);
-  const shown = rows.filter((r) => {
-    const hay = [r.facts.name, r.facts.address, r.facts.cuisine, r.facts.chain?.name].filter(Boolean).join(" ").toLowerCase();
-    return words.every((w) => hay.includes(w));
-  });
+  const shown = rows.filter((r) => matches(query, [r.facts.name, r.facts.address, r.facts.cuisine, r.facts.chain?.name]));
   const nameOf = (accountId: string) => (accountId === diary.device.accountId ? "you" : (profiles.get(accountId)?.name ?? "a friend"));
 
   const run = (action: () => Promise<unknown>, done?: string) => {
@@ -191,10 +193,9 @@ function PlaceRow({ row: r, by, menu }: { row: Row; by: string; menu: React.Reac
 function MergeInto({ duplicate, rows, onCancel, onPick }: { duplicate: Row; rows: Row[]; onCancel: () => void; onPick: (kept: Row) => void }) {
   const [query, setQuery] = useState(duplicate.facts.name);
   const [picked, setPicked] = useState<Row | null>(null);
-  const words = query.trim().toLowerCase().split(/\s+/).filter(Boolean);
   const options = rows
     .filter((r) => r.id !== duplicate.id)
-    .filter((r) => words.every((w) => [r.facts.name, r.facts.address].filter(Boolean).join(" ").toLowerCase().includes(w)))
+    .filter((r) => matches(query, [r.facts.name, r.facts.address]))
     .slice(0, 20);
   return (
     <div style={{ display: "grid", gap: 14 }}>

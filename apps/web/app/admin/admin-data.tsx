@@ -22,7 +22,7 @@ function Meter({ label, used, limit }: { label: string; used: number | null; lim
         <span style={{ width: `${Math.max(share * 100, used ? 1 : 0)}%` }} />
       </div>
       <span className="sub">
-        {used === null ? "Unknown" : size(used)} of {size(limit)} free · {(share * 100).toFixed(share < 0.01 ? 2 : 1)}%
+        {used === null ? "Not found" : `${size(used)} of the ${size(limit)} free tier · ${(share * 100).toFixed(share < 0.01 ? 2 : 1)}%`}
       </span>
     </div>
   );
@@ -82,7 +82,9 @@ export function AdminData({ diary }: { diary: Diary }) {
                   <span className={s.rowText}>
                     <span className="sub">{t.name}</span>
                   </span>
-                  <span className="sub">{t.rows.toLocaleString("en-IN")} rows</span>
+                  <span className="sub">
+                    {t.rows.toLocaleString("en-IN")} {t.rows === 1 ? "row" : "rows"}
+                  </span>
                 </li>
               ))}
             </ul>
