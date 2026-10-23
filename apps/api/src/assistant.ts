@@ -12,7 +12,7 @@ import { readBody, type SignedEnv } from "./auth";
 import { unlockClaudeDevice } from "./claude";
 import { MAX_DECRYPTS, Reader, wipeSession, type ClaudeSession, type Item } from "./assistant-read";
 import { OPEN_THE_APP, WriteRefused, boardsOutOfReach, findByLinks, removeItems, writeItems } from "./assistant-write";
-import { fail, isObject, type JsonObject } from "./http";
+import { fail, isId, isObject, type JsonObject } from "./http";
 import { answerRpc, toolText, type McpServer, type ToolResult } from "./mcp-rpc";
 import { PROBLEMS } from "./mcp";
 
@@ -214,6 +214,10 @@ interface Place {
   sourceLinks: string[];
   /** The chain this place is one outlet of; the app shows a chain's outlets as one place. */
   chain?: string;
+  /** A duplicate the admin merged into another place: that place stands for it. */
+  mergedInto?: string;
+  /** Duplicates merged into this place; opinions left on them are this place's. */
+  mergedFrom: string[];
   chainId?: string;
 }
 interface TagDef {
@@ -236,6 +240,7 @@ function readPlace(payload: JsonValue): Place | undefined {
     category,
     location: { lat: loc.lat, lng: loc.lng },
     sourceLinks: Array.isArray(p.sourceLinks) ? p.sourceLinks.filter((l): l is string => typeof l === "string") : [],
+    mergedFrom: Array.isArray(p.mergedFrom) ? p.mergedFrom.filter((id): id is string => typeof id === "string" && isId(id)).slice(0, 50) : [],
   };
   const address = str(p.address);
   const cuisine = str(p.cuisine);
@@ -250,6 +255,8 @@ function readPlace(payload: JsonValue): Place | undefined {
     place.chain = chainName;
     place.chainId = chainId;
   }
+  const mergedInto = str(p.mergedInto);
+  if (mergedInto && isId(mergedInto)) place.mergedInto = mergedInto;
   return place;
 }
 
@@ -269,6 +276,11 @@ function readTagDef(payload: JsonValue): TagDef | undefined {
 const fold = (s: string) => s.normalize("NFD").replace(/\p{M}/gu, "").toLowerCase();
 
 const PLACE_TYPES = ["place", "private_place"];
+/** Merges followed from a merged duplicate to the place that stands for it. */
+const MAX_MERGE_HOPS = 5;
+
+/** A place and the duplicates merged into it: the owner's opinions on it may be on any of them. */
+const placeIdsOf = (p: { item: Item; facts: Place }): string[] => [p.item.id, ...p.facts.mergedFrom];
 
 // --- Tool calls ---
 
@@ -344,12 +356,23 @@ class Tools {
     return boards;
   }
 
+  /**
+   * A place by id; a merged duplicate gives the place it was merged into.
+   */
   private async place(placeId: string): Promise<Item & { facts: Place }> {
-    const { items } = await this.reader.load({ types: PLACE_TYPES, ids: [placeId] });
-    const item = items[0];
-    const facts = item && readPlace(item.payload);
-    if (!item || !facts) throw new ToolError("No place with that id is visible to Claude. Use search_places to find its id.");
-    return { ...item, facts };
+    let id = placeId;
+    for (let hop = 0; hop < MAX_MERGE_HOPS; hop++) {
+      const { items } = await this.reader.load({ types: PLACE_TYPES, ids: [id] });
+      const item = items[0];
+      const facts = item && readPlace(item.payload);
+      if (!item || !facts) break;
+      if (facts.mergedInto) {
+        id = facts.mergedInto;
+        continue;
+      }
+      return { ...item, facts };
+    }
+    throw new ToolError("No place with that id is visible to Claude. Use search_places to find its id.");
   }
 
   /**
@@ -362,9 +385,14 @@ class Tools {
     const { items } = await this.reader.load({ types: ["place"] });
     const others = items.flatMap((item) => {
       const facts = readPlace(item.payload);
-      return item.id !== place.id && facts && facts.chainId === place.facts.chainId ? [{ item, facts }] : [];
+      return item.id !== place.id && facts && !facts.mergedInto && facts.chainId === place.facts.chainId ? [{ item, facts }] : [];
     });
     return [self, ...others];
+  }
+
+  /** Where the owner's opinions on a place may be: every outlet of its chain and their merged duplicates. */
+  private async opinionPlaceIds(place: Item & { facts: Place }): Promise<string[]> {
+    return [...new Set((await this.outlets(place)).flatMap(placeIdsOf))];
   }
 
   private async myItems(type: string, placeIds: readonly string[]): Promise<Item[]> {
@@ -424,6 +452,14 @@ class Tools {
       const loaded = await this.reader.load({ types: PLACE_TYPES, ids });
       places = loaded.items;
       truncated = mine.truncated || loaded.truncated;
+      // A status left on a merged duplicate counts for the place it was merged into.
+      const kept = new Set(places.map((p) => p.id));
+      const targets = [...new Set(places.flatMap((p) => readPlace(p.payload)?.mergedInto ?? []))].filter((t) => !kept.has(t));
+      if (targets.length > 0) {
+        const more = await this.reader.load({ types: PLACE_TYPES, ids: targets });
+        places = [...places, ...more.items];
+        truncated ||= more.truncated;
+      }
     } else {
       const loaded = await this.reader.load({ types: PLACE_TYPES });
       places = loaded.items;
@@ -435,7 +471,7 @@ class Tools {
     const matches: { item: Item; facts: Place }[] = [];
     for (const item of places) {
       const facts = readPlace(item.payload);
-      if (!facts) continue;
+      if (!facts || facts.mergedInto) continue;
       if (wantedCategory && fold(facts.category) !== wantedCategory) continue;
       const haystack = fold([facts.name, facts.cuisine, facts.address, facts.signatureDish?.name, facts.category].filter(Boolean).join(" "));
       if (words.every((w) => haystack.includes(w))) matches.push({ item, facts });
@@ -445,7 +481,7 @@ class Tools {
     const outletsOf = new Map<string, { item: Item; facts: Place }[]>();
     for (const item of places) {
       const facts = readPlace(item.payload);
-      if (item.type !== "place" || !facts?.chainId) continue;
+      if (item.type !== "place" || !facts?.chainId || facts.mergedInto) continue;
       const list = outletsOf.get(facts.chainId);
       if (list) list.push({ item, facts });
       else outletsOf.set(facts.chainId, [{ item, facts }]);
@@ -457,7 +493,7 @@ class Tools {
       const mine = await this.reader.load({
         types: ["status"],
         authorIds: [this.session.accountId],
-        placeIds: [...new Set(matches.flatMap((m) => outletsFor(m).map((o) => o.item.id)))],
+        placeIds: [...new Set(matches.flatMap((m) => outletsFor(m).flatMap(placeIdsOf)))],
       });
       addStatuses(mine.items);
       truncated ||= mine.truncated;
@@ -470,10 +506,12 @@ class Tools {
         if (seenChains.has(m.facts.chainId!)) continue;
         seenChains.add(m.facts.chainId!);
       }
-      const myStatus = outlets.map((o) => statusOf.get(o.item.id)).find((st) => st !== undefined) ?? null;
+      // A status left on a merged duplicate counts for the place it was merged into.
+      const myStatus = outlets.flatMap(placeIdsOf).map((id) => statusOf.get(id)).find((st) => st !== undefined) ?? null;
       folded.push({ ...m, outlets, myStatus });
     }
-    const kept = status === "none" ? folded.filter((m) => m.myStatus === null) : folded;
+    const wanted = status === "visited" || status === "want" ? folded.filter((m) => m.myStatus === status) : folded;
+    const kept = status === "none" ? wanted.filter((m) => m.myStatus === null) : wanted;
     const shown = kept.slice(0, Math.min(limit, MAX_LIMIT));
     return toolText({
       places: shown.map((m) => this.placeView(m.item, m.facts, m.myStatus, m.outlets)),
@@ -485,7 +523,7 @@ class Tools {
   async getPlace(args: JsonObject): Promise<ToolResult> {
     const place = await this.place(argString(args, "placeId", 64, true));
     const outlets = await this.outlets(place);
-    const { items: opinions, truncated } = await this.reader.load({ types: ["status", "tag", "comment"], placeIds: outlets.map((o) => o.item.id) });
+    const { items: opinions, truncated } = await this.reader.load({ types: ["status", "tag", "comment"], placeIds: [...new Set(outlets.flatMap(placeIdsOf))] });
     const tagIds = [...new Set(opinions.flatMap((o) => (o.type === "tag" ? [readTagId(o.payload) ?? ""] : [])))].filter(Boolean);
     const authors = [...new Set(opinions.map((o) => o.authorId))];
     const [tags, people, claudeDevices] = await Promise.all([
@@ -581,7 +619,7 @@ class Tools {
   async setStatus(args: JsonObject): Promise<ToolResult> {
     const place = await this.place(argString(args, "placeId", 64, true));
     const status = argStatus(args);
-    const outletIds = (await this.outlets(place)).map((o) => o.item.id);
+    const outletIds = await this.opinionPlaceIds(place);
     const mine = await this.myItems("status", outletIds);
     const latest = mine[0];
     // A status Claude cannot read (on a group board only), or one also on a group, would be
@@ -591,7 +629,8 @@ class Tools {
     }
     const boards = this.opinionBoards(place, args, latest?.boardIds);
     await writeItems(this.db, this.session, [
-      // A chain has one status per person, kept on the outlet it was first set on.
+      // A chain has one status per person, kept on the outlet it was first set on (a merged
+      // duplicate's status included).
       { type: "status", placeId: latest?.placeId ?? place.id, payload: { status }, boardIds: boards, ...(latest ? { id: latest.id, createdAt: latest.createdAt } : {}) },
     ]);
     // A sync race can leave two; keep one.
@@ -601,7 +640,7 @@ class Tools {
 
   async addTag(args: JsonObject): Promise<ToolResult> {
     const place = await this.place(argString(args, "placeId", 64, true));
-    const outletIds = (await this.outlets(place)).map((o) => o.item.id);
+    const outletIds = await this.opinionPlaceIds(place);
     await this.requireStatus(outletIds);
     const boards = this.opinionBoards(place, args);
     const tagIdArg = argString(args, "tagId", 64);
@@ -661,7 +700,7 @@ class Tools {
   async addComment(args: JsonObject): Promise<ToolResult> {
     const place = await this.place(argString(args, "placeId", 64, true));
     const text = argString(args, "text", COMMENT_MAX, true);
-    await this.requireStatus((await this.outlets(place)).map((o) => o.item.id));
+    await this.requireStatus(await this.opinionPlaceIds(place));
     const boards = this.opinionBoards(place, args);
     const [id] = await writeItems(this.db, this.session, [{ type: "comment", placeId: place.id, payload: { text }, boardIds: boards }]);
     return toolText({ placeId: place.id, commentId: id, boards: boards.map((b) => this.boardName(b)) });

@@ -1,4 +1,5 @@
 import type { StoredItem } from "./items-source";
+import { mergeTargets, resolvePlace, withMerged } from "./merges";
 import { readPayload } from "./payloads";
 import type { Opinion, Outlet, PlaceChain, PlaceView } from "./types";
 
@@ -41,10 +42,13 @@ export function chainFor(items: readonly StoredItem[], name: string, newId: () =
 
 /** Every outlet of the place's chain, itself included; just the place when it is not a chain. */
 export function outletIds(items: readonly StoredItem[], placeId: string): string[] {
+  // Places merged into an outlet count as that outlet, so opinions left on them are found too.
+  const targets = mergeTargets(items);
+  const kept = resolvePlace(targets, placeId);
   const chains = chainsOf(items);
-  const chain = chains.get(placeId);
-  if (!chain) return [placeId];
-  return [...chains].filter(([, c]) => c.id === chain.id).map(([id]) => id);
+  const chain = chains.get(kept);
+  const outlets = chain ? [...chains].filter(([id, c]) => c.id === chain.id && !targets.has(id)).map(([id]) => id) : [kept];
+  return outlets.flatMap((id) => withMerged(targets, id));
 }
 
 /**

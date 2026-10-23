@@ -1,6 +1,7 @@
 import type { EnvelopeType, JsonValue } from "@map-diary/crypto";
 import { applyBoardRules } from "./boards";
 import { foldChains, outletIds } from "./chains";
+import { mergeTargets, resolvePlace } from "./merges";
 import { readPayload, type ProfilePayload } from "./payloads";
 import type { Board, BoardKind, DiarySnapshot, DiarySource, Opinion, Person, PlaceView, Status, StatusOpinion, TagDefinition } from "./types";
 
@@ -154,8 +155,11 @@ export function snapshotFromItems(
     }
   }
 
+  // A merged duplicate is not shown; its opinions show on the place it was merged into.
+  const targets = mergeTargets(items);
+  for (const id of targets.keys()) places.delete(id);
   for (const { placeId, opinion } of opinions) {
-    const place = places.get(placeId);
+    const place = places.get(resolvePlace(targets, placeId));
     if (!place) continue;
     place.opinions.push(opinion);
   }

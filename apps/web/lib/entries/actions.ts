@@ -1,5 +1,6 @@
 import type { EnvelopeType, JsonValue } from "@map-diary/crypto";
 import { outletIds } from "../places/chains";
+import { mergeTargets, resolvePlace } from "../places/merges";
 import type { StoredItem } from "../places/items-source";
 import { cleanDisplayName, readAvatar, readPayload, type AvatarPayload, type CommentPayload, type PlacePayload, type ProfilePayload, type TagDefPayload } from "../places/payloads";
 import type { Status } from "../places/types";
@@ -99,10 +100,13 @@ export function placeLinks(payload: JsonValue): string[] {
  */
 export async function findCataloguePlace(w: DiaryWriter, links: readonly string[]): Promise<string | undefined> {
   const items = await w.listItems();
+  // A link of a merged duplicate finds the place it was merged into.
+  const targets = mergeTargets(items);
   const local = links.map((l) => findDuplicate(items, l)).find((d) => d !== undefined);
-  if (local) return local.id;
+  if (local) return resolvePlace(targets, local.id);
   if (!w.findCataloguePlace || links.length === 0) return undefined;
-  return (await w.findCataloguePlace(links.map(normaliseLink)).catch(() => null)) ?? undefined;
+  const found = (await w.findCataloguePlace(links.map(normaliseLink)).catch(() => null)) ?? undefined;
+  return found && resolvePlace(targets, found);
 }
 
 /** A place already in the diary with the same source link, if any. */

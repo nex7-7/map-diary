@@ -28,6 +28,13 @@ A `claude` device (the assistant) may call only `GET /api/sync`, `POST /api/enve
 | `GET /api/app-invites/:id/status` | none, needs the id from the code | Open, used or expired; while open, the master board id and the invite's wrapped master keys |
 | `GET /api/members` | admin device | Every account with its invite id, active device count and last use; no names |
 | `POST /api/members/:id/remove` | admin device | Removes someone from the app: marks the account removed, revokes all its devices, and in the same step moves the master board to the next key, sent as `masterKeyVersion` and `masterKeys` (one wrap per member who stays) |
+| `GET /api/admin/devices` | admin device | Every device on the app with its account, kind, dates and whether its owner still has to finish an admin sign-out |
+| `POST /api/admin/devices/:id/revoke` | admin device | Signs out another account's device at once (deletes its account key copy, Claude keys and pairings) and marks it `rekey_due_at`; the owner's `POST /api/devices/:id/revoke` on it then moves the account to new keys and clears the mark. Own devices: `400 own_device` |
+| `GET /api/admin/resolver` | admin device | Job counts by status, and the waiting and failed jobs with their query (newest 200) |
+| `POST /api/admin/resolver/jobs/:id/retry` | admin device | Puts a waiting or failed job back in the queue with its attempts reset; `404` once the device dropped it |
+| `POST /api/admin/resolver/retry-failed` | admin device | The same for every failed job → `{ retried }` |
+| `GET /api/admin/data` | admin device | D1 size and rows per table, and the map file's size in R2, with the free-tier limits |
+| `GET /api/admin/data/export` | admin device | Without `table`: the schema and table list. With `table` and `after` (rowid): up to 200 rows, BLOBs as `{ b64 }`, and `next`. The admin's device assembles them into a SQL file |
 | `PUT /api/board-keys` | device | Stores board keys wrapped to the account's box key |
 | `POST /api/boards/master` | the admin's device | Creates the master board once, with its first key wrapped to the admin's account |
 | `GET /api/boards/:id/members` | device of a member | The board's members and their current account box public keys, for wrapping a rotated key |
@@ -45,8 +52,8 @@ A `claude` device (the assistant) may call only `GET /api/sync`, `POST /api/enve
 | `GET /api/pairings/:id/transfer` | the new device, once approved | The sealed account keys; deletes the pairing |
 | `POST /api/key-backup/fetch` | none, needs the passphrase-derived lookup id | Returns the passphrase key backup |
 | `PUT /api/key-backup` | device | Replaces the key backup |
-| `POST /api/envelopes` | device | Pushes up to 100 envelopes; last write wins per envelope on `updatedAt`; one sealed with a board key version a revocation replaced is refused as `stale_key` for the device to re-seal. Catalogue rules: a `place` goes to the master board alone (`place_not_on_master`), a `private_place` never does (`private_on_master`), only the admin changes a `place` after its first write (`facts_locked`), and a new `place` whose link hash (sent beside it as `linkHashes`) another place holds is refused as `duplicate_place` with that place's id |
-| `POST /api/envelopes/delete` | device | Tombstones the account's own envelopes; only the admin deletes a catalogue `place` |
+| `POST /api/envelopes` | device | Pushes up to 100 envelopes; last write wins per envelope on `updatedAt`; one sealed with a board key version a revocation replaced is refused as `stale_key` for the device to re-seal. Catalogue rules: a `place` goes to the master board alone (`place_not_on_master`), a `private_place` never does (`private_on_master`), only the admin changes a `place` after its first write (`facts_locked`), and the admin may rewrite any catalogue `place` (it then becomes the admin's; opinions are never anyone's but their author's), and a new `place` whose link hash (sent beside it as `linkHashes`) another place holds is refused as `duplicate_place` with that place's id |
+| `POST /api/envelopes/delete` | device | Tombstones the account's own envelopes; only the admin deletes a catalogue `place`, and may delete anyone's |
 | `GET /api/sync?since=&limit=` | device | Changes on the account's boards after a cursor, with signer keys, the account's box key version and its boards' current key versions |
 | `GET/HEAD /api/tiles/mumbai.pmtiles` | none | The map file, with Range and ETag. Devices download it whole and read it locally |
 | `POST /api/resolver/jobs` | none (anonymous) | Queues a name or link with a one-time reply key |

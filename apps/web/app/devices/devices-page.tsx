@@ -59,7 +59,7 @@ export function Devices({ diary }: { diary: Diary }) {
         setLoadFailed(false);
       },
       () => {
-        setOverview((o) => o ?? { devices: [], isAdmin: false, hasPassphrase: true });
+        setOverview((o) => o ?? { devices: [], signedOut: [], isAdmin: false, hasPassphrase: true });
         setLoadFailed(true);
       },
     );
@@ -110,6 +110,32 @@ export function Devices({ diary }: { diary: Diary }) {
           </button>
         )}
       </div>
+
+      {overview && overview.signedOut.length > 0 && (
+        <section className={`${s.card} ${s.sec}`}>
+          <h2 className="heading-s">Signed out by the admin</h2>
+          <p className="sub" style={{ margin: 0 }}>
+            {overview.signedOut.length === 1 ? "This device can’t sync any more" : "These devices can’t sync any more"}. Finish removing{" "}
+            {overview.signedOut.length === 1 ? "it" : "them"} with your passphrase or recovery phrase, so your boards move to new keys it can’t read.
+          </p>
+          <ul className={s.list}>
+            {overview.signedOut.map((d) => (
+              <li key={d.id} className={s.row}>
+                <IconTile name={iconFor(d)} tone="danger" />
+                <span className={s.rowText}>
+                  <span className={s.name}>{nameOf(d)}</span>
+                  <span className="sub">
+                    {KIND_LABEL[d.kind] ?? d.kind} · added {day(d.createdAt)}
+                  </span>
+                </span>
+                <Button variant="secondary" size="m" onClick={() => setOpen({ kind: "remove", device: d })}>
+                  Finish
+                </Button>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
 
       {devices === null ? (
         <p className="sub">Loading…</p>
@@ -639,9 +665,11 @@ function RemoveDevice({ diary, device, onCancel, onDone }: { diary: Diary; devic
   return (
     <form onSubmit={(e) => void submit(e)} style={{ display: "grid", gap: 16 }}>
       <IconTile name={iconFor(device)} tone="danger" large />
-      <h2 className="heading-m">Remove {name}?</h2>
+      <h2 className="heading-m">{device.signedOutByAdmin ? `Finish removing ${name}` : `Remove ${name}?`}</h2>
       <p style={{ margin: 0, color: "var(--ink-2)" }}>
-        {device.kind === "claude"
+        {device.signedOutByAdmin
+          ? "The admin signed it out, so it can’t sync. Your other devices now move to new keys, and every board you’re in gets a fresh key, so it can’t read anything new."
+          : device.kind === "claude"
           ? "Claude stops working at once. Your Public and Personal boards then get fresh keys, so it can’t read anything new. You can connect Claude again later."
           : "It stops syncing at once. Your other devices then move to new keys, and every board you’re in gets a fresh key, so it can’t read anything new."}
       </p>
@@ -687,7 +715,7 @@ function RemoveDevice({ diary, device, onCancel, onDone }: { diary: Diary; devic
       </div>
       {error && <p className={s.error}>{error}</p>}
       <Button type="submit" variant="danger" block disabled={busy || value.length === 0}>
-        {busy ? "Removing…" : "Remove device"}
+        {busy ? "Removing…" : device.signedOutByAdmin ? "Finish" : "Remove device"}
       </Button>
       <Button variant="ghost" block disabled={busy} onClick={onCancel}>
         Keep it

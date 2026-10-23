@@ -55,6 +55,9 @@ async function attempt<T>(fn: () => Promise<T>): Promise<T> {
   }
 }
 
+/** Runs an admin call, with failures as an `InviteError` the admin screens already explain. */
+export const attemptAdmin = attempt;
+
 export interface NewAppInvite {
   /** The Worker's handle on the invite; it cannot be turned back into the code. */
   id: string;

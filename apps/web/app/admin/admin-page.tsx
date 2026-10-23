@@ -18,14 +18,66 @@ import {
   type NewAppInvite,
 } from "@/lib/device";
 import { profilesOf } from "@/lib/places/items-source";
-import { Badge, Button, CloseButton, CopyCode, Icon, Sheet } from "@/lib/ui";
+import { Badge, Button, ChipRow, CloseButton, CopyCode, FilterChip, Icon, Sheet } from "@/lib/ui";
+import { AdminData } from "./admin-data";
+import { AdminDevices } from "./admin-devices";
+import { AdminPlaces } from "./admin-places";
+import { AdminResolver } from "./admin-resolver";
 
-/** `/admin`: app invites and members. The Worker refuses everyone but the admin. */
+/**
+ * `/admin`: members and invites, places, the resolver queue, every device, and the database.
+ * The Worker refuses everyone but the admin.
+ */
 export function AdminPage() {
   return (
     <AccountPage current="admin" title="Admin" sub="You can change shared facts and membership. You still can’t read other people’s boards." wide>
-      {(diary) => <Admin diary={diary} />}
+      {(diary) => <AdminTabs diary={diary} />}
     </AccountPage>
+  );
+}
+
+const TABS = [
+  ["members", "Members"],
+  ["places", "Places"],
+  ["resolver", "Resolver"],
+  ["devices", "Devices"],
+  ["data", "Data"],
+] as const;
+type Tab = (typeof TABS)[number][0];
+
+/** The section in the address (`/admin#places`), so a link can open one. */
+function tabFromHash(): Tab {
+  const hash = typeof window === "undefined" ? "" : window.location.hash.slice(1);
+  return TABS.find(([t]) => t === hash)?.[0] ?? "members";
+}
+
+function AdminTabs({ diary }: { diary: Diary }) {
+  const [tab, setTab] = useState<Tab>("members");
+  useEffect(() => {
+    setTab(tabFromHash());
+    const onHash = () => setTab(tabFromHash());
+    window.addEventListener("hashchange", onHash);
+    return () => window.removeEventListener("hashchange", onHash);
+  }, []);
+  const pick = (t: Tab) => {
+    setTab(t);
+    history.replaceState(null, "", t === "members" ? window.location.pathname : `#${t}`);
+  };
+  return (
+    <>
+      <ChipRow label="Admin sections">
+        {TABS.map(([t, label]) => (
+          <FilterChip key={t} on={tab === t} onClick={() => pick(t)}>
+            {label}
+          </FilterChip>
+        ))}
+      </ChipRow>
+      {tab === "members" && <Admin diary={diary} />}
+      {tab === "places" && <AdminPlaces diary={diary} />}
+      {tab === "resolver" && <AdminResolver diary={diary} />}
+      {tab === "devices" && <AdminDevices diary={diary} />}
+      {tab === "data" && <AdminData diary={diary} />}
+    </>
   );
 }
 

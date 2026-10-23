@@ -21,6 +21,8 @@ export interface ListedDevice {
   createdAt: number;
   lastSeenAt: number | null;
   current: boolean;
+  /** Signed out by the admin; the account still has to move to new keys. */
+  signedOutByAdmin?: boolean;
 }
 
 function signerOf(diary: Diary) {
@@ -30,6 +32,8 @@ function signerOf(diary: Diary) {
 export interface AccountOverview {
   /** Devices still signed in. */
   devices: ListedDevice[];
+  /** Devices the admin signed out, waiting for this account to move to new keys. */
+  signedOut: ListedDevice[];
   isAdmin: boolean;
   /** Whether a passphrase backup exists for signing in without another device. */
   hasPassphrase: boolean;
@@ -45,17 +49,18 @@ export async function listDevices(diary: Diary): Promise<AccountOverview> {
     names.set(self, guess);
     void nameDevice(diary, self, guess).catch(() => undefined);
   }
+  const listed = (d: (typeof me.devices)[number]): ListedDevice => ({
+    id: d.id,
+    kind: d.kind,
+    name: names.get(d.id) ?? null,
+    createdAt: d.createdAt,
+    lastSeenAt: d.lastSeenAt,
+    current: d.id === self,
+    ...(d.rekeyDue ? { signedOutByAdmin: true } : {}),
+  });
   return {
-    devices: me.devices
-      .filter((d) => d.revokedAt === null)
-      .map((d) => ({
-        id: d.id,
-        kind: d.kind,
-        name: names.get(d.id) ?? null,
-        createdAt: d.createdAt,
-        lastSeenAt: d.lastSeenAt,
-        current: d.id === self,
-      })),
+    devices: me.devices.filter((d) => d.revokedAt === null).map(listed),
+    signedOut: me.devices.filter((d) => d.revokedAt !== null && d.rekeyDue === true).map(listed),
     isAdmin: me.account.isAdmin,
     hasPassphrase: me.account.hasPassphrase,
   };

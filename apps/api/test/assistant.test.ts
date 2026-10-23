@@ -198,6 +198,26 @@ describe("the Claude assistant's MCP tools", () => {
     expect(refused.text).toMatch(/set_status/);
   });
 
+  it("treats a merged duplicate as the place it was merged into", async () => {
+    const master = masterBoardOf(owner)!.id;
+    const dupFacts = { name: "Cafe Madras Matunga", category: "restaurant", location: { lat: 19.027, lng: 72.855 }, sourceLinks: ["https://example.com/madras-2"] };
+    const dup = await ownerDiary.write({ type: "place", placeId: null, payload: dupFacts });
+    const note = await ownerDiary.write({ type: "comment", placeId: dup.id, payload: { text: "filter coffee" }, boards: [master] });
+    await ownerDiary.sync();
+    // What the admin's Merge does: the duplicate points at the kept place, which lists it.
+    const kept = (await ownerDiary.getItem(cafeId))!;
+    await ownerDiary.write({ id: dup.id, type: "place", placeId: null, payload: { ...dupFacts, mergedInto: cafeId } });
+    await ownerDiary.write({ id: cafeId, type: "place", placeId: null, payload: { ...(kept.payload as Record<string, JsonValue>), mergedFrom: [dup.id] } });
+    await ownerDiary.sync();
+    expect(ownerDiary.skipped).toEqual([]);
+
+    const found = await call("search_places", { query: "madras" });
+    expect((found.value.places as { id: string }[]).map((p) => p.id)).toEqual([cafeId]);
+    const viaDup = await call("get_place", { placeId: dup.id });
+    expect((viaDup.value.place as { id: string }).id).toBe(cafeId);
+    expect((viaDup.value.opinions as { id: string }[]).map((o) => o.id)).toContain(note.id);
+  });
+
   it("treats a chain's outlets as one place, with one status", async () => {
     const chain = { id: "chain-cartel", name: "The Bombay Cartel" };
     const outlet = (area: string, lat: number) => ({

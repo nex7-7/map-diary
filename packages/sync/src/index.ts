@@ -6,6 +6,11 @@ export {
   type AppInviteState,
   type AppInviteStatus,
   type AppInviteView,
+  type AdminDeviceView,
+  type AdminResolverJob,
+  type AdminResolverView,
+  type AdminStorageView,
+  type ExportValue,
   type MemberView,
   type VersionKey,
   type BoardMember,
@@ -68,6 +73,16 @@ export {
   type InviteErrorCode,
   type NewAppInvite,
 } from "./invites";
+export {
+  exportDatabase,
+  insertStatement,
+  listAllDevices,
+  resolverQueue,
+  retryFailedJobs,
+  retryResolverJob,
+  signOutDevice,
+  storageUsage,
+} from "./admin";
 export { ClaudeError, connectClaude, topUpClaudeKeys, type ClaudeErrorCode, type ConnectedClaude } from "./claude";
 export { RevokeError, revokeDevice, type AccountSecret, type RevokeErrorCode } from "./revoke";
 export type { DeviceKind } from "@map-diary/crypto";

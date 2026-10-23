@@ -16,7 +16,7 @@ sealing) and `apps/api/src/resolver.ts` (routes).
 4. The device polls its job, opens the result (`openResolverResult`, which re-checks it),
    writes the place facts, and deletes the job.
 
-A job listed 5 times without an answer is marked failed. The hourly cron deletes jobs
+A job listed 5 times without an answer is marked failed. A failed job keeps its query until the device drops it or it expires, so the admin can put it back in the queue from Admin → Resolver; the device keeps checking a failed job until then. The hourly cron deletes jobs
 14 days after they were made. At most 500 jobs can be pending at once.
 
 Short Google Maps links (maps.app.goo.gl) usually don't need a job: the device calls

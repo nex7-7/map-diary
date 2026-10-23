@@ -82,6 +82,8 @@ export interface MeResponse {
     createdAt: number;
     lastSeenAt: number | null;
     revokedAt: number | null;
+    /** Signed out by the admin; the account waits for its owner to move it to new keys. */
+    rekeyDue?: boolean;
     /** A Claude device's master and Personal key versions, wrapped straight to it. */
     boardKeys?: { boardId: string; keyVersion: number }[];
   }[];
@@ -215,6 +217,43 @@ export interface RevokeBody {
 }
 
 export type ResolverJobStatus = "pending" | "resolved" | "failed";
+
+/** A device anywhere on the app, as the admin panel lists it. */
+export interface AdminDeviceView {
+  id: string;
+  accountId: string;
+  kind: string;
+  createdAt: number;
+  lastSeenAt: number | null;
+  revokedAt: number | null;
+  /** Signed out by the admin, and its owner has not moved their account to new keys yet. */
+  rekeyDue: boolean;
+}
+
+/** An unfinished resolver job. Anonymous: only what the resolver itself sees. */
+export interface AdminResolverJob {
+  id: string;
+  status: "pending" | "failed";
+  /** The link or name; null once the device has given up on the job. */
+  query: string | null;
+  attempts: number;
+  createdAt: number;
+  updatedAt: number;
+  expiresAt: number;
+}
+
+export interface AdminResolverView {
+  counts: { pending: number; resolved: number; failed: number };
+  jobs: AdminResolverJob[];
+}
+
+export interface AdminStorageView {
+  d1: { sizeBytes: number | null; limitBytes: number; tables: { name: string; rows: number }[] };
+  r2: { mapFileBytes: number | null; limitBytes: number };
+}
+
+/** A BLOB column comes back as `{ b64 }`; everything else as plain JSON. */
+export type ExportValue = string | number | null | { b64: string };
 
 export interface ResolverJobResponse {
   id: string;
@@ -362,6 +401,41 @@ export class Api {
   /** `masterKeys` is the next master key wrapped for every member who stays, the admin included. */
   removeMember(accountId: string, body: { masterKeyVersion: number; masterKeys: MemberKeyBody[] } | undefined, signer: Signer) {
     return this.call<{ removed: string }>("POST", `/api/members/${encodeURIComponent(accountId)}/remove`, body, signer);
+  }
+
+  // The admin panel's Devices, Resolver and Data sections.
+
+  adminDevices(signer: Signer) {
+    return this.call<{ devices: AdminDeviceView[] }>("GET", "/api/admin/devices", undefined, signer);
+  }
+
+  adminRevokeDevice(deviceId: string, signer: Signer) {
+    return this.call<{ revoked: string }>("POST", `/api/admin/devices/${encodeURIComponent(deviceId)}/revoke`, undefined, signer);
+  }
+
+  adminResolver(signer: Signer) {
+    return this.call<AdminResolverView>("GET", "/api/admin/resolver", undefined, signer);
+  }
+
+  adminRetryJob(jobId: string, signer: Signer) {
+    return this.call<{ id: string; status: "pending" }>("POST", `/api/admin/resolver/jobs/${encodeURIComponent(jobId)}/retry`, undefined, signer);
+  }
+
+  adminRetryFailedJobs(signer: Signer) {
+    return this.call<{ retried: number }>("POST", "/api/admin/resolver/retry-failed", undefined, signer);
+  }
+
+  adminStorage(signer: Signer) {
+    return this.call<AdminStorageView>("GET", "/api/admin/data", undefined, signer);
+  }
+
+  adminExportSchema(signer: Signer) {
+    return this.call<{ tables: string[]; schema: string[] }>("GET", "/api/admin/data/export", undefined, signer);
+  }
+
+  adminExportPage(table: string, after: number, signer: Signer) {
+    const query = `table=${encodeURIComponent(table)}&after=${after}`;
+    return this.call<{ table: string; rows: Record<string, ExportValue>[]; next: number | null }>("GET", `/api/admin/data/export?${query}`, undefined, signer);
   }
 
   // Device pairing: the old device opens, reads and approves; the new device joins,

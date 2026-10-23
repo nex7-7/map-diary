@@ -18,7 +18,15 @@ export interface PlacePayload {
   sourceLinks: string[];
   /** Set when the place is one outlet of a chain; outlets with the same chain id are one place page. */
   chain?: PlaceChain;
+  /** Set by the admin on a duplicate: the place it was merged into, where its opinions now show. */
+  mergedInto?: string;
+  /** Set by the admin on the place kept by a merge: the duplicates merged into it. */
+  mergedFrom?: string[];
 }
+
+/** Most duplicates one place records as merged into it. */
+export const MERGED_FROM_MAX = 50;
+const PLACE_ID = /^[A-Za-z0-9_-]{1,64}$/;
 
 export const CHAIN_NAME_MAX = 200;
 
@@ -130,6 +138,12 @@ function readPlace(p: JsonObject): PlacePayload | undefined {
     const id = str(p.chain.id);
     const chainName = str(p.chain.name)?.trim();
     if (id && /^[A-Za-z0-9_-]{1,64}$/.test(id) && chainName && chainName.length <= CHAIN_NAME_MAX) place.chain = { id, name: chainName };
+  }
+  const mergedInto = str(p.mergedInto);
+  if (mergedInto && PLACE_ID.test(mergedInto)) place.mergedInto = mergedInto;
+  if (Array.isArray(p.mergedFrom)) {
+    const from = p.mergedFrom.flatMap((v) => (typeof v === "string" && PLACE_ID.test(v) ? [v] : [])).slice(0, MERGED_FROM_MAX);
+    if (from.length > 0) place.mergedFrom = from;
   }
   return place;
 }
