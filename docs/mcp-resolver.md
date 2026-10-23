@@ -76,7 +76,7 @@ connector. Use no other connector, and do not save anything about these places t
    link). For a place that is not on Zomato, use Google Maps or the place's own site to find
    its other Mumbai outlets. Ignore "See all N outlets in <mall or compound>": that lists
    other places in the same building, not the chain.
-4. Find the wallet bleeder (restaurant and cafe-bar only): open the place's Menu tab on
+4. Find the wallet bleeder (restaurant, cafe-bar, roadside-stall and desserts only): open the place's Menu tab on
    Zomato and pick the Food menu (not Bar or Beverages; for a café or bar whose menu is
    mostly drinks, its main menu). Read through its pages to the main dishes, find the dish
    the place is best known for (Zomato's "Top dishes" and "People say this place is known
@@ -88,8 +88,9 @@ connector. Use no other connector, and do not save anything about these places t
      the link is for. Give up to 5 only when a plain name could mean several unrelated
      places; I pick one later.
    - name: as the place writes it.
-   - category: restaurant, cafe-bar, movies, recreation or beach. Bars, pubs, cafés,
-     bakeries and dessert shops are cafe-bar.
+   - category: restaurant, cafe-bar, roadside-stall, desserts, movies, recreation or beach.
+     Bars, pubs, cafés and bakeries are cafe-bar; ice cream, kulfi, mithai and dessert shops
+     are desserts; street carts and stalls are roadside-stall.
    - location: lat and lng of the place itself, from Google Maps or the expanded URL.
      They must be inside Mumbai (lat 18.85 to 19.35, lng 72.75 to 73.15).
    - address: short, area and city, e.g. "Kamala Mills, Lower Parel, Mumbai".

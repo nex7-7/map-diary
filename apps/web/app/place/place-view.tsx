@@ -11,6 +11,7 @@ import { Avatar } from "@/app/_account/parts";
 import { sealDate } from "@/app/diary/places-list";
 import { toastError } from "@/lib/errors";
 import { BoardBadge, buttonClass, Icon, useConfirm } from "@/lib/ui";
+import { onMap } from "@/lib/map/style";
 import { PlaceMap } from "./place-map";
 import p from "./place.module.css";
 import type { Diary } from "@/lib/device";
@@ -180,7 +181,14 @@ export function PlaceView({ diary, placeId: asked }: { diary: Diary; placeId: st
     <div className={p.place}>
       <aside className={p.side}>
         <div className={p.hero}>
-          <PlaceMap place={place} focus={at.location} kind={myStatus ?? (of("status").length > 0 ? "friend" : "pending")} className={p.map} />
+          {onMap(at.location) ? (
+            <PlaceMap place={place} focus={at.location} kind={myStatus ?? (of("status").length > 0 ? "friend" : "pending")} className={p.map} />
+          ) : (
+            <div className={`${p.map} ${p.offMap}`}>
+              <Icon name="mapFold" size="l" />
+              <span>Outside Mumbai, so not on the map</span>
+            </div>
+          )}
           <Link href="/?view=list" className={p.backFab} aria-label="Back to your places">
             <Icon name="chevronLeft" />
           </Link>

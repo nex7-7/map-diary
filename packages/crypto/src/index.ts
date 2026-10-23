@@ -72,11 +72,13 @@ export {
 export {
   RESOLVER_RESULT_VERSION,
   RESOLVER_CATEGORIES,
+  FOOD_CATEGORIES,
   MUMBAI_BOUNDS,
   MAX_CANDIDATES,
   MAX_OUTLETS,
   REPLY_PUBLIC_KEY_BYTES,
   parseResolution,
+  parseOutsidePlace,
   generateReplyKeys,
   sealResolverResult,
   openResolverResult,

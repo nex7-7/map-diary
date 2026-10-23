@@ -31,6 +31,17 @@
   height: 100%;
 }
 
+.offMap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 180px;
+  color: var(--ink-2);
+  font-style: italic;
+}
+
 .backFab {
   position: absolute;
   z-index: 2;

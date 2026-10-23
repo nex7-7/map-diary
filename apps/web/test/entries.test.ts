@@ -132,6 +132,18 @@ describe("buildFacts", () => {
     expect(buildFacts(form({ location: { lng: 73.8553, lat: 18.5195 } }))).toMatchObject({ ok: false, message: expect.stringContaining("outside Mumbai") });
   });
 
+  it("keeps a saved place's location outside Mumbai when its other details change", () => {
+    const amritsar = { lng: 74.8189, lat: 31.6447 };
+    expect(buildFacts(form({ location: amritsar, savedLocation: amritsar, name: "ITC Welcomhotel" }))).toMatchObject({ ok: true });
+    expect(buildFacts(form({ location: { lng: 74.82, lat: 31.65 }, savedLocation: amritsar }))).toMatchObject({ ok: false });
+  });
+
+  it("gives roadside stalls and desserts a wallet bleeder", () => {
+    const stall = buildFacts(form({ category: "roadside-stall", dishName: "Vada pav", dishPrice: "25" }));
+    expect(stall.ok && stall.facts.signatureDish).toEqual({ name: "Vada pav", priceInr: 25 });
+    expect(buildFacts(form({ category: "desserts", dishName: "Kulfi", dishPrice: "80" }))).toMatchObject({ ok: true });
+  });
+
   it("keeps the wallet bleeder to food and drink, and needs both halves", () => {
     expect(buildFacts(form({ dishName: "Bun maska" }))).toMatchObject({ ok: false });
     const beach = buildFacts(form({ category: "beach", dishName: "Bhel", dishPrice: "60" }));

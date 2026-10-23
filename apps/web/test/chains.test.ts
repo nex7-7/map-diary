@@ -91,6 +91,12 @@ describe("chains", () => {
     expect(pinsCollection(listed, null).features).toHaveLength(2);
   });
 
+  it("draws no pin for a place outside Mumbai, but keeps it on the list", () => {
+    const place = { ...outlet("Amritsar", 31.6447), location: { lat: 31.6447, lng: 74.8189 } };
+    const listed = [{ place: { ...place, id: "p-far" }, status: "visited", mine: true, addedAt: "" }] as unknown as Parameters<typeof pinsCollection>[0];
+    expect(pinsCollection(listed, null).features).toHaveLength(0);
+  });
+
   it("joins a chain by name, however it is written", async () => {
     const { diary } = await twoOutlets();
     const items = await diary.listItems();

@@ -3,6 +3,8 @@
 import { env, exports } from "cloudflare:workers";
 import { describe, expect, it } from "vitest";
 import { ready, type JsonValue } from "@map-diary/crypto";
+import { Hono } from "hono";
+import { assistantRoutes, unlockStored } from "../src/assistant";
 import { Api, Diary, MemoryStorage, connectClaude, createGroup, masterBoardOf, prepareSetup, type DeviceState } from "@map-diary/sync";
 
 await ready();
@@ -20,8 +22,10 @@ let secret: string;
 let claudeDeviceId: string;
 
 let rpcId = 0;
-async function rpc(method: string, params: unknown = {}, auth: { path?: string; bearer?: string } = { bearer: secret }) {
-  return exports.default.fetch(
+type Fetch = (r: Request) => Promise<Response>;
+const worker: Fetch = (r) => exports.default.fetch(r);
+async function rpc(method: string, params: unknown = {}, auth: { path?: string; bearer?: string } = { bearer: secret }, fetch = worker) {
+  return fetch(
     new Request(`${ORIGIN}/api/claude/mcp${auth.path ? `/${auth.path}` : ""}`, {
       method: "POST",
       headers: { "Content-Type": "application/json", ...(auth.bearer ? { Authorization: `Bearer ${auth.bearer}` } : {}) },
@@ -31,8 +35,8 @@ async function rpc(method: string, params: unknown = {}, auth: { path?: string; 
 }
 
 type Answer = { text: string; isError: boolean; value: Record<string, unknown> };
-async function call(name: string, args: Record<string, unknown> = {}): Promise<Answer> {
-  const res = await rpc("tools/call", { name, arguments: args });
+async function call(name: string, args: Record<string, unknown> = {}, fetch = worker): Promise<Answer> {
+  const res = await rpc("tools/call", { name, arguments: args }, { bearer: secret }, fetch);
   expect(res.status).toBe(200);
   const body = (await res.json()) as { result: { content: { text: string }[]; isError?: boolean; structuredContent?: Record<string, unknown> } };
   return { text: body.result.content[0]!.text, isError: body.result.isError === true, value: body.result.structuredContent ?? {} };
@@ -281,6 +285,68 @@ describe("the Claude assistant's MCP tools", () => {
     await ownerDiary.write({ type: "status", placeId: prithvi.id, payload: { status: "want" }, boards: [groupId] });
     await ownerDiary.sync();
     expect((await call("set_status", { placeId: prithvi.id, status: "visited" })).isError).toBe(true);
+  });
+
+  describe("the one-time import of places outside Mumbai", () => {
+    /** The assistant's routes with the import open until `until`. */
+    const withImportUntil = (until: number): Fetch => {
+      const app = new Hono<{ Bindings: Env }>().basePath("/api").route("/", assistantRoutes(unlockStored, until));
+      return async (r) => app.fetch(r, env);
+    };
+    const open = withImportUntil(Number.MAX_SAFE_INTEGER);
+    const closed = withImportUntil(Date.now() - 1);
+    const amritsar = {
+      name: "ITC Welcomhotel Amritsar",
+      category: "restaurant",
+      location: { lat: 31.6447, lng: 74.8189 },
+      outsideMumbai: true,
+      status: "visited",
+    };
+    const addPlaceSchema = async (fetch: Fetch) => {
+      const body = (await (await rpc("tools/list", {}, { bearer: secret }, fetch)).json()) as {
+        result: { tools: { name: string; inputSchema: { properties: Record<string, unknown> } }[] };
+      };
+      return body.result.tools.find((t) => t.name === "add_place")!.inputSchema.properties;
+    };
+
+    it("adds a private place on Personal only, for the admin, while it is open", async () => {
+      expect(await addPlaceSchema(open)).toHaveProperty("outsideMumbai");
+      expect((await call("add_place", { ...amritsar, boards: ["public"] }, open)).text).toMatch(/only go to the "personal" board/);
+      expect((await call("add_place", { ...amritsar, location: { lat: 19.02, lng: 72.85 } }, open)).text).toMatch(/inside Mumbai/);
+
+      const added = await call("add_place", { ...amritsar, comment: "Breakfast buffet" }, open);
+      expect(added.isError).toBe(false);
+      expect(added.value).toMatchObject({ status: "visited", boards: ["personal"], outsideMumbai: true });
+      const id = added.value.placeId as string;
+
+      await ownerDiary.sync();
+      expect(ownerDiary.skipped).toEqual([]);
+      const items = await ownerDiary.listItems();
+      expect(items.find((i) => i.id === id)).toMatchObject({ type: "private_place", boardIds: [owner.personalBoardId] });
+      const opinions = items.filter((i) => i.placeId === id);
+      expect(opinions.map((i) => i.type).sort()).toEqual(["comment", "status"]);
+      for (const i of opinions) expect(i.boardIds).toEqual([owner.personalBoardId]);
+      // Never in the catalogue.
+      expect(await env.DB.prepare("SELECT COUNT(*) AS n FROM place_link_hashes WHERE place_id = ?").bind(id).first("n")).toBe(0);
+
+      const again = await call("add_place", { ...amritsar, name: "ITC Welcomhotel amritsar" }, open);
+      expect(again.isError).toBe(true);
+      expect(again.text).toContain(id);
+    });
+
+    it("is refused for an account that is not the admin", async () => {
+      await env.DB.prepare("UPDATE accounts SET is_admin = 0 WHERE id = ?").bind(owner.accountId).run();
+      try {
+        expect((await call("add_place", { ...amritsar, name: "Kesar Da Dhaba" }, open)).text).toMatch(/closed/);
+      } finally {
+        await env.DB.prepare("UPDATE accounts SET is_admin = 1 WHERE id = ?").bind(owner.accountId).run();
+      }
+    });
+
+    it("closes for good after its date", async () => {
+      expect(await addPlaceSchema(closed)).not.toHaveProperty("outsideMumbai");
+      expect((await call("add_place", { ...amritsar, name: "Kesar Da Dhaba" }, closed)).text).toMatch(/closed/);
+    });
   });
 
   it("refuses writes until it has the newest key, with a plain message", async () => {

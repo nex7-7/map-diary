@@ -15,6 +15,7 @@ import {
   MUMBAI_CENTER,
   PIN_LAYER,
   PINS_SOURCE,
+  onMap,
   pinsCollection,
   type PinProps,
 } from "@/lib/map/style";
@@ -120,7 +121,7 @@ export function PlacesMap({ listed, here, selectedId, onSelect, onLongPress }: P
   useEffect(() => {
     const map = mapRef.current;
     const place = listed.find((l) => l.place.id === selectedId)?.place;
-    if (!map || !place) return;
+    if (!map || !place || !onMap(place.location)) return;
     // A chain is in view when any of its outlets is.
     const bounds = map.getBounds();
     if (!(place.outlets ?? [place]).some((o) => bounds.contains([o.location.lng, o.location.lat]))) {

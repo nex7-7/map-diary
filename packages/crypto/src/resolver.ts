@@ -15,11 +15,20 @@ import { fromUtf8, utf8 } from "./encoding";
 export const RESOLVER_RESULT_VERSION = 1;
 
 /** Categories a resolver may assign. Custom categories are a person's own choice. */
-export const RESOLVER_CATEGORIES = ["restaurant", "cafe-bar", "movies", "recreation", "beach"] as const;
+export const RESOLVER_CATEGORIES = [
+  "restaurant",
+  "cafe-bar",
+  "roadside-stall",
+  "desserts",
+  "movies",
+  "recreation",
+  "beach",
+] as const;
 export type ResolverCategory = (typeof RESOLVER_CATEGORIES)[number];
 
 /** Categories that may carry a signature dish (food and drink only). */
-const FOOD_CATEGORIES: ReadonlySet<ResolverCategory> = new Set(["restaurant", "cafe-bar"]);
+export const FOOD_CATEGORIES = ["restaurant", "cafe-bar", "roadside-stall", "desserts"] as const satisfies readonly ResolverCategory[];
+const FOOD: ReadonlySet<ResolverCategory> = new Set(FOOD_CATEGORIES);
 
 /** [west, south, east, north]: the same box the map is limited to. */
 export const MUMBAI_BOUNDS = [72.75, 18.85, 73.15, 19.35] as const;
@@ -67,6 +76,7 @@ export type ResolutionProblem =
   | "bad_name"
   | "bad_category"
   | "outside_mumbai"
+  | "inside_mumbai"
   | "bad_price"
   | "dish_not_food"
   | "bad_link"
@@ -101,13 +111,31 @@ function insideMumbai(lat: unknown, lng: unknown): boolean {
   );
 }
 
-function parseCandidate(c: unknown): ResolvedPlace | ResolutionProblem {
+function onEarth(lat: unknown, lng: unknown): boolean {
+  return (
+    typeof lat === "number" &&
+    typeof lng === "number" &&
+    Number.isFinite(lat) &&
+    Number.isFinite(lng) &&
+    Math.abs(lat) <= 90 &&
+    Math.abs(lng) <= 180
+  );
+}
+
+/** `outside` checks for a place beyond Mumbai instead (the one-time import of the owner's old list). */
+function parseCandidate(c: unknown, outside = false): ResolvedPlace | ResolutionProblem {
   if (!isObj(c)) return "bad_shape";
   const name = text(c.name, 200);
   if (!name) return "bad_name";
   if (!RESOLVER_CATEGORIES.includes(c.category as ResolverCategory)) return "bad_category";
   const category = c.category as ResolverCategory;
-  if (!isObj(c.location) || !insideMumbai(c.location.lat, c.location.lng)) return "outside_mumbai";
+  if (!isObj(c.location)) return "outside_mumbai";
+  if (outside) {
+    if (!onEarth(c.location.lat, c.location.lng)) return "bad_shape";
+    if (insideMumbai(c.location.lat, c.location.lng)) return "inside_mumbai";
+  } else if (!insideMumbai(c.location.lat, c.location.lng)) {
+    return "outside_mumbai";
+  }
   const lat = Math.round((c.location.lat as number) * 1e6) / 1e6;
   const lng = Math.round((c.location.lng as number) * 1e6) / 1e6;
 
@@ -128,7 +156,7 @@ function parseCandidate(c: unknown): ResolvedPlace | ResolutionProblem {
   if (cuisine) place.cuisine = cuisine;
 
   if (c.signatureDish !== undefined && c.signatureDish !== null) {
-    if (!FOOD_CATEGORIES.has(category)) return "dish_not_food";
+    if (!FOOD.has(category)) return "dish_not_food";
     const d = c.signatureDish;
     if (!isObj(d)) return "bad_shape";
     const dish = text(d.name, 120);
@@ -165,6 +193,14 @@ export function parseResolution(value: unknown): ParsedResolution {
     if (chain) result.chain = chain;
   }
   return { ok: true, result };
+}
+
+/**
+ * Checks one place outside Mumbai, like a candidate but with coordinates anywhere else. Only
+ * the Claude assistant's one-time import uses it, and such a place never enters the catalogue.
+ */
+export function parseOutsidePlace(value: unknown): ResolvedPlace | ResolutionProblem {
+  return parseCandidate(value, true);
 }
 
 /** A chain's name and other outlets, each checked like a candidate. No outlets means no chain. */

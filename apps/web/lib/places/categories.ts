@@ -13,6 +13,8 @@ interface CategoryStyle {
 export const CATEGORY_STYLES: Record<BuiltinCategory, CategoryStyle> = {
   restaurant: { label: "Restaurant", emoji: "🍛", glyph: "bowl", color: "#d9480f" },
   "cafe-bar": { label: "Café/Bar", emoji: "☕", glyph: "cup", color: "#9c36b5" },
+  "roadside-stall": { label: "Roadside Stall", emoji: "🥙", glyph: "stall", color: "#e67700" },
+  desserts: { label: "Desserts", emoji: "🍨", glyph: "cone", color: "#d6336c" },
   movies: { label: "Movies", emoji: "🎬", glyph: "film", color: "#c2255c" },
   recreation: { label: "Recreation", emoji: "🌳", glyph: "arch", color: "#2f9e44" },
   beach: { label: "Beach", emoji: "🏖️", glyph: "umbrella", color: "#0c8599" },
