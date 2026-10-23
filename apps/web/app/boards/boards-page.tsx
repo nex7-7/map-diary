@@ -14,7 +14,7 @@ import { boardTint, Glyph, Icon, Notebook, type NotebookTab } from "@/lib/ui";
 import { cn } from "@/lib/utils";
 import k from "./boards.module.css";
 
-/** `/boards`: the shared boards, Public and each group, as tabs of one notebook. */
+/** `/boards`: every board, Public, each group and Personal, as tabs of one notebook. */
 export function BoardsPage() {
   return (
     <DeviceGate>
@@ -29,11 +29,12 @@ export function BoardsPage() {
 
 function Boards({ diary }: { diary: Diary }) {
   const { loaded, snapshot } = useItems(diary);
-  const shared = useMemo(() => snapshot.boards.filter((b) => b.kind !== "personal").sort((a, b) => (a.kind === b.kind ? a.name.localeCompare(b.name) : a.kind === "master" ? -1 : 1)), [snapshot.boards]);
+  // Public first, then groups by name, then Personal, so a shared board opens by default.
+  const all = useMemo(() => [...snapshot.boards].sort((a, b) => TAB_ORDER[a.kind] - TAB_ORDER[b.kind] || a.name.localeCompare(b.name)), [snapshot.boards]);
   const [picked, setPicked] = useState<string | null>(null);
-  const board = shared.find((b) => b.id === picked) ?? shared[0];
+  const board = all.find((b) => b.id === picked) ?? all[0];
   let g = 0;
-  const tabs: NotebookTab[] = shared.map((b) => ({ id: b.id, label: b.kind === "master" ? "Public" : b.name, tint: boardTint(b.kind, b.kind === "group" ? g++ : 0) }));
+  const tabs: NotebookTab[] = all.map((b) => ({ id: b.id, label: boardLabel(b), tint: boardTint(b.kind, b.kind === "group" ? g++ : 0) }));
 
   return (
     <div className="flex h-[calc(100dvh-var(--tabbar-h)-env(safe-area-inset-bottom))] flex-col min-[900px]:mx-auto min-[900px]:h-dvh min-[900px]:max-w-[760px] min-[900px]:pt-6">
@@ -45,7 +46,7 @@ function Boards({ diary }: { diary: Diary }) {
         <p className="hand px-6 text-[17px] text-ink-3">Opening…</p>
       ) : !board ? (
         <div className="flex flex-col gap-3 px-6">
-          <p className="hand m-0 text-[17px] text-ink-2">No shared boards on this device yet. Once you&apos;re on the Public board or in a group, it shows up here.</p>
+          <p className="hand m-0 text-[17px] text-ink-2">No boards on this device yet. Once you&apos;re on the Public board or in a group, it shows up here.</p>
           <Link href="/groups" className="sketch-link self-start text-[14px] font-semibold">
             Make a group or join one
           </Link>
@@ -60,6 +61,9 @@ function Boards({ diary }: { diary: Diary }) {
     </div>
   );
 }
+
+const TAB_ORDER: Record<Board["kind"], number> = { master: 0, group: 1, personal: 2 };
+const boardLabel = (b: Board) => (b.kind === "master" ? "Public" : b.kind === "personal" ? "Personal" : b.name);
 
 /** Everyone gets their own ink, picked from the id so a person keeps theirs. */
 const INKS = ["var(--seal)", "var(--plum)", "var(--indigo)", "var(--forest)", "var(--clay)"];
@@ -112,7 +116,7 @@ function BoardPage({ board, snapshot, me }: { board: Board; snapshot: DiarySnaps
       return { l, ss, wants: ss.filter((o) => o.status === "want").length, latest: ss.map((o) => o.updatedAt).sort().at(-1) ?? l.addedAt };
     })
     .sort((a, b) => (order === "wanted" ? b.wants - a.wants || b.ss.length - a.ss.length : b.latest.localeCompare(a.latest)));
-  const short = board.kind === "master" ? "Public" : board.name;
+  const short = boardLabel(board);
 
   return (
     <>
@@ -140,11 +144,19 @@ function BoardPage({ board, snapshot, me }: { board: Board; snapshot: DiarySnaps
           )}
         </div>
         <p className="m-0 text-[12.5px] text-ink-3">
-          {board.kind === "master" ? "Everyone on the app. Only what people post to Public shows here." : `${members.length} ${members.length === 1 ? "member" : "members"}. Only they can read this board.`}
-          {" "}
-          <Link href="/groups" className="sketch-link font-semibold">
-            {board.kind === "group" ? "Manage" : "Make a group or join one"}
-          </Link>
+          {board.kind === "master"
+            ? "Everyone on the app. Only what people post to Public shows here."
+            : board.kind === "personal"
+              ? "Only you. What you keep to yourself shows here."
+              : `${members.length} ${members.length === 1 ? "member" : "members"}. Only they can read this board.`}
+          {board.kind !== "personal" && (
+            <>
+              {" "}
+              <Link href="/groups" className="sketch-link font-semibold">
+                {board.kind === "group" ? "Manage" : "Make a group or join one"}
+              </Link>
+            </>
+          )}
         </p>
       </section>
 

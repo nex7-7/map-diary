@@ -98,6 +98,11 @@ export function DiaryView({ source, view }: { source: DiarySource; view: DiaryVi
 
   if (!snapshot) return <p className="hand p-6 text-[18px] text-ink-3">Opening your diary…</p>;
 
+  const { query, statuses, categories, tagIds, cuisines: picked, maxPriceInr, authorIds } = filters;
+  const filtered = query.trim() !== "" || maxPriceInr !== null || [statuses, categories, tagIds, picked, authorIds].some((f) => f.length > 0);
+  const empty = snapshot.places.length === 0 ? "diary" : filtered ? "filters" : "board";
+  // Friends see others' places here too, so it's only "Your" places when every one is theirs.
+  const whose = listed.every((l) => l.mine) ? "Your" : "Our";
   const want = mine.filter((l) => l.status === "want").length;
   const stamped = mine.length - want;
   const board = filters.boards[0] ?? "all";
@@ -124,7 +129,7 @@ export function DiaryView({ source, view }: { source: DiarySource; view: DiaryVi
   return (
     <div className="relative flex h-[calc(100dvh-var(--tabbar-h)-env(safe-area-inset-bottom))] min-[900px]:h-dvh" data-view={view}>
       {/* The notebook */}
-      <section className={cn("flex min-h-0 w-full flex-col min-[900px]:flex min-[900px]:w-[440px] min-[900px]:shrink-0", view === "list" ? "flex" : "hidden")} aria-label="Your places">
+      <section className={cn("flex min-h-0 w-full flex-col min-[900px]:flex min-[900px]:w-[440px] min-[900px]:shrink-0", view === "list" ? "flex" : "hidden")} aria-label={`${whose} places`}>
         <header className="flex flex-col gap-3 px-4 pt-[max(16px,env(safe-area-inset-top))] pb-3.5">
           <div className="flex items-center justify-between gap-2">
             <p className="kicker rise">{snapshot.me.name && snapshot.me.name !== "Me" ? `${snapshot.me.name}'s diary · Mumbai` : "Your diary · Mumbai"}</p>
@@ -138,7 +143,7 @@ export function DiaryView({ source, view }: { source: DiarySource; view: DiaryVi
           <div key={take} className="relative">
             <h1 className="display flip-wrap flex items-baseline gap-3 text-[46px]">
               <span className="flip" style={{ animationDelay: "0.05s" }}>
-                Your
+                {whose}
               </span>
               <span className="relative inline-block">
                 <span className="flip italic" style={{ animationDelay: "0.16s" }}>
@@ -197,6 +202,7 @@ export function DiaryView({ source, view }: { source: DiarySource; view: DiaryVi
                 else router.push(`/place#${encodeURIComponent(id)}`);
               }}
               onSetStatus={setStatus}
+              empty={empty}
             />
           </div>
         </Notebook>

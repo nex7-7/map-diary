@@ -42,6 +42,17 @@ export async function nameDevice(store: NameStore, deviceId: string, name: strin
   return clean;
 }
 
+/**
+ * Gives this device its first name, guessed from its browser, unless it already has one. Runs
+ * whenever the diary opens, so the account's other devices can tell it apart without this
+ * device ever visiting the Devices screen.
+ */
+export async function nameThisDevice(store: NameStore & { readonly device: { readonly deviceId: string; readonly kind: string } }, userAgent: string): Promise<string | null> {
+  const { deviceId, kind } = store.device;
+  if ((await deviceNames(store)).has(deviceId)) return null;
+  return nameDevice(store, deviceId, guessDeviceName(userAgent, kind));
+}
+
 /** Drops a removed device's name. */
 export async function forgetDeviceName(store: NameStore, deviceId: string): Promise<void> {
   for (const item of nameItems(await store.listItems(), store.device.accountId).get(deviceId) ?? []) await store.remove(item.id);

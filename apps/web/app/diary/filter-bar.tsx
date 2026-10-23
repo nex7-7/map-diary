@@ -40,7 +40,7 @@ export function SearchField({
 }) {
   const extra = extraFilterCount(filters);
   return (
-    <label className="flex h-[42px] min-w-0 flex-1 items-center gap-2 rounded-[12px] border-[1.5px] border-ink bg-page pr-1 pl-3 text-ink shadow-[0_3px_0_var(--ink)]">
+    <label className="flex h-[42px] min-w-0 flex-1 items-center gap-2 rounded-[12px] border-[1.5px] border-ink bg-page pr-1 pl-3 text-ink shadow-[0_3px_0_var(--ink)] has-[input:focus-visible]:outline-2 has-[input:focus-visible]:outline-offset-2 has-[input:focus-visible]:outline-indigo">
       <Icon name="search" size="m" />
       <input
         type="search"
@@ -157,7 +157,7 @@ export function FilterPanel({ snapshot, cuisines, filters, onChange }: Props & {
           inputMode="numeric"
           min={0}
           step={50}
-          className="chip soft w-[7.5em] outline-none"
+          className="chip soft w-[7.5em]"
           aria-label="Signature dish up to, in rupees"
           placeholder="₹ other"
           value={filters.maxPriceInr !== null && !PRICE_STEPS.includes(filters.maxPriceInr) ? filters.maxPriceInr : ""}

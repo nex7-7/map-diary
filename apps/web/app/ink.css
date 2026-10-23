@@ -290,6 +290,16 @@
     overflow-x: auto;
     scrollbar-width: none;
   }
+  /* A sideways row with more out of view fades at that edge (see useScrollHint). */
+  .scroll-hint[data-more="end"] {
+    mask-image: linear-gradient(to right, #000 calc(100% - 36px), transparent);
+  }
+  .scroll-hint[data-more="start"] {
+    mask-image: linear-gradient(to left, #000 calc(100% - 36px), transparent);
+  }
+  .scroll-hint[data-more="both"] {
+    mask-image: linear-gradient(to right, transparent, #000 36px, #000 calc(100% - 36px), transparent);
+  }
   .nb-tabs::-webkit-scrollbar {
     display: none;
   }

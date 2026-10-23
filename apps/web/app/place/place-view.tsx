@@ -449,6 +449,8 @@ function CommentRow({ comment, snapshot, mine, scope, onEdit, onDelete }: Commen
   const [text, setText] = useState(comment.text);
   const [ask, confirmSheet] = useConfirm();
   const me = mine ? comment.authorId : "";
+  // Screen readers list every comment's buttons together, so each names its own comment.
+  const short = [...comment.text.trim()].length > 40 ? `${[...comment.text.trim()].slice(0, 40).join("")}…` : comment.text.trim();
 
   return (
     <li className={`rise ${p.comment}`} style={{ "--ink-note": comment.viaClaude ? "var(--clay)" : mine ? "var(--ink)" : "var(--plum)" } as CSSProperties}>
@@ -488,12 +490,13 @@ function CommentRow({ comment, snapshot, mine, scope, onEdit, onDelete }: Commen
             <Badges snapshot={snapshot} ids={comment.boards} />
             {mine && (
               <span className={p.commentActions}>
-                <button type="button" className={styles.textbutton} onClick={() => setEditing(true)}>
+                <button type="button" className={styles.textbutton} onClick={() => setEditing(true)} aria-label={`Edit comment: ${short}`}>
                   Edit
                 </button>
                 <button
                   type="button"
                   className={styles.textbutton}
+                  aria-label={`Delete comment: ${short}`}
                   onClick={async () => {
                     if (await ask({ title: "Delete this comment?", confirmLabel: "Delete", danger: true })) onDelete();
                   }}
