@@ -288,6 +288,21 @@ describe("second device sign-in", () => {
     expect(new TextDecoder().decode(openKeyBackup(res.json.backup, "correct horse"))).toBe("bundle");
   });
 
+  it("lets one client try only a few lookups a minute", async () => {
+    const tryOnce = () =>
+      exports.default.fetch(
+        new Request("https://map.snehilsinha.com/api/key-backup/fetch", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "CF-Connecting-IP": "203.0.113.9" },
+          body: JSON.stringify({ lookup: toBase64(new Uint8Array(32)) }),
+        }),
+      );
+    const statuses: number[] = [];
+    for (let i = 0; i < 12; i++) statuses.push((await tryOnce()).status);
+    expect(statuses.slice(0, 10).every((s) => s === 404)).toBe(true);
+    expect(statuses.at(-1)).toBe(429);
+  });
+
   it("registers a device authorised by the account key, which sees the account's board keys", async () => {
     const forged = deviceBody(accountId, phone, generateAccountKeys(), "android");
     expect((await call("/api/devices", { body: { accountId, device: forged }, device: phone })).status).toBe(403);

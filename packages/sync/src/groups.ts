@@ -242,27 +242,6 @@ export async function rotateGroupKey(api: Api, device: DeviceState, groupId: str
 }
 
 /**
- * Removes another member. Their items leave the group's board for everyone, and the group
- * moves to a new key that only the remaining members get.
- */
-export async function removeGroupMember(diary: Diary, api: Api, groupId: string, accountId: string): Promise<void> {
-  await ready();
-  const device = diary.device;
-  try {
-    const group = await findGroup(api, device, groupId);
-    const { key, memberKeys } = nextKey(
-      group,
-      group.members.filter((m) => m.accountId !== accountId),
-    );
-    await api.removeGroupMember(groupId, accountId, { keyVersion: key.version, memberKeys }, signerOf(device));
-    await diary.adoptBoardKeys([key]);
-  } catch (err) {
-    throw asGroupError(err);
-  }
-  void diary.sync();
-}
-
-/**
  * Leaves a group. This account's items leave its board for everyone, this device forgets the
  * group's keys and items, and a remaining member's device moves the group to a new key.
  */

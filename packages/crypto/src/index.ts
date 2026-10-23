@@ -121,3 +121,12 @@ export {
   openClaudeDeviceKeys,
   type SealedClaudeKeys,
 } from "./claude";
+export {
+  generateAtRestKey,
+  isAtRestKey,
+  isAtRestSealed,
+  sealAtRest,
+  openAtRest,
+  type AtRestKey,
+  type AtRestSealed,
+} from "./at-rest";

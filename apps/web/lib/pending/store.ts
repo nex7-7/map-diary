@@ -1,4 +1,13 @@
-import type { ResolvedChain, ResolvedPlace } from "@map-diary/crypto";
+import {
+  isAtRestSealed,
+  openAtRest,
+  sealAtRest,
+  type AtRestKey,
+  type AtRestSealed,
+  type ResolvedChain,
+  type ResolvedPlace,
+} from "@map-diary/crypto";
+import { loadAtRestKey } from "@map-diary/sync";
 import type { TagDefPayload } from "../places/payloads";
 import type { Category, Status } from "../places/types";
 
@@ -83,6 +92,7 @@ export class MemoryPendingStore implements PendingStore {
 
 const DB_NAME = "map-diary-pending";
 const STORE = "pending";
+const META = "meta";
 
 function request<T>(req: IDBRequest<T>): Promise<T> {
   return new Promise((resolve, reject) => {
@@ -91,36 +101,72 @@ function request<T>(req: IDBRequest<T>): Promise<T> {
   });
 }
 
-/** The browser store: its own IndexedDB database, so the diary store's schema is untouched. */
+/** A pending place as stored: only its id in the clear; the draft and job key are sealed. */
+interface StoredPending extends AtRestSealed {
+  id: string;
+}
+
+/**
+ * The browser store: its own IndexedDB database, so the diary store's schema is untouched.
+ * Each item is sealed under this database's at-rest key, like the diary's own items.
+ */
 export class IdbPendingStore implements PendingStore {
   private constructor(private readonly db: IDBDatabase) {}
 
-  static open(factory: IDBFactory = indexedDB): Promise<IdbPendingStore> {
-    return new Promise((resolve, reject) => {
-      const req = factory.open(DB_NAME, 1);
-      req.onupgradeneeded = () => req.result.createObjectStore(STORE, { keyPath: "id" });
-      req.onsuccess = () => resolve(new IdbPendingStore(req.result));
+  static async open(factory: IDBFactory = indexedDB): Promise<IdbPendingStore> {
+    const db = await new Promise<IDBDatabase>((resolve, reject) => {
+      const req = factory.open(DB_NAME, 2);
+      req.onupgradeneeded = (event) => {
+        if (event.oldVersion < 1) req.result.createObjectStore(STORE, { keyPath: "id" });
+        if (event.oldVersion < 2) req.result.createObjectStore(META);
+      };
+      req.onsuccess = () => resolve(req.result);
       req.onerror = () => reject(req.error);
     });
+    const store = new IdbPendingStore(db);
+    // Items an older version stored in the clear are sealed now.
+    for (const item of await request(store.store("readonly").getAll())) {
+      if (!isAtRestSealed(item)) await store.put(item as PendingItem);
+    }
+    return store;
   }
 
   private store(mode: IDBTransactionMode): IDBObjectStore {
     return this.db.transaction(STORE, mode).objectStore(STORE);
   }
 
-  list() {
-    return request(this.store("readonly").getAll() as IDBRequest<PendingItem[]>);
+  private async open(key: AtRestKey, stored: unknown): Promise<PendingItem | undefined> {
+    if (stored === undefined) return undefined;
+    if (!isAtRestSealed(stored)) return stored as PendingItem;
+    const { id } = stored as StoredPending;
+    return (await openAtRest(key, `${STORE}:${id}`, stored).catch(() => undefined)) as PendingItem | undefined;
   }
-  get(id: string) {
-    return request(this.store("readonly").get(id) as IDBRequest<PendingItem | undefined>);
+
+  async list() {
+    const key = await loadAtRestKey(this.db, META);
+    const stored = await request(this.store("readonly").getAll());
+    const items = await Promise.all(stored.map((s) => this.open(key, s)));
+    return items.filter((i): i is PendingItem => i !== undefined);
+  }
+  async get(id: string) {
+    const key = await loadAtRestKey(this.db, META);
+    return this.open(key, await request(this.store("readonly").get(id)));
   }
   async put(item: PendingItem) {
-    await request(this.store("readwrite").put(item));
+    const key = await loadAtRestKey(this.db, META);
+    const sealed: StoredPending = { id: item.id, ...(await sealAtRest(key, `${STORE}:${item.id}`, item)) };
+    await request(this.store("readwrite").put(sealed));
   }
   async delete(id: string) {
     await request(this.store("readwrite").delete(id));
   }
   async clear() {
-    await request(this.store("readwrite").clear());
+    const tx = this.db.transaction([STORE, META], "readwrite");
+    tx.objectStore(STORE).clear();
+    tx.objectStore(META).clear();
+    await new Promise<void>((resolve, reject) => {
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+    });
   }
 }

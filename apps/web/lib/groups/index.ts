@@ -9,7 +9,6 @@ import {
   leaveGroup,
   listGroups,
   readGroupInvite,
-  removeGroupMember,
   renameGroup,
   type Diary,
   type DiaryItem,
@@ -101,10 +100,6 @@ export function previewInvite(diary: Diary, secret: string): Promise<OpenedInvit
 
 export function joinGroup(diary: Diary, secret: string): Promise<OpenedInvite> {
   return acceptGroupInvite(diary, api, secret);
-}
-
-export function removeMember(diary: Diary, groupId: string, accountId: string): Promise<void> {
-  return removeGroupMember(diary, api, groupId, accountId);
 }
 
 export function leave(diary: Diary, groupId: string): Promise<void> {

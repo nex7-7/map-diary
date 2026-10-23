@@ -34,7 +34,9 @@ export const PASSPHRASE_MIN_LENGTH = 12;
 
 export type SetupErrorCode =
   | "passphrase_too_short"
+  | "passphrase_too_weak"
   | "wrong_passphrase"
+  | "too_many_tries"
   | "invalid_recovery_phrase"
   | "unknown_recovery_phrase"
   | "registration_closed"
@@ -65,15 +67,35 @@ function asSetupError(err: unknown, notFound: SetupErrorCode = "server"): SetupE
     if (err.code === "lookup_taken") return new SetupError("passphrase_in_use");
     if (err.code === "invite_invalid") return new SetupError("invite_invalid");
     if (err.code === "invite_stale") return new SetupError("invite_stale");
+    if (err.status === 429) return new SetupError("too_many_tries");
     if (err.status === 404 || err.status === 403) return new SetupError(notFound);
   }
   return new SetupError("server");
 }
 
-export function checkPassphrase(passphrase: string): void {
-  if ([...passphrase.normalize("NFKC")].length < PASSPHRASE_MIN_LENGTH) {
-    throw new SetupError("passphrase_too_short");
-  }
+/** zxcvbn's "safely unguessable" level: about 10^10 guesses. */
+const PASSPHRASE_MIN_SCORE = 3;
+
+let strength: Promise<(passphrase: string) => number> | undefined;
+
+/** Loads the zxcvbn estimator and its word lists once, only when a passphrase is being chosen. */
+function loadStrength(): Promise<(passphrase: string) => number> {
+  strength ??= Promise.all([import("@zxcvbn-ts/core"), import("@zxcvbn-ts/language-common")]).then(([core, common]) => {
+    core.zxcvbnOptions.setOptions({ dictionary: common.dictionary, graphs: common.adjacencyGraphs });
+    return (passphrase: string) => core.zxcvbn(passphrase).score;
+  });
+  return strength;
+}
+
+/**
+ * Checks a new passphrase: long enough, and not easy to guess (common words, names, keyboard
+ * runs and dates count against it). Checked on the device only; it never leaves it.
+ */
+export async function checkPassphrase(passphrase: string): Promise<void> {
+  const normalised = passphrase.normalize("NFKC");
+  if ([...normalised].length < PASSPHRASE_MIN_LENGTH) throw new SetupError("passphrase_too_short");
+  const score = await loadStrength();
+  if (score(normalised) < PASSPHRASE_MIN_SCORE) throw new SetupError("passphrase_too_weak");
 }
 
 function signerOf(deviceId: string, identity: IdentityKeys): Signer {
@@ -154,7 +176,7 @@ export async function prepareSetup(options: SetupOptions): Promise<PreparedSetup
     invite = appInviteId(inviteCode);
   }
   const passphrase = options.passphrase || undefined;
-  if (passphrase !== undefined || invite === undefined) checkPassphrase(passphrase ?? "");
+  if (passphrase !== undefined || invite === undefined) await checkPassphrase(passphrase ?? "");
   const kdf = options.kdf ?? defaultKdfParams();
   const { seed, phrase } = generateRecoveryPhrase();
   const account = deriveAccount(seed);
@@ -352,7 +374,7 @@ export interface RecoveryOptions {
  */
 export async function signInWithRecoveryPhrase(api: Api, options: RecoveryOptions): Promise<DeviceState> {
   await ready();
-  checkPassphrase(options.newPassphrase);
+  await checkPassphrase(options.newPassphrase);
   let seed: Uint8Array;
   try {
     seed = parseRecoveryPhrase(options.recoveryPhrase);
@@ -388,7 +410,7 @@ export interface SetPassphraseOptions {
  */
 export async function setPassphrase(api: Api, device: DeviceState, options: SetPassphraseOptions): Promise<void> {
   await ready();
-  checkPassphrase(options.newPassphrase);
+  await checkPassphrase(options.newPassphrase);
   let seed: Uint8Array;
   try {
     seed = parseRecoveryPhrase(options.recoveryPhrase);

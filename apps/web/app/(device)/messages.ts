@@ -14,10 +14,12 @@ import {
 
 const MESSAGES: Record<SetupErrorCode, string> = {
   passphrase_too_short: `Use at least ${PASSPHRASE_MIN_LENGTH} characters. A short sentence works well.`,
+  passphrase_too_weak: "That passphrase is too easy to guess. Try four or five unrelated words, like a silly sentence only you would write.",
+  too_many_tries: "Too many tries in a short time. Wait a minute, then try again.",
   wrong_passphrase: "That passphrase didn't match. Check it and try again.",
   invalid_recovery_phrase: "That recovery phrase has a typo. Check each group of four.",
   unknown_recovery_phrase: "No account uses that recovery phrase.",
-  registration_closed: "This diary is already set up. You need an invite link from Snehil to join, or sign in if you already have.",
+  registration_closed: "This diary is already set up. You need an invite link to join, or sign in if you already have one.",
   passphrase_in_use: "Choose a different passphrase.",
   bad_invite: "That invite code has a typo. It is twenty letters and digits, like 7K3QM-9XT2B-QW4RT-ZP0HK.",
   invite_invalid: "That invite has expired or was already used. Ask for a new one.",
