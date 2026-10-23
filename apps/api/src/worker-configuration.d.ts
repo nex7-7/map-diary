@@ -5,6 +5,7 @@ interface __BaseEnv_Env {
 	TILES: R2Bucket;
 	DB: D1Database;
 	BACKUP_LOOKUPS: RateLimit;
+	RESOLVER_SUBMITS: RateLimit;
 	RESOLVER_TOKEN: string;
 }
 declare namespace Cloudflare {
@@ -15,6 +16,7 @@ declare namespace Cloudflare {
 		TILES: R2Bucket;
 		DB: D1Database;
 		BACKUP_LOOKUPS: RateLimit;
+		RESOLVER_SUBMITS: RateLimit;
 		RESOLVER_TOKEN: string;
 	}
 	interface Env extends __BaseEnv_Env {}

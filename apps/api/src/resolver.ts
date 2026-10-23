@@ -35,7 +35,17 @@ type JobRow = { id: string; status: "pending" | "resolved" | "failed"; sealed_re
 /** Device side: submit, poll and delete. Anonymous; the job id is the capability. */
 export const resolverJobs = new Hono<SignedEnv>();
 
-resolverJobs.post("/resolver/jobs", readBody, async (c) => {
+/**
+ * Submitting and expanding are open to anyone, so each client address gets only a few a
+ * minute: one script cannot fill the queue or spend the day's requests on its own.
+ */
+const perClient = createMiddleware<SignedEnv>(async (c, next) => {
+  const { success } = await c.env.RESOLVER_SUBMITS.limit({ key: c.req.header("cf-connecting-ip") ?? "unknown" });
+  if (!success) return fail(c, 429, "too_many_requests");
+  await next();
+});
+
+resolverJobs.post("/resolver/jobs", perClient, readBody, async (c) => {
   const body = c.var.body;
   if (!isObject(body)) return fail(c, 400, "bad_request");
   const { query, replyPublicKey } = body;
@@ -101,7 +111,7 @@ resolverJobs.delete("/resolver/jobs/:id", async (c) => {
  * coordinates the device then reads itself. A web page cannot follow that redirect
  * (no CORS), so the Worker does. Only Google hosts are ever fetched.
  */
-resolverJobs.post("/resolver/expand", readBody, async (c) => {
+resolverJobs.post("/resolver/expand", perClient, readBody, async (c) => {
   const body = c.var.body;
   const url = isObject(body) ? body.url : undefined;
   if (typeof url !== "string" || url.length > 2000 || !isShortMapsLink(url)) return fail(c, 400, "bad_request");

@@ -77,7 +77,7 @@ export class PendingQueue {
     return this.send(item);
   }
 
-  /** Sends a fresh job with a fresh one-time key. Stays unsent if the network or queue is down. */
+  /** Sends a fresh job with a fresh one-time key. Stays unsent if the network or queue is down or busy. */
   private async send(item: PendingItem): Promise<PendingItem> {
     await ready();
     const keys = generateReplyKeys();
@@ -85,7 +85,7 @@ export class PendingQueue {
       const job = await this.api.submitResolverJob(item.query, toBase64(keys.publicKey));
       return this.save(item, { kind: "waiting", jobId: job.id, publicKey: keys.publicKey, secretKey: keys.secretKey, expiresAt: job.expiresAt });
     } catch (err) {
-      if (err instanceof NetworkError || (err instanceof ApiError && err.status >= 500)) return item;
+      if (err instanceof NetworkError || (err instanceof ApiError && (err.status >= 500 || err.status === 429))) return item;
       if (err instanceof ApiError && err.status === 400) return this.save(item, { kind: "failed", reason: "rejected" });
       throw err;
     }

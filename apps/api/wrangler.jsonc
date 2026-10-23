@@ -21,8 +21,12 @@
   "r2_buckets": [{ "binding": "TILES", "bucket_name": "map-diary-tiles" }],
   // Expires stale resolver jobs. No other scheduled work.
   "triggers": { "crons": ["17 * * * *"] },
-  // Passphrase sign-in lookups per client IP, per Cloudflare location.
-  "ratelimits": [{ "name": "BACKUP_LOOKUPS", "namespace_id": "1001", "simple": { "limit": 10, "period": 60 } }],
+  // Passphrase sign-in lookups per client IP, per Cloudflare location, and anonymous resolver
+  // submits and short-link expansions.
+  "ratelimits": [
+    { "name": "BACKUP_LOOKUPS", "namespace_id": "1001", "simple": { "limit": 10, "period": 60 } },
+    { "name": "RESOLVER_SUBMITS", "namespace_id": "1003", "simple": { "limit": 30, "period": 60 } }
+  ],
   // Bearer token for the resolver (Claude's scheduled task). Set with
   // `wrangler secret put RESOLVER_TOKEN`; tests bind a fixed value.
   "secrets": { "required": ["RESOLVER_TOKEN"] },
@@ -43,7 +47,10 @@
       ],
       "r2_buckets": [{ "binding": "TILES", "bucket_name": "map-diary-tiles" }],
       "secrets": { "required": ["RESOLVER_TOKEN"] },
-      "ratelimits": [{ "name": "BACKUP_LOOKUPS", "namespace_id": "1002", "simple": { "limit": 10, "period": 60 } }],
+      "ratelimits": [
+        { "name": "BACKUP_LOOKUPS", "namespace_id": "1002", "simple": { "limit": 10, "period": 60 } },
+        { "name": "RESOLVER_SUBMITS", "namespace_id": "1004", "simple": { "limit": 30, "period": 60 } }
+      ],
       "triggers": { "crons": ["17 * * * *"] }
     }
   }

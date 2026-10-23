@@ -20,9 +20,13 @@ describe("routes", () => {
     }
   });
 
-  it("allows the local web app origin only", async () => {
-    const ok = await fetchApi("/api/health", { headers: { Origin: "http://localhost:3000" } });
-    expect(ok.headers.get("Access-Control-Allow-Origin")).toBe("http://localhost:3000");
+  it("allows the local web app origin only, and only on a local API", async () => {
+    const local = await exports.default.fetch(
+      new Request("http://localhost:8787/api/health", { headers: { Origin: "http://localhost:3000" } }),
+    );
+    expect(local.headers.get("Access-Control-Allow-Origin")).toBe("http://localhost:3000");
+    const live = await fetchApi("/api/health", { headers: { Origin: "http://localhost:3000" } });
+    expect(live.headers.get("Access-Control-Allow-Origin")).toBeNull();
     const other = await fetchApi("/api/health", { headers: { Origin: "https://evil.example" } });
     expect(other.headers.get("Access-Control-Allow-Origin")).toBeNull();
   });
