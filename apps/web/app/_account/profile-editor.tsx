@@ -7,7 +7,7 @@ import { userMessage } from "@/lib/errors";
 import { oneEmoji } from "@/lib/entries/emoji";
 import { photoAvatar } from "@/lib/entries/photo";
 import { DISPLAY_NAME_MAX, cleanDisplayName, type AvatarPayload, type AvatarTone, type ProfilePayload } from "@/lib/places/payloads";
-import { Button } from "@/lib/ui";
+import { Button, Emoji } from "@/lib/ui";
 import { Avatar, accountStyles as s } from "./parts";
 
 const QUICK_EMOJI = ["🍛", "☕", "🌊", "🎬", "🌶️", "🐈", "🌸", "🛺"];
@@ -105,7 +105,7 @@ export function ProfileEditor({
               aria-pressed={avatar?.kind === "emoji" && avatar.emoji === em}
               onClick={() => pickEmoji(em)}
             >
-              {em}
+              <Emoji emoji={em} />
             </button>
           ))}
           <input

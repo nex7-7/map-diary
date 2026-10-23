@@ -5,7 +5,7 @@ import type { ReactNode } from "react";
 import { DiaryShell } from "@/app/_shell/diary-shell";
 import { DeviceGate, type Diary } from "@/lib/device";
 import type { AvatarPayload } from "@/lib/places/payloads";
-import { Icon, type IconName, type NavKey } from "@/lib/ui";
+import { Emoji, Icon, type IconName, type NavKey } from "@/lib/ui";
 import s from "./account.module.css";
 
 export { s as accountStyles };
@@ -81,7 +81,7 @@ export function Avatar({ name, id, avatar, big = false, small = false }: { name:
   const initial = [...name.trim()][0]?.toUpperCase() ?? "?";
   return (
     <span className={cls} aria-hidden>
-      {avatar?.kind === "emoji" ? avatar.emoji : initial}
+      {avatar?.kind === "emoji" ? <Emoji emoji={avatar.emoji} /> : initial}
     </span>
   );
 }
