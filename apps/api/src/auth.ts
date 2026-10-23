@@ -142,7 +142,10 @@ export const requireDevice = createMiddleware<AuthedEnv>(async (c, next) => {
       is_admin: number;
       removed_at: number | null;
     }>();
-  if (!row) return fail(c, 401, "unauthenticated");
+  // No such device: the database was reset, or the device was deleted (a removed Claude
+  // connector). Device ids are random, so saying so tells the caller nothing; the browser can
+  // then clear its stale copy instead of opening a diary the server no longer knows.
+  if (!row) return fail(c, 401, "device_unknown");
 
   if (!requestIsSignedBy(c.req.raw, headers, c.var.rawBody, bytes(row.sign_public_key))) {
     return fail(c, 401, "unauthenticated");

@@ -29,7 +29,10 @@ export interface SyncStatus {
   lastSyncedAt: number | null;
   /** Envelopes and deletions still waiting to go up. */
   pending: number;
-  /** Error code of the last failed round, for example `device_revoked` once another device removed this one. */
+  /**
+   * Error code of the last failed round, for example `device_revoked` once another device removed
+   * this one, or `device_unknown` once the server has no such device at all (a reset database).
+   */
   error: string | null;
 }
 

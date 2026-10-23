@@ -30,21 +30,33 @@ function openStorage(): Promise<IdbStorage> {
 /** Set when this device found out it was removed, so the sign-in screen can say why. */
 const REMOVED_KEY = "map-diary:device-removed";
 
-export function wasRemoved(): boolean {
+/**
+ * Why this browser's copy was cleared: another device removed it, or the server no longer
+ * knows it at all (the diary was reset). Null when nothing was cleared.
+ */
+export type RemovedReason = "revoked" | "unknown";
+
+const REASONS: Record<string, RemovedReason> = { device_revoked: "revoked", device_unknown: "unknown" };
+
+export function wasRemoved(): RemovedReason | null {
   try {
-    return sessionStorage.getItem(REMOVED_KEY) === "1";
+    const v = sessionStorage.getItem(REMOVED_KEY);
+    // "1" is what earlier versions stored.
+    return v === "unknown" ? "unknown" : v === "revoked" || v === "1" ? "revoked" : null;
   } catch {
-    return false;
+    return null;
   }
 }
 
 function startDiary(diary: Diary): void {
-  // Another device removed this one: its keys are useless now, so forget them and the items.
+  // Another device removed this one, or the server has no record of it (the diary was reset):
+  // its keys are useless now, so forget them and the items and go back to the welcome screen.
   const offRevoked = diary.subscribe(() => {
-    if (diary.getStatus().error !== "device_revoked") return;
+    const reason = REASONS[diary.getStatus().error ?? ""];
+    if (!reason) return;
     offRevoked();
     try {
-      sessionStorage.setItem(REMOVED_KEY, "1");
+      sessionStorage.setItem(REMOVED_KEY, reason);
     } catch {
       // Private mode: the sign-in screen just won't explain.
     }
