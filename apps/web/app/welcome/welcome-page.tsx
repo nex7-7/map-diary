@@ -16,8 +16,9 @@ const TIPS: { icon: IconName; title: string; text: string }[] = [
 ];
 
 /**
- * `/welcome`: where a friend lands right after joining with an invite. They pick the name and
- * picture everyone sees, then get three tips on adding places.
+ * `/welcome`: where a new account lands right after setup (the admin's first run, or a friend
+ * joining with an invite). They pick the name and picture everyone sees, then get three tips on
+ * adding places.
  */
 export function WelcomePage() {
   return <DeviceGate>{(diary) => <Onboarding diary={diary} />}</DeviceGate>;
