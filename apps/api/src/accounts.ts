@@ -302,7 +302,7 @@ me.get("/me", readBody, requireDevice, async (c) => {
       .bind(accountId),
     db
       .prepare(
-        `SELECT id, kind, sign_public_key, box_public_key, created_at, last_seen_at, revoked_at
+        `SELECT id, kind, sign_public_key, box_public_key, created_at, last_seen_at, revoked_at, rekey_due_at
            FROM devices WHERE account_id = ? ORDER BY created_at`,
       )
       .bind(accountId),
@@ -328,6 +328,7 @@ me.get("/me", readBody, requireDevice, async (c) => {
     created_at: number;
     last_seen_at: number | null;
     revoked_at: number | null;
+    rekey_due_at: number | null;
   };
   const keyRows = (keys?.results ?? []) as KeyRow[];
   const deviceRows = (devices?.results ?? []) as DeviceRow[];
@@ -368,6 +369,8 @@ me.get("/me", readBody, requireDevice, async (c) => {
       createdAt: d.created_at,
       lastSeenAt: d.last_seen_at,
       revokedAt: d.revoked_at,
+      // Signed out by the admin: the account waits for its owner to move it to new keys.
+      ...(d.rekey_due_at !== null ? { rekeyDue: true } : {}),
       ...(d.kind === "claude" && d.revoked_at === null ? { boardKeys: claudeKeys.get(d.id) ?? [] } : {}),
     })),
   });

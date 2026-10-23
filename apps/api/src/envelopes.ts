@@ -205,6 +205,7 @@ export async function pushEnvelopes(
   const unchanged: string[] = [];
   for (const e of candidates) {
     const prior = existing.get(e.id);
+    const adminTakesPlace = device.isAdmin && e.type === "place";
     const onMaster = master !== null && e.boards.some((b) => b.boardId === master.id);
     const duplicateOf = e.type === "place" && !prior ? (linkHashes.get(e.id) ?? []).map((h) => taken.get(h)).find((p) => p !== undefined && p !== e.id) : undefined;
     if (e.type === "place" && master !== null && !(onMaster && e.boards.length === 1)) {
@@ -224,7 +225,9 @@ export async function pushEnvelopes(
       accepted.push(e);
       // Later places in the same push cannot claim these links either.
       for (const h of linkHashes.get(e.id) ?? []) if (!taken.has(h)) taken.set(h, e.id);
-    } else if (prior.author_id !== e.authorId) {
+    } else if (prior.author_id !== e.authorId && !(adminTakesPlace && prior.type === "place")) {
+      // Only the admin may write someone else's envelope, and only a catalogue place's facts;
+      // the place then counts as the admin's.
       rejected.push({ id: e.id, reason: "not_author" });
     } else if (isClaude && prior.beyond_claude === 1) {
       rejected.push({ id: e.id, reason: "board_not_allowed" });
@@ -251,11 +254,11 @@ export async function pushEnvelopes(
            nonce, ciphertext, signature, server_updated_at, seq)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ${NEXT_SEQ})
          ON CONFLICT (id) DO UPDATE SET
-           device_id = excluded.device_id, updated_at = excluded.updated_at, nonce = excluded.nonce,
-           ciphertext = excluded.ciphertext, signature = excluded.signature,
+           author_id = excluded.author_id, device_id = excluded.device_id, updated_at = excluded.updated_at,
+           nonce = excluded.nonce, ciphertext = excluded.ciphertext, signature = excluded.signature,
            server_updated_at = excluded.server_updated_at, seq = excluded.seq
-         WHERE envelopes.author_id = excluded.author_id AND envelopes.deleted_at IS NULL
-           AND excluded.updated_at > envelopes.updated_at`,
+         WHERE (envelopes.author_id = excluded.author_id OR (? = 1 AND envelopes.type = 'place'))
+           AND envelopes.deleted_at IS NULL AND excluded.updated_at > envelopes.updated_at`,
       )
       .bind(
         e.id,
@@ -270,6 +273,7 @@ export async function pushEnvelopes(
         fromBase64(e.ciphertext),
         fromBase64(e.signature),
         now,
+        device.isAdmin && e.type === "place" ? 1 : 0,
       ),
     db.prepare("DELETE FROM envelope_boards WHERE envelope_id = ?").bind(e.id),
     ...e.boards.map((b) =>
@@ -301,8 +305,8 @@ export async function pushEnvelopes(
 /**
  * Deletes the account's own envelopes. The row stays as a tombstone with its ciphertext
  * cleared, so every device drops its cached copy on the next pull. Nobody can delete
- * another person's envelope, and only the admin can delete a catalogue place, since other
- * people's opinions hang on it.
+ * another person's opinion. Only the admin can delete a catalogue place, since other
+ * people's opinions hang on it, and the admin can delete any of them.
  */
 envelopes.post("/envelopes/delete", readBody, requireDevice, async (c) => {
   const body = c.var.body;
@@ -313,7 +317,10 @@ envelopes.post("/envelopes/delete", readBody, requireDevice, async (c) => {
   return c.json({ deleted: await deleteEnvelopes(c.env.DB, c.var.device, ids) });
 });
 
-/** Tombstones the account's own envelopes among `ids`; returns the ids it deleted. */
+/**
+ * Tombstones the account's own envelopes among `ids`, and for the admin any catalogue place;
+ * returns the ids it deleted.
+ */
 export async function deleteEnvelopes(db: D1Database, device: AuthedDevice, ids: readonly string[]): Promise<string[]> {
   const now = Date.now();
   const unique = [...new Set(ids)];
@@ -322,12 +329,12 @@ export async function deleteEnvelopes(db: D1Database, device: AuthedDevice, ids:
     unique.flatMap((id) => [
       db
         .prepare(
-          `UPDATE envelopes SET nonce = NULL, ciphertext = NULL, deleted_at = ?, server_updated_at = ?,
+          `UPDATE envelopes SET nonce = NULL, ciphertext = NULL, deleted_at = ?5, server_updated_at = ?5,
              seq = ${NEXT_SEQ}
-           WHERE id = ? AND author_id = ? AND deleted_at IS NULL AND (type <> 'place' OR ?)
-             AND (? = 0 OR NOT ${BEYOND_CLAUDE})`,
+           WHERE id = ?1 AND (author_id = ?2 OR (?3 = 1 AND type = 'place')) AND deleted_at IS NULL
+             AND (type <> 'place' OR ?3 = 1) AND (?4 = 0 OR NOT ${BEYOND_CLAUDE})`,
         )
-        .bind(now, now, id, accountId, isAdmin ? 1 : 0, kind === "claude" ? 1 : 0),
+        .bind(id, accountId, isAdmin ? 1 : 0, kind === "claude" ? 1 : 0, now),
       db
         .prepare(
           `UPDATE envelope_boards SET seq = (SELECT seq FROM envelopes WHERE id = ?)

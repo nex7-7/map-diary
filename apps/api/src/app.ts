@@ -3,6 +3,7 @@ import { cors } from "hono/cors";
 import { AUTH_HEADERS } from "@map-diary/crypto";
 import { accounts, me } from "./accounts";
 import { admin, appInvitesOpen } from "./admin";
+import { adminTools } from "./admin-tools";
 import { assistantRoutes, unlockStored } from "./assistant";
 import { backupFetch, backupWrite } from "./backup";
 import { boards } from "./boards";
@@ -42,6 +43,7 @@ app.get("/health", async (c) => {
 app.route("/", accounts);
 app.route("/", me);
 app.route("/", admin);
+app.route("/", adminTools);
 app.route("/", assistantRoutes(unlockStored));
 app.route("/", appInvitesOpen);
 app.route("/", backupFetch);

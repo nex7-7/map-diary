@@ -121,7 +121,8 @@ describe("resolver queue", () => {
     const jobs = await takePendingJobs(env.DB, 50, now);
     expect(jobs.find((j) => j.id === id)).toBeUndefined();
     const row = await env.DB.prepare("SELECT status, query FROM resolver_jobs WHERE id = ?").bind(id).first();
-    expect(row).toEqual({ status: "failed", query: null });
+    // The query stays, so the admin can put the job back in the queue.
+    expect(row).toEqual({ status: "failed", query: "Somewhere unfindable" });
 
     await expireResolverJobs(env.DB, now + 15 * 24 * 60 * 60 * 1000);
     expect((await fetchApi(`/api/resolver/jobs/${id}`)).status).toBe(404);

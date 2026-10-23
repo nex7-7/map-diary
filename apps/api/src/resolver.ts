@@ -152,7 +152,7 @@ export async function takePendingJobs(
 ): Promise<PendingJob[]> {
   await db
     .prepare(
-      `UPDATE resolver_jobs SET status = 'failed', query = NULL, updated_at = ?
+      `UPDATE resolver_jobs SET status = 'failed', updated_at = ?
         WHERE status = 'pending' AND attempts >= ?`,
     )
     .bind(now, MAX_ATTEMPTS)
@@ -185,8 +185,9 @@ export type SubmitOutcome =
 
 /**
  * Records the resolver's answer to one job: `{ candidates: [...] }` (checked by
- * `parseResolution`, then sealed to the job's key) or `{ failed: true }`. Either way the
- * plaintext query is cleared. Shared by the REST route and the MCP endpoint.
+ * `parseResolution`, then sealed to the job's key, and the plaintext query cleared) or
+ * `{ failed: true }`. A failed job keeps its query until the device drops it or it expires,
+ * so the admin can put it back in the queue. Shared by the REST route and the MCP endpoint.
  */
 export async function submitResolution(db: D1Database, id: string, answer: unknown, now: number): Promise<SubmitOutcome> {
   if (!isId(id)) return { ok: false, status: 404, error: "not_found" };
@@ -200,7 +201,7 @@ export async function submitResolution(db: D1Database, id: string, answer: unkno
   if (isObject(answer) && answer.failed === true) {
     await db
       .prepare(
-        "UPDATE resolver_jobs SET status = 'failed', query = NULL, updated_at = ? WHERE id = ? AND status = 'pending'",
+        "UPDATE resolver_jobs SET status = 'failed', updated_at = ? WHERE id = ? AND status = 'pending'",
       )
       .bind(now, id)
       .run();

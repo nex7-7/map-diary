@@ -176,7 +176,9 @@ export class Diary {
     if (input.id !== undefined) {
       const prior = await this.storage.getItem(input.id);
       if (!prior) throw new Error("No such item on this device");
-      if (prior.authorId !== this.device.accountId) throw new Error("Only the author can change an item");
+      // The admin may rewrite any catalogue place's facts; the place then counts as theirs.
+      const adminFacts = this.device.isAdmin === true && prior.type === "place";
+      if (prior.authorId !== this.device.accountId && !adminFacts) throw new Error("Only the author can change an item");
       if (prior.type !== input.type || prior.placeId !== input.placeId) {
         throw new Error("An item's type and place cannot change");
       }
@@ -403,10 +405,11 @@ export class Diary {
     return matches[0]?.placeId ?? null;
   }
 
-  /** Deletes one of this account's items everywhere. */
+  /** Deletes one of this account's items everywhere (on the admin's device, any catalogue place). */
   async remove(id: string): Promise<void> {
     const prior = await this.storage.getItem(id);
-    if (prior && prior.authorId !== this.device.accountId) throw new Error("Only the author can delete an item");
+    const adminPlace = this.device.isAdmin === true && prior?.type === "place";
+    if (prior && prior.authorId !== this.device.accountId && !adminPlace) throw new Error("Only the author can delete an item");
     await this.storage.deleteLocal(id);
     this.emit();
     void this.sync();
