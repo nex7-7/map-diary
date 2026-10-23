@@ -4,7 +4,7 @@ import { normaliseChainName } from "../places/chains";
 import type { Category, LngLat, PlaceChain } from "../places/types";
 
 /** Categories that get a wallet bleeder (signature dish and price). */
-const FOOD: readonly Category[] = ["restaurant", "cafe-bar"];
+const FOOD: readonly Category[] = ["restaurant", "cafe-bar", "roadside-stall", "desserts"];
 
 export function isFood(category: Category): boolean {
   return FOOD.includes(category);
@@ -24,6 +24,8 @@ export interface FactsForm {
   chain?: PlaceChain;
   /** The chain's name as typed; empty takes the place out of its chain. */
   chainName?: string;
+  /** The place's saved location, which may stay as it is even outside Mumbai (the one-time import). */
+  savedLocation?: LngLat;
 }
 
 export type FactsResult = { ok: true; facts: PlacePayload } | { ok: false; message: string };
@@ -36,7 +38,8 @@ export function buildFacts(form: FactsForm, chainFor?: (name: string) => PlaceCh
   const name = form.name.trim();
   if (!name) return { ok: false, message: "Give the place a name" };
   if (!form.location) return { ok: false, message: "Put the place on the map" };
-  if (!inMumbai(form.location)) return { ok: false, message: "That's outside Mumbai. The diary only covers Mumbai for now." };
+  const kept = form.savedLocation?.lat === form.location.lat && form.savedLocation.lng === form.location.lng;
+  if (!kept && !inMumbai(form.location)) return { ok: false, message: "That's outside Mumbai. The diary only covers Mumbai for now." };
 
   const facts: PlacePayload = {
     name: name.slice(0, 120),
@@ -82,6 +85,7 @@ export function formFromFacts(facts: PlacePayload): FactsForm {
     sourceLinks: facts.sourceLinks,
     ...(facts.chain ? { chain: facts.chain } : {}),
     chainName: facts.chain?.name ?? "",
+    savedLocation: facts.location,
   };
 }
 

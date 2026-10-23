@@ -11,6 +11,15 @@ import { MAP_FILE_NAME } from "./map-file";
 export const MUMBAI_BOUNDS: LngLatBoundsLike = [72.75, 18.85, 73.15, 19.35];
 export const MUMBAI_CENTER: [number, number] = [72.86, 19.05];
 
+/**
+ * Whether a spot is inside the map file's area. Places outside it (the owner's one-time import
+ * of places in other cities) get no pin.
+ */
+export function onMap({ lng, lat }: LngLat): boolean {
+  const [west, south, east, north] = MUMBAI_BOUNDS as [number, number, number, number];
+  return lng >= west && lng <= east && lat >= south && lat <= north;
+}
+
 export const PINS_SOURCE = "pins";
 export const HERE_SOURCE = "here";
 export const PIN_LAYER = "pins";
@@ -307,7 +316,7 @@ export function pinsCollection(listed: readonly ListedPlace[], selectedId: strin
       const selected = place.id === selectedId;
       const glyph = categoryStyle(place.category).glyph;
       // A chain gets a pin per outlet, all opening the one place page.
-      return (place.outlets ?? [place]).map((at) => ({
+      return (place.outlets ?? [place]).filter((at) => onMap(at.location)).map((at) => ({
         type: "Feature" as const,
         geometry: { type: "Point" as const, coordinates: [at.location.lng, at.location.lat] },
         properties: {

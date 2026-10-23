@@ -59,11 +59,11 @@ interface ResolverResult {
 
 interface ResolvedPlace {
   name: string;                                   // ≤ 200
-  category: "restaurant" | "cafe-bar" | "movies" | "recreation" | "beach";
+  category: "restaurant" | "cafe-bar" | "roadside-stall" | "desserts" | "movies" | "recreation" | "beach";
   location: { lat: number; lng: number };         // inside MUMBAI_BOUNDS, rounded to 6 dp
   address?: string;                               // ≤ 300
   cuisine?: string;                               // ≤ 100
-  signatureDish?: { name: string; priceInr: number }; // restaurant and cafe-bar only; whole ₹, 1 to 50,000
+  signatureDish?: { name: string; priceInr: number }; // food and drink categories only; whole ₹, 1 to 50,000
   sourceLinks: string[];                          // https only, ≤ 5
 }
 ```

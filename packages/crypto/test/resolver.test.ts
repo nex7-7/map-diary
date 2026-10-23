@@ -3,6 +3,7 @@ import {
   CryptoError,
   generateReplyKeys,
   openResolverResult,
+  parseOutsidePlace,
   parseResolution,
   ready,
   sealResolverResult,
@@ -66,6 +67,28 @@ describe("parseResolution", () => {
     [{ candidates: [{ ...britannia, sourceLinks: ["http://example.com"] }] }, "bad_link"],
   ])("rejects %j as %s", (value, problem) => {
     expect(parseResolution(value)).toEqual({ ok: false, problem });
+  });
+});
+
+describe("new food categories", () => {
+  it("lets roadside stalls and desserts carry a signature dish", () => {
+    for (const category of ["roadside-stall", "desserts"]) {
+      expect(parseResolution({ candidates: [{ ...britannia, category }] })).toMatchObject({ ok: true });
+    }
+  });
+});
+
+describe("parseOutsidePlace", () => {
+  const amritsar = { name: "ITC Welcomhotel Amritsar", category: "restaurant", location: { lat: 31.6447, lng: 74.8189 } };
+
+  it("accepts a place outside Mumbai, checked like a candidate", () => {
+    expect(parseOutsidePlace(amritsar)).toEqual({ ...amritsar, sourceLinks: [] });
+    expect(parseOutsidePlace({ ...amritsar, category: "zoo" })).toBe("bad_category");
+  });
+
+  it("refuses a place inside Mumbai or off the globe", () => {
+    expect(parseOutsidePlace(britannia)).toBe("inside_mumbai");
+    expect(parseOutsidePlace({ ...amritsar, location: { lat: 95, lng: 74 } })).toBe("bad_shape");
   });
 });
 

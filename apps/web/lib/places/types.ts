@@ -7,7 +7,7 @@ import type { AvatarPayload } from "./payloads";
 
 export type Status = "visited" | "want";
 
-export const BUILTIN_CATEGORIES = ["restaurant", "cafe-bar", "movies", "recreation", "beach"] as const;
+export const BUILTIN_CATEGORIES = ["restaurant", "cafe-bar", "roadside-stall", "desserts", "movies", "recreation", "beach"] as const;
 export type BuiltinCategory = (typeof BUILTIN_CATEGORIES)[number];
 /** A built-in category, or the id of a custom one (`custom:<slug>`). */
 export type Category = BuiltinCategory | `custom:${string}`;
