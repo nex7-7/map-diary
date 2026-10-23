@@ -29,7 +29,8 @@ export const viewport: Viewport = {
   initialScale: 1,
   viewportFit: "cover",
   // Light only: the diary is paper.
-  themeColor: "#efe8d9",
+  // The page colour of the tab bar, so the phone's status and navigation bars run on from it.
+  themeColor: "#f8f2e5",
   colorScheme: "light",
 };
 
