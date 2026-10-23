@@ -1,5 +1,6 @@
 /** Shared UI components. Screens build from these, components/ui (shadcn) and the tokens in app/globals.css. */
 export { Icon } from "./icon";
+export { Emoji } from "./emoji";
 export { CATEGORY_GLYPHS, ICON_PATHS, type GlyphName, type IconName } from "./icon-paths";
 export { Button, ButtonLink, buttonClass, type ButtonVariant } from "./button";
 export { ChipRow } from "./chip-row";

@@ -10,7 +10,7 @@ import { DeviceGate, type Diary } from "@/lib/device";
 import { EMPTY_FILTERS, filterPlaces } from "@/lib/places/filter";
 import { categoryStyle } from "@/lib/places/categories";
 import type { Board, DiarySnapshot, Person, PlaceView, StatusOpinion } from "@/lib/places/types";
-import { boardTint, Glyph, Icon, Notebook, type NotebookTab } from "@/lib/ui";
+import { boardTint, Emoji, Glyph, Icon, Notebook, type NotebookTab } from "@/lib/ui";
 import { cn } from "@/lib/utils";
 import k from "./boards.module.css";
 
@@ -89,7 +89,7 @@ function Face({ person, size = 40, want = false, className, style }: { person: P
   if (person?.avatar?.kind === "photo") return <img src={person.avatar.dataUrl} alt="" className={cn(k.face, className)} style={dims} title={name} />;
   return (
     <span className={cn(k.face, "grit", className)} style={{ background: inkOf(person?.id ?? name), ...dims }} title={name}>
-      {person?.avatar?.kind === "emoji" ? person.avatar.emoji : initial}
+      {person?.avatar?.kind === "emoji" ? <Emoji emoji={person.avatar.emoji} /> : initial}
     </span>
   );
 }
