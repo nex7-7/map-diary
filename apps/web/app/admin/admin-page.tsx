@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
 import { AccountPage, Avatar, IconTile, accountStyles as s, day, seen } from "@/app/_account/parts";
-import { inviteErrorMessage } from "@/app/(device)/messages";
+import { userMessage } from "@/lib/errors";
 import {
   cancelInvite,
   inviteFriend,
@@ -102,7 +102,7 @@ export function Admin({ diary }: { diary: Diary }) {
         setData({ invites, members });
         setError(null);
       },
-      (err: unknown) => setError(inviteErrorMessage(err)),
+      (err: unknown) => setError(userMessage(err)),
     );
   }, [diary]);
   useEffect(load, [load]);
@@ -206,7 +206,7 @@ function Invite({ diary, onMade }: { diary: Diary; onMade: () => void }) {
       setCopied(false);
       onMade();
     } catch (err) {
-      setError(inviteErrorMessage(err));
+      setError(userMessage(err));
     } finally {
       setBusy(false);
     }
@@ -297,7 +297,7 @@ function OpenInvite({ diary, invite, note, onDone }: { diary: Diary; invite: App
       saveInviteNote(invite.id, "");
       onDone();
     } catch (err) {
-      setError(inviteErrorMessage(err));
+      setError(userMessage(err));
       setBusy(false);
     }
   }
@@ -328,7 +328,7 @@ function RemoveMember({ diary, member, name, onCancel, onDone }: { diary: Diary;
       await removeFromApp(diary, member.id);
       onDone();
     } catch (err) {
-      setError(inviteErrorMessage(err));
+      setError(userMessage(err));
       setBusy(false);
     }
   }

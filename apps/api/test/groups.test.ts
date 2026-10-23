@@ -183,7 +183,7 @@ describe("groups", () => {
     const outsider = diaryOf(await makeAccount());
     await expect(
       outsider.write({ type: "comment", placeId: "place-1", payload: { text: "hi" }, boards: [groupId] }),
-    ).rejects.toThrow(/no key/);
+    ).rejects.toThrow("no_board_key");
   });
 
   it("lets nobody remove another member; a member who leaves takes their items, and the key moves on", async () => {

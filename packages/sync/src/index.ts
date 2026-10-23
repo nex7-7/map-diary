@@ -88,7 +88,17 @@ export { RevokeError, revokeDevice, type AccountSecret, type RevokeErrorCode } f
 export type { DeviceKind } from "@map-diary/crypto";
 export { MemoryStorage, type DiaryItem, type DiaryStorage } from "./storage";
 export { IdbStorage, IDB_NAME, loadAtRestKey } from "./idb";
-export { Diary, type DiaryOptions, type SkippedEnvelope, type SyncPhase, type SyncStatus, type WriteInput } from "./sync";
+export {
+  Diary,
+  WriteError,
+  type DiaryOptions,
+  type RejectedWrite,
+  type SkippedEnvelope,
+  type SyncPhase,
+  type SyncStatus,
+  type WriteErrorCode,
+  type WriteInput,
+} from "./sync";
 export {
   GROUP_NAME_MAX,
   GroupError,

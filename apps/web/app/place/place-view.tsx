@@ -9,6 +9,7 @@ import { useItems } from "@/app/_entries/use-items";
 import styles from "@/app/_entries/entries.module.css";
 import { Avatar } from "@/app/_account/parts";
 import { sealDate } from "@/app/diary/places-list";
+import { toastError } from "@/lib/errors";
 import { BoardBadge, buttonClass, Icon, useConfirm } from "@/lib/ui";
 import { PlaceMap } from "./place-map";
 import p from "./place.module.css";
@@ -44,7 +45,6 @@ export function PlaceView({ diary, placeId: asked }: { diary: Diary; placeId: st
   const placeId = resolvePlace(mergeTargets(items), asked);
   const [editing, setEditing] = useState(false);
   const [ask, confirmSheet] = useConfirm();
-  const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
   const [boardEdit, setBoardEdit] = useState<string[] | null>(null);
@@ -75,11 +75,10 @@ export function PlaceView({ diary, placeId: asked }: { diary: Diary; placeId: st
   const facts = readPayload(item.type, item.payload);
   if (!facts) return <p className="muted">This place could not be read.</p>;
 
-  /** Runs a write and shows a refusal instead of throwing. */
+  /** Runs a write and shows a refusal as a toast instead of throwing. */
   const run = (write: () => Promise<unknown>) => {
-    setError(null);
     setNotice(null);
-    write().catch((err: unknown) => setError(err instanceof Error ? err.message : "Could not save"));
+    write().catch(toastError);
   };
 
   const style = categoryStyle(place.category);
@@ -254,11 +253,6 @@ export function PlaceView({ diary, placeId: asked }: { diary: Diary; placeId: st
 
           <hr className={p.rule} />
 
-          {error && (
-            <p className={styles.error} role="alert">
-              {error}
-            </p>
-          )}
           {notice && (
             <p className={styles.note} role="status">
               {notice}

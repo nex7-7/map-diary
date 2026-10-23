@@ -6,7 +6,7 @@ import { useEffect, useState, type FormEvent } from "react";
 import { PASSPHRASE_MIN_LENGTH, prepareSetup, type PreparedSetup } from "@map-diary/sync";
 import { adoptDevice, api, currentDeviceKind, useSession } from "@/lib/device";
 import styles from "@/lib/device/device.module.css";
-import { errorMessage } from "../messages";
+import { userMessage } from "@/lib/errors";
 import { InstallWarning } from "../install-warning";
 
 type Step = { name: "choose" } | { name: "phrase"; setup: PreparedSetup };
@@ -94,7 +94,7 @@ export function SetupFlow({ inviteCode }: { inviteCode?: string }) {
       setPassphrase("");
       setConfirm("");
     } catch (err) {
-      setError(errorMessage(err));
+      setError(userMessage(err));
     } finally {
       setBusy(false);
     }
@@ -108,7 +108,7 @@ export function SetupFlow({ inviteCode }: { inviteCode?: string }) {
       // Pick the name and picture everyone sees next, so the profile never just says "You".
       router.push("/welcome");
     } catch (err) {
-      setError(errorMessage(err));
+      setError(userMessage(err));
       setBusy(false);
     }
   }

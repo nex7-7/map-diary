@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { accountStyles as s } from "@/app/_account/parts";
-import { inviteErrorMessage } from "@/app/(device)/messages";
+import { userMessage } from "@/lib/errors";
 import { exportSql, storage, type AdminStorageView, type Diary } from "@/lib/device";
 import { Button } from "@/lib/ui";
 
@@ -41,7 +41,7 @@ export function AdminData({ diary }: { diary: Diary }) {
         setUsage(u);
         setError(null);
       },
-      (err: unknown) => setError(inviteErrorMessage(err)),
+      (err: unknown) => setError(userMessage(err)),
     );
   }, [diary]);
   useEffect(load, [load]);
@@ -60,7 +60,7 @@ export function AdminData({ diary }: { diary: Diary }) {
       setTimeout(() => URL.revokeObjectURL(url), 10_000);
       setNotice(`Backup saved (${size(sql.length)}).`);
     } catch (err) {
-      setError(inviteErrorMessage(err));
+      setError(userMessage(err));
     } finally {
       setExporting(null);
     }

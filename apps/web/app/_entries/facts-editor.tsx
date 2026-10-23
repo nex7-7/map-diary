@@ -3,6 +3,7 @@
 import dynamic from "next/dynamic";
 import { useState } from "react";
 import { buildFacts, formFromFacts, isFood, type FactsForm } from "@/lib/entries/facts";
+import { userMessage } from "@/lib/errors";
 import type { PlacePayload } from "@/lib/places/payloads";
 import type { PlaceChain } from "@/lib/places/types";
 import { CategoryPicker } from "./fields";
@@ -40,7 +41,7 @@ export function FactsEditor({ facts, onSave, onCancel, chainFor }: Props) {
     try {
       await onSave(result.facts);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not save");
+      setError(userMessage(err));
       setSaving(false);
     }
   };

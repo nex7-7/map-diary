@@ -10,6 +10,7 @@ import { sealDate } from "@/app/diary/places-list";
 import { MeLink } from "@/app/_shell/me-link";
 import { DiaryShell } from "@/app/_shell/diary-shell";
 import { BoardBadge, Button, Glyph, Icon } from "@/lib/ui";
+import { toastError } from "@/lib/errors";
 import b from "./inbox.module.css";
 import { DeviceGate, type Diary } from "@/lib/device";
 import { choicesOf, usePending, type FailReason, type PendingItem, type PendingQueue } from "@/lib/pending";
@@ -35,13 +36,11 @@ export function InboxPage() {
 function Inbox({ diary }: { diary: Diary }) {
   const { queue, items } = usePending(diary, INBOX_POLL_MS);
   const { snapshot } = useItems(diary);
-  const [error, setError] = useState<string | null>(null);
   const friends = useFriendNews(snapshot, diary.device.accountId);
   const me = snapshot.people.find((p) => p.id === diary.device.accountId);
 
   const run = (action: () => Promise<unknown>) => {
-    setError(null);
-    action().catch((err: unknown) => setError(err instanceof Error ? err.message : "Something went wrong"));
+    action().catch(toastError);
   };
   const group = (kinds: PendingItem["state"]["kind"][]) => items.filter((i) => kinds.includes(i.state.kind));
   const choose = group(["choose"]);
@@ -77,11 +76,6 @@ function Inbox({ diary }: { diary: Diary }) {
         </div>
       </header>
 
-      {error && (
-        <p className={styles.error} role="alert">
-          {error}
-        </p>
-      )}
       {!queue && <p className="hand text-[17px] text-ink-3">Opening…</p>}
       {queue && items.length === 0 && friends.news.length === 0 && (
         <p className={b.empty}>Nothing in the post. Add a place by name or a Zomato or District link and it waits here until it&apos;s found.</p>

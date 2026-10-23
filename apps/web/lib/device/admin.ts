@@ -22,6 +22,7 @@ import {
   type MemberView,
   type NewAppInvite,
 } from "@map-diary/sync";
+import { EntryError } from "../entries/actions";
 import { getPendingQueue } from "../pending/session";
 import { factsAfterMerge, factsOfMerged } from "../places/merges";
 import { readPayload } from "../places/payloads";
@@ -67,14 +68,14 @@ export function exportSql(diary: Diary, onTable?: (table: string) => void): Prom
  * duplicate becomes a pointer, so its opinions show on the kept place, which gains its links.
  */
 export async function mergePlaces(diary: Diary, keptId: string, duplicateId: string): Promise<void> {
-  if (keptId === duplicateId) throw new Error("Pick two different places");
+  if (keptId === duplicateId) throw new EntryError("Pick two different places.");
   const items = await diary.listItems();
   const kept = items.find((i) => i.id === keptId && i.type === "place");
   const dup = items.find((i) => i.id === duplicateId && i.type === "place");
   const keptFacts = kept && readPayload("place", kept.payload);
   const dupFacts = dup && readPayload("place", dup.payload);
-  if (!kept || !dup || !keptFacts || !dupFacts) throw new Error("Both places need to be on this device");
-  if (keptFacts.mergedInto || dupFacts.mergedInto) throw new Error("One of these was already merged");
+  if (!kept || !dup || !keptFacts || !dupFacts) throw new EntryError("Both places need to be on this device. Let it sync, then try again.");
+  if (keptFacts.mergedInto || dupFacts.mergedInto) throw new EntryError("One of these was already merged.");
   await diary.write({ type: "place", placeId: null, id: duplicateId, payload: factsOfMerged(dupFacts, keptId) as unknown as JsonValue });
   // Anything merged into the duplicate before now points at the kept place too.
   for (const from of dupFacts.mergedFrom ?? []) {
@@ -92,7 +93,7 @@ export async function mergePlaces(diary: Diary, keptId: string, duplicateId: str
 export async function lookUpAgain(diary: Diary, placeId: string): Promise<void> {
   const item = (await diary.listItems()).find((i) => i.id === placeId && i.type === "place");
   const facts = item && readPayload("place", item.payload);
-  if (!facts) throw new Error("That place isn't on this device");
+  if (!facts) throw new EntryError("That place isn't on this device. Let it sync, then try again.");
   const query = facts.sourceLinks[0] ?? [facts.name, facts.address].filter(Boolean).join(", ");
   await (await getPendingQueue(diary)).lookUpAgain(placeId, query, facts.name);
 }

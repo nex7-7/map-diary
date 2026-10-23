@@ -7,6 +7,7 @@ import { MeLink } from "@/app/_shell/me-link";
 import { cuisinesOf, EMPTY_FILTERS, filterPlaces, sortPlaces, type PlaceFilters, type SortKey } from "@/lib/places/filter";
 import type { DiarySnapshot, DiarySource, LngLat, Status } from "@/lib/places/types";
 import { cn } from "@/lib/utils";
+import { toastError } from "@/lib/errors";
 import { boardTint, Icon, Notebook, Picker, type NotebookTab } from "@/lib/ui";
 import { FilterPanel, QuickChips, SearchField } from "./filter-bar";
 import { PlaceCard } from "./place-card";
@@ -82,7 +83,7 @@ export function DiaryView({ source, view }: { source: DiarySource; view: DiaryVi
   };
 
   const setStatus = (id: string, status: Status) => {
-    void source.setStatus(id, status).then(setSnapshot);
+    source.setStatus(id, status).then(setSnapshot, toastError);
     if (status !== "visited") return;
     setJustStamped((s) => new Set(s).add(id));
     stampTimers.current.push(

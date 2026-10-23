@@ -6,6 +6,7 @@ import { useEffect, useMemo, useState } from "react";
 import { api, type Diary } from "@/lib/device";
 import { addOpinions, addPlace, findCataloguePlace, findDuplicate } from "@/lib/entries/actions";
 import { buildFacts } from "@/lib/entries/facts";
+import { userMessage } from "@/lib/errors";
 import { parseEntry, parseLink, type ParsedEntry } from "@/lib/entries/parse-input";
 import { getPendingQueue, MAX_QUERY_LENGTH, type PendingItem } from "@/lib/pending";
 import type { TagDefPayload } from "@/lib/places/payloads";
@@ -145,7 +146,7 @@ export function AddForm({ diary, initial, onSaved, onQueued, onCancel }: Props) 
       });
       onQueued();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not save the place");
+      setError(userMessage(err));
       setSaving(false);
     }
   };
@@ -182,7 +183,7 @@ export function AddForm({ diary, initial, onSaved, onQueued, onCancel }: Props) 
       if (initial?.pending) await (await getPendingQueue(diary)).dismiss(initial.pending.id);
       onSaved(id, { name: result.facts.name, status });
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not save the place");
+      setError(userMessage(err));
       setSaving(false);
     }
   };

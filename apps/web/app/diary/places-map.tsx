@@ -21,6 +21,7 @@ import {
 import type { ListedPlace } from "@/lib/places/filter";
 import type { LngLat } from "@/lib/places/types";
 import { Button } from "@/lib/ui";
+import { mapLoadMessage } from "@/lib/errors";
 
 const LONG_PRESS_MS = 600;
 
@@ -92,7 +93,7 @@ export function PlacesMap({ listed, here, selectedId, onSelect, onLongPress }: P
       })
       .catch((err: unknown) => {
         if (abort.signal.aborted) return;
-        setState({ kind: "failed", message: err instanceof Error ? err.message : "The map could not load" });
+        setState({ kind: "failed", message: mapLoadMessage(err) });
       });
 
     return () => {

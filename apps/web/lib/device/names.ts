@@ -1,4 +1,4 @@
-import type { DiaryWriter } from "../entries/actions";
+import { EntryError, type DiaryWriter } from "../entries/actions";
 import type { StoredItem } from "../places/items-source";
 import { cleanDeviceName, readPayload } from "../places/payloads";
 
@@ -35,7 +35,7 @@ export async function deviceNames(store: NameStore): Promise<Map<string, string>
 /** Names a device, replacing any name it had. Returns the cleaned name. */
 export async function nameDevice(store: NameStore, deviceId: string, name: string): Promise<string> {
   const clean = cleanDeviceName(name);
-  if (!clean) throw new Error("A device name needs at least one letter");
+  if (!clean) throw new EntryError("A device name needs at least one letter.");
   const [latest, ...extra] = nameItems(await store.listItems(), store.device.accountId).get(deviceId) ?? [];
   await store.write({ type: "device_name", placeId: null, payload: { deviceId, name: clean }, ...(latest ? { id: latest.id } : {}) });
   for (const item of extra) await store.remove(item.id);

@@ -5,6 +5,7 @@ import { useState } from "react";
 import { useItems } from "@/app/_entries/use-items";
 import styles from "@/app/_entries/entries.module.css";
 import { DeviceGate, type Diary } from "@/lib/device";
+import { toastError } from "@/lib/errors";
 import { defineTag, editTag } from "@/lib/entries/actions";
 import { oneEmoji } from "@/lib/entries/emoji";
 import type { TagDefPayload } from "@/lib/places/payloads";
@@ -27,21 +28,14 @@ export function TagsPage() {
 
 function TagList({ diary }: { diary: Diary }) {
   const { loaded, snapshot } = useItems(diary);
-  const [error, setError] = useState<string | null>(null);
   const run = (write: () => Promise<unknown>) => {
-    setError(null);
-    write().catch((err: unknown) => setError(err instanceof Error ? err.message : "Could not save"));
+    write().catch(toastError);
   };
   if (!loaded) return <p className="muted">Opening…</p>;
 
   const mine = snapshot.tags.filter((t) => t.authorId === diary.device.accountId).sort((a, b) => a.name.localeCompare(b.name));
   return (
     <div className={styles.page}>
-      {error && (
-        <p className={styles.error} role="alert">
-          {error}
-        </p>
-      )}
       {mine.length === 0 && <p className={styles.note}>No tags yet. Make one here or while adding a place.</p>}
       <ul className={styles.list}>
         {mine.map((t) => (

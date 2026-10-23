@@ -5,6 +5,7 @@ import { useMemo, useState } from "react";
 import { accountStyles as s, day } from "@/app/_account/parts";
 import { lookUpAgain, mergePlaces, useDiaryItems, type Diary } from "@/lib/device";
 import { deletePlace } from "@/lib/entries/actions";
+import { userMessage } from "@/lib/errors";
 import { categoryStyle } from "@/lib/places/categories";
 import { normaliseChainName } from "@/lib/places/chains";
 import { profilesOf } from "@/lib/places/items-source";
@@ -75,7 +76,7 @@ export function AdminPlaces({ diary }: { diary: Diary }) {
     setNotice(null);
     action().then(
       () => done && setNotice(done),
-      (err: unknown) => setError(err instanceof Error ? err.message : "Something went wrong"),
+      (err: unknown) => setError(userMessage(err)),
     );
   };
 

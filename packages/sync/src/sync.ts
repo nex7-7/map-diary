@@ -36,6 +36,31 @@ export interface SyncStatus {
   error: string | null;
 }
 
+/** Why a write on this device was refused before anything was sealed. */
+export type WriteErrorCode = "not_found" | "not_author" | "immutable" | "no_board_key";
+
+/** A local write the diary refused. Never carries content. */
+export class WriteError extends Error {
+  readonly code: WriteErrorCode;
+
+  constructor(code: WriteErrorCode) {
+    super(code);
+    this.name = "WriteError";
+    this.code = code;
+  }
+}
+
+/**
+ * A write of this device's that the server refused for good, so it stays on this device only.
+ * `placeId` is set for `duplicate_place`: the catalogue place that already has the link.
+ */
+export interface RejectedWrite {
+  id: string | null;
+  type: EnvelopeType | null;
+  reason: string;
+  placeId?: string;
+}
+
 /** An envelope that could not be stored: the server refused it, or it failed to verify or open. */
 export interface SkippedEnvelope {
   id: string | null;
@@ -71,6 +96,7 @@ interface Refused {
 }
 
 type Listener = () => void;
+type RejectionListener = (rejected: readonly RejectedWrite[]) => void;
 
 function itemFrom(envelope: Envelope, payload: JsonValue, viaClaude = false): DiaryItem {
   return {
@@ -95,6 +121,7 @@ function itemFrom(envelope: Envelope, payload: JsonValue, viaClaude = false): Di
  */
 export class Diary {
   private readonly listeners = new Set<Listener>();
+  private readonly rejectionListeners = new Set<RejectionListener>();
   private status: SyncStatus = { phase: "idle", lastSyncedAt: null, pending: 0, error: null };
   private running: Promise<void> | null = null;
   private again = false;
@@ -138,6 +165,12 @@ export class Diary {
     for (const l of this.listeners) l();
   }
 
+  /** Called with the writes the server refused in a push, so the screens can say why. */
+  onRejected(listener: RejectionListener): () => void {
+    this.rejectionListeners.add(listener);
+    return () => this.rejectionListeners.delete(listener);
+  }
+
   private setStatus(patch: Partial<SyncStatus>): void {
     this.status = { ...this.status, ...patch };
     this.emit();
@@ -178,12 +211,12 @@ export class Diary {
     let boardIds = input.boards;
     if (input.id !== undefined) {
       const prior = await this.storage.getItem(input.id);
-      if (!prior) throw new Error("No such item on this device");
+      if (!prior) throw new WriteError("not_found");
       // The admin may rewrite any catalogue place's facts; the place then counts as theirs.
       const adminFacts = this.device.isAdmin === true && prior.type === "place";
-      if (prior.authorId !== this.device.accountId && !adminFacts) throw new Error("Only the author can change an item");
+      if (prior.authorId !== this.device.accountId && !adminFacts) throw new WriteError("not_author");
       if (prior.type !== input.type || prior.placeId !== input.placeId) {
-        throw new Error("An item's type and place cannot change");
+        throw new WriteError("immutable");
       }
       createdAt = prior.createdAt;
       // Strictly newer than the last version, even if this clock runs behind another device's.
@@ -215,7 +248,7 @@ export class Diary {
     }
     return ids.map((id) => {
       const key = writeKey(this.device, id);
-      if (!key) throw new Error("This device has no key for that board");
+      if (!key) throw new WriteError("no_board_key");
       return key;
     });
   }
@@ -412,7 +445,7 @@ export class Diary {
   async remove(id: string): Promise<void> {
     const prior = await this.storage.getItem(id);
     const adminPlace = this.device.isAdmin === true && prior?.type === "place";
-    if (prior && prior.authorId !== this.device.accountId && !adminPlace) throw new Error("Only the author can delete an item");
+    if (prior && prior.authorId !== this.device.accountId && !adminPlace) throw new WriteError("not_author");
     await this.storage.deleteLocal(id);
     this.emit();
     void this.sync();
@@ -497,6 +530,7 @@ export class Diary {
       const batch = outbox.slice(i, i + PUSH_BATCH);
       const result = await this.api.pushEnvelopes(batch, this.signer, await this.linkHashes(batch));
       const deletedOnServer: string[] = [];
+      const refused: RejectedWrite[] = [];
       for (const r of result.rejected) {
         // Ids only; never the content.
         if ((r.reason === "stale_key" || r.reason === "place_not_on_master") && r.id !== null) {
@@ -505,11 +539,14 @@ export class Diary {
           continue;
         }
         this.skip({ id: r.id, reason: r.reason });
+        const type = batch.find((e) => e.id === r.id)?.type ?? null;
+        refused.push(r.placeId === undefined ? { id: r.id, type, reason: r.reason } : { id: r.id, type, reason: r.reason, placeId: r.placeId });
         if (r.reason === "deleted" && r.id !== null) deletedOnServer.push(r.id);
       }
       // A rejected envelope will not succeed by retrying, so it leaves the queue too.
       await this.storage.settleOutbox(batch.map((e) => ({ id: e.id, updatedAt: e.updatedAt })));
       if (deletedOnServer.length > 0) await this.storage.applyPull({ items: [], deleted: deletedOnServer });
+      if (refused.length > 0) for (const l of this.rejectionListeners) l(refused);
     }
   }
 

@@ -5,7 +5,7 @@ import { useEffect, useState, type FormEvent } from "react";
 import { joinPairing, type JoiningDevice } from "@map-diary/sync";
 import { adoptDevice, api, currentDeviceKind } from "@/lib/device";
 import styles from "@/lib/device/device.module.css";
-import { pairingErrorMessage } from "./messages";
+import { userMessage } from "@/lib/errors";
 
 const POLL_MS = 2000;
 
@@ -26,7 +26,7 @@ export function JoinDevice({ initialCode = "" }: { initialCode?: string }) {
     try {
       setJoining(await joinPairing(api, text, currentDeviceKind()));
     } catch (err) {
-      setError(pairingErrorMessage(err));
+      setError(userMessage(err));
     } finally {
       setBusy(false);
     }
@@ -54,7 +54,7 @@ export function JoinDevice({ initialCode = "" }: { initialCode?: string }) {
           live = false;
           clearInterval(timer);
           setJoining(null);
-          setError(pairingErrorMessage(err));
+          setError(userMessage(err));
         },
       );
     }, POLL_MS);

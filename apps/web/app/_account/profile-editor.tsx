@@ -2,7 +2,8 @@
 
 import { useRef, useState } from "react";
 import type { Diary } from "@/lib/device";
-import { EntryError, setProfile } from "@/lib/entries/actions";
+import { setProfile } from "@/lib/entries/actions";
+import { userMessage } from "@/lib/errors";
 import { oneEmoji } from "@/lib/entries/emoji";
 import { photoAvatar } from "@/lib/entries/photo";
 import { DISPLAY_NAME_MAX, cleanDisplayName, type AvatarPayload, type AvatarTone, type ProfilePayload } from "@/lib/places/payloads";
@@ -44,7 +45,7 @@ export function ProfileEditor({
   const tone: AvatarTone = avatar?.kind === "emoji" ? avatar.tone : 0;
   const unchanged = clean === (current?.name ?? "") && JSON.stringify(avatar ?? null) === JSON.stringify(current?.avatar ?? null);
 
-  const fail = (err: unknown) => setState({ kind: "error", message: err instanceof EntryError ? err.message : "Could not save. Check your connection and try again." });
+  const fail = (err: unknown) => setState({ kind: "error", message: userMessage(err) });
 
   function pickEmoji(emoji: string, t: AvatarTone = tone) {
     if (emoji) setAvatar({ kind: "emoji", emoji, tone: t });

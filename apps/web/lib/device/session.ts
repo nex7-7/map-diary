@@ -4,6 +4,7 @@ import { Api, Diary, IdbStorage, type DeviceState } from "@map-diary/sync";
 import { placeLinks } from "../entries/actions";
 import { nameThisDevice } from "./names";
 import { clearPending } from "../pending/session";
+import { watchSync } from "../errors/notify";
 
 /**
  * The API Worker's origin. In production the web app and the API share
@@ -63,6 +64,8 @@ function startDiary(diary: Diary): void {
     }
     void forgetDevice();
   });
+  // Offline, a failed round, or a write the server refused: say so instead of failing quietly.
+  const offNotices = watchSync(diary);
   diary.start(SYNC_INTERVAL_MS);
   // Name this device from its browser, so the account's other devices list it as, say, "Mac · Chrome".
   void nameThisDevice(diary, navigator.userAgent).catch(() => undefined);
@@ -72,6 +75,7 @@ function startDiary(diary: Diary): void {
   document.addEventListener("visibilitychange", onVisible);
   stopTriggers = () => {
     offRevoked();
+    offNotices();
     diary.stop();
     window.removeEventListener("online", sync);
     document.removeEventListener("visibilitychange", onVisible);

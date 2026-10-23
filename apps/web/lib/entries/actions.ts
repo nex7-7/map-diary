@@ -128,7 +128,7 @@ function own(w: DiaryWriter, items: readonly StoredItem[], type: EnvelopeType, p
 async function requireStatus(w: DiaryWriter, placeId: string): Promise<StoredItem[]> {
   const items = await w.listItems();
   if (own(w, items, "status", placeId).length === 0) {
-    throw new EntryError("Mark it Want to or Visited before tagging or commenting");
+    throw new EntryError("Mark it Want to or Visited before tagging or commenting.");
   }
   return items;
 }
@@ -165,7 +165,7 @@ export async function applyTag(
   if (def && wanted) {
     const missing = wanted.filter((b) => !(visibleOn ? visibleOn(b) : def.boardIds.includes(b)));
     if (missing.length > 0) {
-      if (def.authorId !== w.device.accountId) throw new EntryError("That tag isn't shared on the boards you picked");
+      if (def.authorId !== w.device.accountId) throw new EntryError("That tag isn't shared on the boards you picked. Widen the tag's boards first.");
       await w.write({ type: "tag_def", placeId: null, payload: def.payload, id: def.id, boards: [...def.boardIds, ...missing] });
     }
   }
@@ -183,20 +183,20 @@ export async function unapplyTag(w: DiaryWriter, placeId: string, tagId: string)
 /** Defines a tag on the given boards (Personal by default). Returns its id. */
 export async function defineTag(w: DiaryWriter, def: TagDefPayload, boards?: Boards): Promise<string> {
   const clean = cleanTag(def);
-  if (!clean.name) throw new EntryError("A tag needs a name");
+  if (!clean.name) throw new EntryError("A tag needs a name.");
   return (await w.write({ type: "tag_def", placeId: null, payload: json(clean), ...on(boards) })).id;
 }
 
 export async function editTag(w: DiaryWriter, id: string, def: TagDefPayload): Promise<void> {
   const clean = cleanTag(def);
-  if (!clean.name) throw new EntryError("A tag needs a name");
+  if (!clean.name) throw new EntryError("A tag needs a name.");
   await w.write({ type: "tag_def", placeId: null, payload: json(clean), id });
 }
 
 /** Adds a comment. On a chain, `allOutlets` makes it about every outlet rather than `placeId`'s. */
 export async function addComment(w: DiaryWriter, placeId: string, text: string, boards?: Boards, allOutlets = false): Promise<void> {
   const payload: CommentPayload = { text: text.trim(), ...(allOutlets ? { allOutlets: true as const } : {}) };
-  if (!payload.text) throw new EntryError("A comment needs some text");
+  if (!payload.text) throw new EntryError("A comment needs some text.");
   await requireStatus(w, placeId);
   await w.write({ type: "comment", placeId, payload: json(payload), ...on(boards) });
 }
@@ -206,7 +206,7 @@ export async function editComment(w: DiaryWriter, id: string, placeId: string, t
   const prior = (await w.listItems()).find((i) => i.id === id);
   const allOutlets = prior && readPayload("comment", prior.payload)?.allOutlets === true;
   const payload: CommentPayload = { text: text.trim(), ...(allOutlets ? { allOutlets: true as const } : {}) };
-  if (!payload.text) throw new EntryError("A comment needs some text");
+  if (!payload.text) throw new EntryError("A comment needs some text.");
   await w.write({ type: "comment", placeId: prior?.placeId ?? placeId, payload: json(payload), id });
 }
 
@@ -220,7 +220,7 @@ export async function removeOpinion(w: DiaryWriter, id: string): Promise<void> {
  * catalogue place is written, the Worker accepts new facts only from the admin.
  */
 export async function updateFacts(w: DiaryWriter, place: StoredItem, facts: PlacePayload): Promise<void> {
-  if (place.type !== "place" && place.type !== "private_place") throw new EntryError("Not a place");
+  if (place.type !== "place" && place.type !== "private_place") throw new EntryError("That isn't a place.");
   await w.write({ type: place.type, placeId: place.placeId, payload: json(facts), id: place.id });
 }
 
@@ -247,7 +247,7 @@ export async function setProfile(
   masterBoardId: string,
 ): Promise<ProfilePayload> {
   const name = cleanDisplayName(profile.name);
-  if (!name) throw new EntryError("A name needs at least one letter");
+  if (!name) throw new EntryError("A name needs at least one letter.");
   const mine = (await w.listItems()).filter((i) => i.type === "profile" && i.authorId === w.device.accountId);
   const latest = mine.reduce<StoredItem | undefined>((a, b) => (!a || b.updatedAt > a.updatedAt ? b : a), undefined);
   const kept = profile.avatar === undefined && latest ? readPayload("profile", latest.payload)?.avatar : undefined;

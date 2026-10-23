@@ -27,6 +27,7 @@ import {
   wrapMasterKeysForAccount,
   writeKey,
   type DeviceState,
+  type RejectedWrite,
 } from "@map-diary/sync";
 
 await ready();
@@ -176,9 +177,13 @@ describe("the master board and the place catalogue", () => {
     expect(await d.findCataloguePlace(["https://maps.google.com/?cid=111"])).toBe(cafeId);
     expect(await d.findCataloguePlace(["https://maps.google.com/?cid=999"])).toBeNull();
 
+    const refused: RejectedWrite[] = [];
+    d.onRejected((r) => refused.push(...r));
     const copy = await d.write({ type: "place", placeId: null, payload: place("Kyani", "https://maps.google.com/?cid=111") });
     await d.sync();
     expect(d.skipped).toEqual([{ id: copy.id, reason: "duplicate_place" }]);
+    // The screens hear about it, with the place that already has the link.
+    expect(refused).toEqual([{ id: copy.id, type: "place", reason: "duplicate_place", placeId: cafeId }]);
 
     // The server sees only the hash: nothing in D1 holds the link itself.
     const { results } = await env.DB.prepare("SELECT link_hash, place_id FROM place_link_hashes").all<{ link_hash: ArrayBuffer; place_id: string }>();

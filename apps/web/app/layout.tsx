@@ -10,6 +10,8 @@ import "@fontsource/kalam/latin-400.css";
 import "@fontsource/kalam/latin-700.css";
 import "@fontsource-variable/inter/wght.css";
 import "./globals.css";
+import { Toaster } from "@/components/ui/sonner";
+import { ErrorListener } from "./_shell/error-listener";
 import { ServiceWorker } from "./_shell/service-worker";
 
 export const metadata: Metadata = {
@@ -39,6 +41,8 @@ export default function RootLayout({ children }: { children: ReactNode }) {
     <html lang="en">
       <body>
         {children}
+        <Toaster />
+        <ErrorListener />
         <ServiceWorker />
       </body>
     </html>

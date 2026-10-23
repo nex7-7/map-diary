@@ -6,7 +6,7 @@ import { useEffect, useState, type FormEvent } from "react";
 import { PASSPHRASE_MIN_LENGTH, signInWithPassphrase, signInWithRecoveryPhrase } from "@map-diary/sync";
 import { adoptDevice, api, currentDeviceKind, useSession } from "@/lib/device";
 import styles from "@/lib/device/device.module.css";
-import { errorMessage } from "../messages";
+import { userMessage } from "@/lib/errors";
 import { InstallWarning } from "../install-warning";
 import { JoinDevice } from "../join-device";
 
@@ -55,7 +55,7 @@ export function SignInFlow() {
       await adoptDevice(device);
       router.push("/");
     } catch (err) {
-      setError(errorMessage(err));
+      setError(userMessage(err));
       setBusy(false);
     }
   }

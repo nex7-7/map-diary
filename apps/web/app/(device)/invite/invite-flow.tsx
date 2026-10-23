@@ -6,7 +6,8 @@ import { checkAppInvite, readInviteSecret, type InviteCheck } from "@map-diary/s
 import { api, useSession } from "@/lib/device";
 import styles from "@/lib/device/device.module.css";
 import { InstallWarning } from "../install-warning";
-import { inviteErrorMessage, needsHomeScreenInstall } from "../messages";
+import { needsHomeScreenInstall } from "../messages";
+import { userMessage } from "@/lib/errors";
 import { SetupFlow } from "../setup/setup-flow";
 import { InviteIntro } from "./intro";
 
@@ -57,7 +58,7 @@ export function InviteFlow() {
       if (result.state === "open") setAccepted(code);
       else setError(CHECK_MESSAGES[result.state]);
     } catch (err) {
-      setError(inviteErrorMessage(err));
+      setError(userMessage(err));
     } finally {
       setBusy(false);
     }

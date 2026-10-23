@@ -11,7 +11,7 @@ import {
   type ResolverResult,
 } from "@map-diary/crypto";
 import { ApiError, NetworkError, type Api } from "@map-diary/sync";
-import { addOpinions, addPlace, findCataloguePlace, type DiaryWriter } from "../entries/actions";
+import { EntryError, addOpinions, addPlace, findCataloguePlace, type DiaryWriter } from "../entries/actions";
 import { isFood } from "../entries/facts";
 import { chainFor } from "../places/chains";
 import type { PlaceChain } from "../places/types";
@@ -69,7 +69,7 @@ export class PendingQueue {
   /** Saves a place to find later and sends its job. Returns the saved item. */
   async add(query: string, draft: PendingDraft): Promise<PendingItem> {
     const q = query.trim().slice(0, MAX_QUERY_LENGTH);
-    if (!q) throw new Error("Nothing to look up");
+    if (!q) throw new EntryError("Type a link or a name to look up.");
     const at = this.now();
     const item: PendingItem = { id: newId(), query: q, draft, createdAt: at, updatedAt: at, state: { kind: "unsent" } };
     await this.store.put(item);
@@ -169,9 +169,9 @@ export class PendingQueue {
    */
   async choose(id: string, index: number): Promise<string> {
     const item = await this.store.get(id);
-    if (!item || item.state.kind !== "choose") throw new Error("Nothing to choose here");
+    if (!item || item.state.kind !== "choose") throw new EntryError("That was already sorted out. Reload the Inbox.");
     const candidate = choicesOf(item.state)[index];
-    if (!candidate) throw new Error("No such match");
+    if (!candidate) throw new EntryError("That match is gone. Reload the Inbox.");
     return this.write(item, candidate, item.state.chain);
   }
 
@@ -181,7 +181,7 @@ export class PendingQueue {
    */
   async addAll(id: string): Promise<string> {
     const item = await this.store.get(id);
-    if (!item || item.state.kind !== "choose" || !item.state.chain) throw new Error("No chain to add");
+    if (!item || item.state.kind !== "choose" || !item.state.chain) throw new EntryError("That was already sorted out. Reload the Inbox.");
     const { chain } = item.state;
     const match = item.state.candidates[0]!;
     const label = chainFor(await this.diary.listItems(), chain.name);
@@ -242,14 +242,14 @@ function jobOf(state: PendingState): WaitingJob | undefined {
 export async function refreshFacts(w: DiaryWriter, placeId: string, c: ResolvedPlace): Promise<string> {
   const item = (await w.listItems()).find((i) => i.id === placeId && i.type === "place");
   const current = item && readPayload("place", item.payload);
-  if (!item || !current) throw new Error("That place isn't on this device any more");
+  if (!item || !current) throw new EntryError("That place isn't on this device any more. It may have been deleted.");
   const fresh = factsFromCandidate({ label: current.name, status: "want", tagIds: [], newTags: [], comment: "" }, c, current.chain);
   const facts: PlacePayload = {
     ...fresh,
     sourceLinks: [...new Set([...current.sourceLinks, ...fresh.sourceLinks])],
     ...(current.mergedFrom ? { mergedFrom: current.mergedFrom } : {}),
   };
-  if (!readPayload("place", facts as unknown as JsonValue)) throw new Error("The match doesn't fit a place");
+  if (!readPayload("place", facts as unknown as JsonValue)) throw new EntryError("That match is missing a name or a location, so it can't be added. Try looking it up again.");
   await w.write({ type: "place", placeId: null, payload: facts as unknown as JsonValue, id: placeId });
   return placeId;
 }
@@ -282,7 +282,7 @@ export function factsFromCandidate(draft: PendingDraft, c: ResolvedPlace, chain?
  */
 export async function writeResolved(w: DiaryWriter, draft: PendingDraft, c: ResolvedPlace, chain?: PlaceChain, allOutlets = false): Promise<string> {
   const facts = factsFromCandidate(draft, c, chain);
-  if (!readPayload("place", facts as unknown as JsonValue)) throw new Error("The match doesn't fit a place");
+  if (!readPayload("place", facts as unknown as JsonValue)) throw new EntryError("That match is missing a name or a location, so it can't be added. Try looking it up again.");
 
   const existing = await findCataloguePlace(w, facts.sourceLinks);
   if (!existing) {
@@ -318,7 +318,7 @@ export async function writeOutlet(w: DiaryWriter, draft: PendingDraft, c: Resolv
   // The person's link is for the match, not this outlet.
   const { link: _link, ...rest } = draft;
   const facts = factsFromCandidate(rest, c, chain);
-  if (!readPayload("place", facts as unknown as JsonValue)) throw new Error("An outlet doesn't fit a place");
+  if (!readPayload("place", facts as unknown as JsonValue)) throw new EntryError("One of the outlets is missing a name or a location, so it can't be added.");
   const existing = await findCataloguePlace(w, facts.sourceLinks);
   if (existing) return existing;
   return (await w.write({ type: "place", placeId: null, payload: facts as unknown as JsonValue })).id;

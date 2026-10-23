@@ -23,7 +23,7 @@ import { boardsFrom, openBoardKeys, type DeviceState } from "./device";
 /** The path the old device's link opens; the secret follows the `#`. */
 export const LINK_PATH = "/link";
 
-export type PairingErrorCode = "bad_code" | "expired" | "tampered" | "offline" | "server";
+export type PairingErrorCode = "bad_code" | "expired" | "tampered" | "too_many" | "offline" | "server";
 
 /** A pairing failure the screens can explain. Never carries the secret. */
 export class PairingError extends Error {
@@ -40,6 +40,7 @@ function asPairingError(err: unknown): PairingError {
   if (err instanceof PairingError) return err;
   if (err instanceof NetworkError) return new PairingError("offline");
   if (err instanceof ApiError && err.status === 404) return new PairingError("expired");
+  if (err instanceof ApiError && err.code === "too_many_pairings") return new PairingError("too_many");
   return new PairingError("server");
 }
 
