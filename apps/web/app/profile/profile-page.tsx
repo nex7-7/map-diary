@@ -56,7 +56,10 @@ function You({ diary }: { diary: Diary }) {
   const avatar = mine?.avatar;
 
   const contents: { href: string; title: string; value: string }[] = [
-    { href: "/boards", title: "Boards and groups", value: String(snapshot.boards.length || (groups ? groups.length + 2 : "")) },
+    { href: "/boards", title: "Boards", value: String(snapshot.boards.length || (groups ? groups.length + 2 : "")) },
+    // Making a group and pasting a group invite live on /groups, which must be reachable before
+    // someone is in any group.
+    { href: "/groups", title: "Groups", value: groups ? String(groups.length) : "" },
     { href: "/tags", title: "Tags", value: loaded ? String(mineTags) : "" },
   ];
   /** Which contents line is open: devices (and Claude, which is one of them), admin, or the profile. */

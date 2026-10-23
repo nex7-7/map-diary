@@ -141,14 +141,10 @@ function BoardPage({ board, snapshot, me }: { board: Board; snapshot: DiarySnaps
         </div>
         <p className="m-0 text-[12.5px] text-ink-3">
           {board.kind === "master" ? "Everyone on the app. Only what people post to Public shows here." : `${members.length} ${members.length === 1 ? "member" : "members"}. Only they can read this board.`}
-          {board.kind === "group" && (
-            <>
-              {" "}
-              <Link href="/groups" className="sketch-link font-semibold">
-                Manage
-              </Link>
-            </>
-          )}
+          {" "}
+          <Link href="/groups" className="sketch-link font-semibold">
+            {board.kind === "group" ? "Manage" : "Make a group or join one"}
+          </Link>
         </p>
       </section>
 
