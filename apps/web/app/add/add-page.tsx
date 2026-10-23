@@ -5,7 +5,7 @@ import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 
 import { AddForm, type AddInitial } from "@/app/_entries/add-form";
 import { DiaryShell } from "@/app/_shell/diary-shell";
 import { sealDate } from "@/app/diary/places-list";
-import { Button, Icon } from "@/lib/ui";
+import { Button, ButtonLink, Icon } from "@/lib/ui";
 import type { Status } from "@/lib/places/types";
 import a from "./add.module.css";
 import { parseCoordinates } from "@/lib/entries/parse-input";
@@ -56,7 +56,7 @@ export function AddPage() {
                     history.replaceState(null, "", "/add");
                     setInitial({});
                   }}
-                  onDone={() => router.push(`/place#${saved.id}`)}
+                  href={`/place#${encodeURIComponent(saved.id)}`}
                 />
               ) : (
                 <WithPending key={round} diary={diary} pendingId={initial.pendingId}>
@@ -126,7 +126,7 @@ const SPLATS = [
 ];
 
 /** "Saved": the place pressed into the diary as a seal, Visited in red, Want to in graphite. */
-function Saved({ name, status, onAgain, onDone }: { name: string; status: Status; onAgain: () => void; onDone: () => void }) {
+function Saved({ name, status, onAgain, href }: { name: string; status: Status; onAgain: () => void; href: string }) {
   const ink = status === "visited" ? "var(--seal)" : "var(--graphite)";
   const now = new Date();
   return (
@@ -158,7 +158,8 @@ function Saved({ name, status, onAgain, onDone }: { name: string; status: Status
         <Button variant="secondary" onClick={onAgain}>
           Add another
         </Button>
-        <Button onClick={onDone}>Open it</Button>
+        {/* A link like the map card's, so the place id in the fragment survives a full page load too. */}
+        <ButtonLink href={href}>Open it</ButtonLink>
       </div>
     </div>
   );
