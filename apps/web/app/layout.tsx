@@ -15,6 +15,13 @@ export const metadata: Metadata = {
   title: "Mumbai Places Diary",
   description: "A private, end-to-end encrypted map diary.",
   robots: { index: false, follow: false },
+  applicationName: "Places Diary",
+  icons: {
+    icon: [{ url: "/icons/favicon-48.png", sizes: "48x48", type: "image/png" }],
+    apple: [{ url: "/icons/apple-touch-icon.png", sizes: "180x180" }],
+  },
+  // Opened from the iPhone Home Screen it runs as its own app, which keeps its storage and keys.
+  appleWebApp: { capable: true, title: "Places Diary", statusBarStyle: "default" },
 };
 
 export const viewport: Viewport = {
