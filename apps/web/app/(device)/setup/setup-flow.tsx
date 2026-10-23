@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { PASSPHRASE_MIN_LENGTH, prepareSetup, type PreparedSetup } from "@map-diary/sync";
 import { adoptDevice, api, currentDeviceKind, useSession } from "@/lib/device";
 import styles from "@/lib/device/device.module.css";
@@ -26,6 +26,22 @@ export function SetupFlow({ inviteCode }: { inviteCode?: string }) {
   const [noted, setNoted] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // First-run setup only: whether the diary still has no admin. Checked before any keys are made,
+  // so a diary that is already set up says so instead of showing a recovery phrase first.
+  const [open, setOpen] = useState<boolean | null>(invited ? true : null);
+
+  useEffect(() => {
+    if (invited) return;
+    let live = true;
+    api.setupStatus().then(
+      (s) => live && setOpen(s.open),
+      // Offline or an older server: let the form through; Finish still refuses a taken diary.
+      () => live && setOpen(true),
+    );
+    return () => {
+      live = false;
+    };
+  }, [invited]);
 
   if (session.state === "ready") {
     return (
@@ -33,6 +49,25 @@ export function SetupFlow({ inviteCode }: { inviteCode?: string }) {
         <p>This device is already signed in.</p>
         <Link className={styles.button} href="/">
           Open the diary
+        </Link>
+      </div>
+    );
+  }
+
+  if (open === null) return <p className="muted">Checking the diary…</p>;
+
+  if (!open) {
+    return (
+      <div className={styles.card}>
+        <p>
+          This diary is already set up. To join it you need an invite link from the admin. If you already have an
+          account, sign in instead.
+        </p>
+        <Link className={styles.button} href="/invite">
+          I have an invite
+        </Link>
+        <Link className="muted" href="/sign-in">
+          Sign in
         </Link>
       </div>
     );
@@ -70,8 +105,8 @@ export function SetupFlow({ inviteCode }: { inviteCode?: string }) {
     setError(null);
     try {
       await adoptDevice(await setup.complete(api));
-      // A friend who just joined picks their name and picture next.
-      router.push(invited ? "/welcome" : "/");
+      // Pick the name and picture everyone sees next, so the profile never just says "You".
+      router.push("/welcome");
     } catch (err) {
       setError(errorMessage(err));
       setBusy(false);
