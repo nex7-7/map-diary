@@ -33,3 +33,8 @@ apps/web/public/sw.js
 
 # Private notes kept only on the owner's machine
 security/
+
+# Database exports (wrangler d1 export, admin Data backups): never committed
+backups/
+*.sql.gz
+d1-*.sql
