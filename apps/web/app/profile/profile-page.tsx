@@ -13,7 +13,7 @@ import { useGroups } from "@/lib/groups";
 import { profilesOf } from "@/lib/places/items-source";
 import { EMPTY_FILTERS, filterPlaces } from "@/lib/places/filter";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
-import { Badge, Icon } from "@/lib/ui";
+import { Badge, Emoji, Icon } from "@/lib/ui";
 import y from "./you.module.css";
 
 /** `/profile`, the You tab: the inside cover of the diary, your stamps, and its contents. */
@@ -104,7 +104,7 @@ function You({ diary }: { diary: Diary }) {
               <img src={avatar.dataUrl} alt="" className="size-[78px] object-cover" />
             ) : (
               <span className="grit grid size-[78px] place-items-center bg-seal font-serif text-[44px] text-cream" aria-hidden>
-                {avatar?.kind === "emoji" ? avatar.emoji : ([...(name || "Y")][0]?.toUpperCase() ?? "Y")}
+                {avatar?.kind === "emoji" ? <Emoji emoji={avatar.emoji} /> : ([...(name || "Y")][0]?.toUpperCase() ?? "Y")}
               </span>
             )}
           </div>

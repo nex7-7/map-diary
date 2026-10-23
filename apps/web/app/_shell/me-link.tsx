@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { Emoji } from "@/lib/ui";
 import type { Person } from "@/lib/places/types";
 
 /** The way to You on a phone: your initial (or picture) stamped in the top corner. */
@@ -10,7 +11,7 @@ export function MeLink({ me }: { me: Person }) {
       {avatar?.kind === "photo" ? (
         <img src={avatar.dataUrl} alt="" className="size-full object-cover" />
       ) : avatar?.kind === "emoji" ? (
-        <span className="text-[18px]">{avatar.emoji}</span>
+        <span className="text-[18px]"><Emoji emoji={avatar.emoji} /></span>
       ) : (
         ([...name.trim()][0]?.toUpperCase() ?? "Y")
       )}
