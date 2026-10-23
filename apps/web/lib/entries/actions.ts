@@ -43,7 +43,7 @@ export interface NewPlace {
   comment: string;
   /** On a chain: the note is about every outlet. */
   commentAllOutlets?: boolean;
-  /** Where the status goes, and the tags and note unless they pick their own. The place itself goes where the diary puts it. */
+  /** Where the status goes, and the tags and note unless they pick their own. A dropped pin goes to all of them; a catalogue place goes where the diary puts it. */
   boards?: readonly string[];
   /** Where the tags (and any tags made here) go; the status's boards if missing. */
   tagBoards?: readonly string[];
@@ -60,7 +60,10 @@ export async function addPlace(w: DiaryWriter, input: NewPlace): Promise<string>
   const defined: string[] = [];
   for (const def of input.newTags) defined.push(await defineTag(w, def, tagBoards));
 
-  const place = await w.write({ type: input.kind, placeId: null, payload: json(input.facts) });
+  // A dropped pin goes wherever its opinions go, so everyone who can read them can read the pin
+  // too (the diary keeps it off the master board). A catalogue place goes where the diary puts it.
+  const pinBoards = input.kind === "private_place" ? [...new Set([...(boards ?? []), ...(tagBoards ?? []), ...(commentBoards ?? [])])] : undefined;
+  const place = await w.write({ type: input.kind, placeId: null, payload: json(input.facts), ...on(pinBoards) });
   // The status goes first: tags and comments need one.
   await w.write({ type: "status", placeId: place.id, payload: { status: input.status }, ...on(boards) });
   for (const tagId of new Set([...input.tagIds, ...defined])) await applyTag(w, place.id, tagId, tagBoards);

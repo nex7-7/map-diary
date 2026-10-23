@@ -34,10 +34,14 @@ function You({ diary }: { diary: Diary }) {
   const mine = profiles.get(me);
   const taken = [...profiles].filter(([id]) => id !== me).map(([, p]) => p.name);
   const { groups } = useGroups(diary);
-  const [devices, setDevices] = useState<{ count: number; claude: boolean } | null>(null);
+  // Claude counts as connected once its connector has called in; until then it is only set up.
+  const [devices, setDevices] = useState<{ count: number; claude: "connected" | "waiting" | null } | null>(null);
   useEffect(() => {
     listDevices(diary).then(
-      (o) => setDevices({ count: o.devices.length, claude: o.devices.some((d) => d.kind === "claude") }),
+      (o) => {
+        const claude = o.devices.find((d) => d.kind === "claude");
+        setDevices({ count: o.devices.length, claude: claude ? (claude.lastSeenAt === null ? "waiting" : "connected") : null });
+      },
       () => undefined,
     );
   }, [diary]);
@@ -155,8 +159,8 @@ function You({ diary }: { diary: Diary }) {
           <CollapsibleTrigger className={y.toc}>
             <span>Devices and Claude</span>
             <span className={y.lead} aria-hidden />
-            <span className={y.val} style={devices?.claude ? { color: "var(--clay)" } : undefined}>
-              {devices ? `${devices.count}${devices.claude ? ", Claude connected" : ""}` : ""}
+            <span className={y.val} style={devices?.claude === "connected" ? { color: "var(--clay)" } : undefined}>
+              {devices ? `${devices.count}${devices.claude === "connected" ? ", Claude connected" : devices.claude === "waiting" ? ", Claude set up, waiting for first use" : ""}` : ""}
             </span>
             <span className={y.chev}>
               <Icon name="chevronRight" size="m" />

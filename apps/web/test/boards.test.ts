@@ -138,3 +138,23 @@ describe("posting on someone else's place", () => {
     expect(tagFit(spicy, ["board-duo"], snap)).toEqual({ fits: [], outside: ["board-duo"], canWiden: true });
   });
 });
+
+describe("dropped pins on boards", () => {
+  it("lists a Personal pin on no shared board, even with a status posted there", () => {
+    const myPin = item("private_place", ME, [PERSONAL], { ...facts, name: "My corner" });
+    const status = item("status", ME, ["board-duo", "board-master"], { status: "want" }, myPin.id);
+    const snap = snapshotFromItems([myPin, status], ME, PERSONAL, boards);
+    const on = (board: string) => filterPlaces(snap.places, { ...EMPTY_FILTERS, boards: [board] }, ME).map((l) => l.place.id);
+    expect(on("board-duo")).toEqual([]);
+    expect(on("board-master")).toEqual([]);
+    // Still on the owner's own list.
+    expect(on(PERSONAL)).toEqual([myPin.id]);
+  });
+
+  it("lists a pin on the group it is shared with", () => {
+    const groupPin = item("private_place", ME, ["board-duo"], { ...facts, name: "Our rooftop" });
+    const status = item("status", ME, ["board-duo"], { status: "visited" }, groupPin.id);
+    const snap = snapshotFromItems([groupPin, status], ME, PERSONAL, boards);
+    expect(filterPlaces(snap.places, { ...EMPTY_FILTERS, boards: ["board-duo"] }, ME).map((l) => l.place.id)).toEqual([groupPin.id]);
+  });
+});

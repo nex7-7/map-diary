@@ -78,7 +78,8 @@ const TOOLS = [
     description:
       "Finds places in the diary. query matches words in the name, cuisine, address, signature dish or category. " +
       "status limits to the owner's list: visited, want, or none (places not on their list). With no query, lists " +
-      "places, newest first. Each result has myStatus (visited, want or null).",
+      "places, newest first. Each result has myStatus (visited, want or null). A chain comes back once, with its " +
+      "outlets; a status or tag on any outlet counts for the whole chain.",
     inputSchema: {
       type: "object",
       properties: {
@@ -213,6 +214,7 @@ interface Place {
   sourceLinks: string[];
   /** The chain this place is one outlet of; the app shows a chain's outlets as one place. */
   chain?: string;
+  chainId?: string;
 }
 interface TagDef {
   name: string;
@@ -241,8 +243,13 @@ function readPlace(payload: JsonValue): Place | undefined {
   if (address) place.address = address;
   if (cuisine) place.cuisine = cuisine;
   if (dish && str(dish.name) && typeof dish.priceInr === "number") place.signatureDish = { name: str(dish.name)!, priceInr: dish.priceInr };
-  const chain = str(obj(p.chain as JsonValue)?.name);
-  if (chain) place.chain = chain;
+  const chain = obj(p.chain as JsonValue);
+  const chainName = str(chain?.name);
+  const chainId = str(chain?.id);
+  if (chainName && chainId) {
+    place.chain = chainName;
+    place.chainId = chainId;
+  }
   return place;
 }
 
@@ -320,6 +327,23 @@ class Tools {
     return [...ids];
   }
 
+  /**
+   * The boards an opinion on this place goes to. A dropped pin is readable only on the boards it
+   * is posted to, so an opinion anywhere else would point at a place nobody there can see.
+   */
+  private opinionBoards(place: Item, args: JsonObject, fallback?: readonly string[]): string[] {
+    if (place.type !== "private_place") return this.boardIds(args, fallback);
+    const onPin = (ids: readonly string[]) => ids.filter((id) => place.boardIds.includes(id));
+    const boards = this.boardIds(args, fallback && onPin(fallback).length > 0 ? onPin(fallback) : undefined);
+    if (onPin(boards).length < boards.length) {
+      throw new ToolError(
+        `That place is the owner's dropped pin, shared only on ${place.boardIds.map((b) => this.boardName(b)).join(" and ")}. ` +
+          "Opinions on it can only go there.",
+      );
+    }
+    return boards;
+  }
+
   private async place(placeId: string): Promise<Item & { facts: Place }> {
     const { items } = await this.reader.load({ types: PLACE_TYPES, ids: [placeId] });
     const item = items[0];
@@ -328,17 +352,32 @@ class Tools {
     return { ...item, facts };
   }
 
-  private async myItems(type: string, placeId: string): Promise<Item[]> {
-    return (await this.reader.load({ types: [type], placeIds: [placeId], authorIds: [this.session.accountId] })).items;
+  /**
+   * Every outlet of the place's chain, itself first; just the place when it is not a chain.
+   * Status and tags count for the whole chain, as in the app.
+   */
+  private async outlets(place: Item & { facts: Place }): Promise<{ item: Item; facts: Place }[]> {
+    const self = { item: place as Item, facts: place.facts };
+    if (!place.facts.chainId || place.type !== "place") return [self];
+    const { items } = await this.reader.load({ types: ["place"] });
+    const others = items.flatMap((item) => {
+      const facts = readPlace(item.payload);
+      return item.id !== place.id && facts && facts.chainId === place.facts.chainId ? [{ item, facts }] : [];
+    });
+    return [self, ...others];
   }
 
-  private async requireStatus(placeId: string): Promise<void> {
-    if ((await this.myItems("status", placeId)).length === 0) {
+  private async myItems(type: string, placeIds: readonly string[]): Promise<Item[]> {
+    return (await this.reader.load({ types: [type], placeIds, authorIds: [this.session.accountId] })).items;
+  }
+
+  private async requireStatus(placeIds: readonly string[]): Promise<void> {
+    if ((await this.myItems("status", placeIds)).length === 0) {
       throw new ToolError("Mark the place visited or want with set_status before tagging or commenting.");
     }
   }
 
-  private placeView(item: Item, facts: Place, myStatus: Status | null) {
+  private placeView(item: Item, facts: Place, myStatus: Status | null, outlets?: { item: Item; facts: Place }[]) {
     return {
       id: item.id,
       name: facts.name,
@@ -350,6 +389,9 @@ class Tools {
       location: facts.location,
       private: item.type === "private_place",
       myStatus,
+      ...(outlets && outlets.length > 1
+        ? { outlets: outlets.map((o) => ({ id: o.item.id, name: o.facts.name, ...(o.facts.address ? { address: o.facts.address } : {}), location: o.facts.location })) }
+        : {}),
     };
   }
 
@@ -399,19 +441,42 @@ class Tools {
       if (words.every((w) => haystack.includes(w))) matches.push({ item, facts });
     }
 
+    // A chain's outlets are one place, as in the app: one result, with the status of whichever outlet holds it.
+    const outletsOf = new Map<string, { item: Item; facts: Place }[]>();
+    for (const item of places) {
+      const facts = readPlace(item.payload);
+      if (item.type !== "place" || !facts?.chainId) continue;
+      const list = outletsOf.get(facts.chainId);
+      if (list) list.push({ item, facts });
+      else outletsOf.set(facts.chainId, [{ item, facts }]);
+    }
+    const outletsFor = (m: { item: Item; facts: Place }) =>
+      (m.item.type === "place" && m.facts.chainId && outletsOf.get(m.facts.chainId)) || [m];
+
     if (status !== "visited" && status !== "want" && matches.length > 0) {
       const mine = await this.reader.load({
         types: ["status"],
         authorIds: [this.session.accountId],
-        placeIds: matches.map((m) => m.item.id),
+        placeIds: [...new Set(matches.flatMap((m) => outletsFor(m).map((o) => o.item.id)))],
       });
       addStatuses(mine.items);
       truncated ||= mine.truncated;
     }
-    const kept = status === "none" ? matches.filter((m) => !statusOf.has(m.item.id)) : matches;
+    const seenChains = new Set<string>();
+    const folded: { item: Item; facts: Place; outlets: { item: Item; facts: Place }[]; myStatus: Status | null }[] = [];
+    for (const m of matches) {
+      const outlets = outletsFor(m);
+      if (outlets.length > 1) {
+        if (seenChains.has(m.facts.chainId!)) continue;
+        seenChains.add(m.facts.chainId!);
+      }
+      const myStatus = outlets.map((o) => statusOf.get(o.item.id)).find((st) => st !== undefined) ?? null;
+      folded.push({ ...m, outlets, myStatus });
+    }
+    const kept = status === "none" ? folded.filter((m) => m.myStatus === null) : folded;
     const shown = kept.slice(0, Math.min(limit, MAX_LIMIT));
     return toolText({
-      places: shown.map((m) => this.placeView(m.item, m.facts, statusOf.get(m.item.id) ?? null)),
+      places: shown.map((m) => this.placeView(m.item, m.facts, m.myStatus, m.outlets)),
       total: kept.length,
       ...(truncated ? { incomplete: `Read only the newest ${MAX_DECRYPTS} items in one call; some matches may be missing. Narrow the search.` } : {}),
     });
@@ -419,7 +484,8 @@ class Tools {
 
   async getPlace(args: JsonObject): Promise<ToolResult> {
     const place = await this.place(argString(args, "placeId", 64, true));
-    const { items: opinions, truncated } = await this.reader.load({ types: ["status", "tag", "comment"], placeIds: [place.id] });
+    const outlets = await this.outlets(place);
+    const { items: opinions, truncated } = await this.reader.load({ types: ["status", "tag", "comment"], placeIds: outlets.map((o) => o.item.id) });
     const tagIds = [...new Set(opinions.flatMap((o) => (o.type === "tag" ? [readTagId(o.payload) ?? ""] : [])))].filter(Boolean);
     const authors = [...new Set(opinions.map((o) => o.authorId))];
     const [tags, people, claudeDevices] = await Promise.all([
@@ -438,6 +504,8 @@ class Tools {
         viaClaude: claudeDevices.has(o.deviceId),
         boards: [...new Set(o.boardIds.map((b) => this.boardName(b)))],
         updatedAt: new Date(o.updatedAt).toISOString(),
+        // On a chain, which outlet it was written on.
+        ...(outlets.length > 1 && o.placeId ? { outletId: o.placeId } : {}),
       };
       if (o.type === "status") {
         const status = readStatus(o.payload);
@@ -455,7 +523,7 @@ class Tools {
     const { lat, lng } = place.facts.location;
     return toolText({
       place: {
-        ...this.placeView(place, place.facts, myStatus?.status ?? null),
+        ...this.placeView(place, place.facts, myStatus?.status ?? null, outlets),
         sourceLinks: place.facts.sourceLinks,
         googleMapsUrl: `https://www.google.com/maps/search/?api=1&query=${lat},${lng}`,
       },
@@ -513,16 +581,18 @@ class Tools {
   async setStatus(args: JsonObject): Promise<ToolResult> {
     const place = await this.place(argString(args, "placeId", 64, true));
     const status = argStatus(args);
-    const mine = await this.myItems("status", place.id);
+    const outletIds = (await this.outlets(place)).map((o) => o.item.id);
+    const mine = await this.myItems("status", outletIds);
     const latest = mine[0];
     // A status Claude cannot read (on a group board only), or one also on a group, would be
     // left behind or dropped from the group: leave those to the app.
-    if ((await this.hiddenStatuses(place.id, mine)) || (latest && (await boardsOutOfReach(this.db, this.session, latest.id)) > 0)) {
+    if ((await this.hiddenStatuses(outletIds, mine)) || (latest && (await boardsOutOfReach(this.db, this.session, latest.id)) > 0)) {
       throw new ToolError("The owner's status on this place is shared with a group, which Claude cannot write to. Change it in the app.");
     }
-    const boards = this.boardIds(args, latest?.boardIds);
+    const boards = this.opinionBoards(place, args, latest?.boardIds);
     await writeItems(this.db, this.session, [
-      { type: "status", placeId: place.id, payload: { status }, boardIds: boards, ...(latest ? { id: latest.id, createdAt: latest.createdAt } : {}) },
+      // A chain has one status per person, kept on the outlet it was first set on.
+      { type: "status", placeId: latest?.placeId ?? place.id, payload: { status }, boardIds: boards, ...(latest ? { id: latest.id, createdAt: latest.createdAt } : {}) },
     ]);
     // A sync race can leave two; keep one.
     await removeItems(this.db, this.session, mine.slice(1).map((s) => s.id));
@@ -531,8 +601,9 @@ class Tools {
 
   async addTag(args: JsonObject): Promise<ToolResult> {
     const place = await this.place(argString(args, "placeId", 64, true));
-    await this.requireStatus(place.id);
-    const boards = this.boardIds(args);
+    const outletIds = (await this.outlets(place)).map((o) => o.item.id);
+    await this.requireStatus(outletIds);
+    const boards = this.opinionBoards(place, args);
     const tagIdArg = argString(args, "tagId", 64);
     const newTag = args.newTag;
     if ((tagIdArg === undefined) === (newTag === undefined)) throw new ToolError("Give either tagId or newTag.");
@@ -566,8 +637,22 @@ class Tools {
       }
       tagId = defItem.id;
       label = `${def.emoji} ${def.name}`.trim();
-      const already = (await this.myItems("tag", place.id)).some((t) => readTagId(t.payload) === tagId);
-      if (already) return toolText({ placeId: place.id, tagId, tag: label, note: "Already tagged." });
+      // Tags count for the whole chain, so one on any outlet counts.
+      const already = (await this.myItems("tag", outletIds)).find((t) => readTagId(t.payload) === tagId);
+      if (already) {
+        // Asked for boards the tag is not on yet: widen the owner's tag opinion to them.
+        const wider = args.boards === undefined ? [] : boards.filter((b) => !already.boardIds.includes(b));
+        if (wider.length > 0) {
+          if ((await boardsOutOfReach(this.db, this.session, already.id)) > 0) {
+            throw new ToolError("The owner's tag on this place is also shared with a group, so Claude cannot change it. Change it in the app.");
+          }
+          await writeItems(this.db, this.session, [
+            { type: "tag", placeId: already.placeId, payload: { tagId }, boardIds: [...already.boardIds, ...wider], id: already.id, createdAt: already.createdAt },
+          ]);
+        }
+        const on = [...new Set([...already.boardIds, ...wider])].map((b) => this.boardName(b));
+        return toolText({ placeId: place.id, tagId, tag: label, boards: on, note: wider.length > 0 ? "Already tagged; now also shown on the boards asked for." : "Already tagged." });
+      }
     }
     await writeItems(this.db, this.session, [{ type: "tag", placeId: place.id, payload: { tagId }, boardIds: boards }]);
     return toolText({ placeId: place.id, tagId, tag: label, boards: boards.map((b) => this.boardName(b)) });
@@ -576,17 +661,19 @@ class Tools {
   async addComment(args: JsonObject): Promise<ToolResult> {
     const place = await this.place(argString(args, "placeId", 64, true));
     const text = argString(args, "text", COMMENT_MAX, true);
-    await this.requireStatus(place.id);
-    const boards = this.boardIds(args);
+    await this.requireStatus((await this.outlets(place)).map((o) => o.item.id));
+    const boards = this.opinionBoards(place, args);
     const [id] = await writeItems(this.db, this.session, [{ type: "comment", placeId: place.id, payload: { text }, boardIds: boards }]);
     return toolText({ placeId: place.id, commentId: id, boards: boards.map((b) => this.boardName(b)) });
   }
 
   /** Whether the owner has a status on the place that Claude cannot read. Uses metadata only. */
-  private async hiddenStatuses(placeId: string, visible: readonly Item[]): Promise<boolean> {
+  private async hiddenStatuses(placeIds: readonly string[], visible: readonly Item[]): Promise<boolean> {
     const { results } = await this.db
-      .prepare("SELECT id FROM envelopes WHERE type = 'status' AND author_id = ? AND place_id = ? AND deleted_at IS NULL")
-      .bind(this.session.accountId, placeId)
+      .prepare(
+        "SELECT id FROM envelopes WHERE type = 'status' AND author_id = ? AND place_id IN (SELECT value FROM json_each(?)) AND deleted_at IS NULL",
+      )
+      .bind(this.session.accountId, JSON.stringify(placeIds))
       .all<{ id: string }>();
     return results.some((r) => !visible.some((v) => v.id === r.id));
   }
