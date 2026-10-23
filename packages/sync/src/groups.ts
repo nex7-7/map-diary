@@ -30,6 +30,8 @@ export type GroupErrorCode =
   | "invite_not_found"
   | "already_member"
   | "group_full"
+  | "empty_name"
+  | "too_many_groups"
   | "stale"
   | "offline"
   | "server";
@@ -51,7 +53,9 @@ function asGroupError(err: unknown): GroupError {
   if (err instanceof CryptoError) return new GroupError("invalid_link");
   if (err instanceof ApiError) {
     if (err.status === 404) return new GroupError("invite_not_found");
-    if (err.code === "already_member" || err.code === "group_full" || err.code === "stale") return new GroupError(err.code);
+    if (err.code === "already_member" || err.code === "group_full" || err.code === "stale" || err.code === "too_many_groups") {
+      return new GroupError(err.code);
+    }
   }
   return new GroupError("server");
 }
@@ -62,7 +66,7 @@ function signerOf(device: DeviceState): Signer {
 
 function cleanName(name: string): string {
   const trimmed = name.trim().replace(/\s+/g, " ");
-  if (trimmed.length === 0) throw new Error("A group needs a name");
+  if (trimmed.length === 0) throw new GroupError("empty_name");
   return [...trimmed].slice(0, GROUP_NAME_MAX).join("");
 }
 
@@ -121,7 +125,7 @@ export async function createGroupInvite(
 ): Promise<{ secret: string; expiresAt: number }> {
   await ready();
   const keys = device.boardKeys.filter((k) => k.boardId === groupId).sort((a, b) => a.version - b.version);
-  if (keys.length === 0) throw new Error("This device has no key for the group");
+  if (keys.length === 0) throw new GroupError("stale");
   const secret = generateGroupInviteSecret();
   const sealed = sealGroupInvite(secret, {
     boardId: groupId,

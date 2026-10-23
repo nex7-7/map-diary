@@ -1,6 +1,7 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 @import "./ink.css";
+@import "./toast.css";
 
 /*
  * Ink & Paper. Every colour, font and shadow in the app comes from here.

@@ -15,7 +15,7 @@ import {
   type Group,
 } from "@/lib/groups";
 import { Button, buttonClass, CloseButton, CopyCode, Icon, Sheet } from "@/lib/ui";
-import { groupErrorMessage } from "./messages";
+import { userMessage } from "@/lib/errors";
 
 /** `/groups`: the groups this account is in, their members, invites, and leaving. */
 export function GroupsPage() {
@@ -103,7 +103,7 @@ function GroupCard({
       onChange();
       return true;
     } catch (err) {
-      setError(groupErrorMessage(err));
+      setError(userMessage(err));
       return false;
     } finally {
       setBusy(false);
@@ -217,7 +217,7 @@ function ConfirmSheet({ diary, confirm, onCancel, onDone }: { diary: Diary; conf
       await leave(diary, confirm.group.id);
       onDone();
     } catch (err) {
-      setError(groupErrorMessage(err));
+      setError(userMessage(err));
       setBusy(false);
     }
   }
@@ -279,7 +279,7 @@ function CreateGroup({ diary, onDone }: { diary: Diary; onDone: () => void }) {
       setName("");
       onDone();
     } catch (err) {
-      setError(groupErrorMessage(err));
+      setError(userMessage(err));
     } finally {
       setBusy(false);
     }

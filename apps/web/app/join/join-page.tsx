@@ -3,7 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { AccountPage, IconTile, accountStyles as s } from "@/app/_account/parts";
-import { groupErrorMessage } from "@/app/groups/messages";
+import { userMessage } from "@/lib/errors";
 import { useSession, type Diary } from "@/lib/device";
 import { joinGroup, previewInvite, readInviteSecret, type OpenedInvite } from "@/lib/groups";
 import { Button, ButtonLink, CopyCode } from "@/lib/ui";
@@ -43,7 +43,7 @@ function Join({ diary }: { diary: Diary }) {
       if (!secretRead) return;
       previewInvite(diary, secretRead).then(
         (opened) => live && setInvite(opened),
-        (err: unknown) => live && setError(groupErrorMessage(err)),
+        (err: unknown) => live && setError(userMessage(err)),
       );
     });
     return () => {
@@ -59,7 +59,7 @@ function Join({ diary }: { diary: Diary }) {
       await joinGroup(diary, secret);
       router.push("/groups");
     } catch (err) {
-      setError(groupErrorMessage(err));
+      setError(userMessage(err));
       setBusy(false);
     }
   }

@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { IconTile, accountStyles as s, day, seen } from "@/app/_account/parts";
-import { inviteErrorMessage } from "@/app/(device)/messages";
+import { userMessage } from "@/lib/errors";
 import { allDevices, members as listMembers, signOut, type AdminDeviceView, type Diary, type MemberView } from "@/lib/device";
 import { deviceNames } from "@/lib/device/names";
 import { Badge, Button, FilterChip, type IconName, useConfirm } from "@/lib/ui";
@@ -36,7 +36,7 @@ export function AdminDevices({ diary }: { diary: Diary }) {
         setOwnNames(names);
         setError(null);
       },
-      (err: unknown) => setError(inviteErrorMessage(err)),
+      (err: unknown) => setError(userMessage(err)),
     );
   }, [diary]);
   useEffect(load, [load]);
@@ -65,7 +65,7 @@ export function AdminDevices({ diary }: { diary: Diary }) {
       setNotice(`Signed out. ${who} will be asked to finish on their Devices screen.`);
       load();
     } catch (err) {
-      setError(inviteErrorMessage(err));
+      setError(userMessage(err));
     }
   };
 

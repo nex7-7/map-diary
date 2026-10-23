@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { accountStyles as s, day } from "@/app/_account/parts";
-import { inviteErrorMessage } from "@/app/(device)/messages";
+import { userMessage } from "@/lib/errors";
 import { resolver, retryAllFailed, retryJob, type AdminResolverView, type Diary } from "@/lib/device";
 import { Button } from "@/lib/ui";
 
@@ -22,7 +22,7 @@ export function AdminResolver({ diary }: { diary: Diary }) {
         setView(v);
         setError(null);
       },
-      (err: unknown) => setError(inviteErrorMessage(err)),
+      (err: unknown) => setError(userMessage(err)),
     );
   }, [diary]);
   useEffect(load, [load]);
@@ -35,7 +35,7 @@ export function AdminResolver({ diary }: { diary: Diary }) {
       setNotice(await action());
       load();
     } catch (err) {
-      setError(inviteErrorMessage(err));
+      setError(userMessage(err));
     } finally {
       setBusy(false);
     }

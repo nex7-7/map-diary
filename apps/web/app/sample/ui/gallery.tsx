@@ -1,6 +1,9 @@
 "use client";
 
 import { useState, type ReactNode } from "react";
+import { toast } from "sonner";
+import { NetworkError } from "@map-diary/sync";
+import { toastError } from "@/lib/errors";
 import type { Status } from "@/lib/places/types";
 import {
   AppShell,
@@ -145,6 +148,20 @@ export function ComponentGallery() {
               action={<MarkVisited placeName="Bademiya" onClick={() => {}} />}
             />
             <PlaceRow category="cafe-bar" name="Kala Ghoda Café" meta="Aarav wants to go · Café/Bar" onOpen={() => {}} />
+          </div>
+        </Section>
+
+        <Section title="Toasts">
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
+            <Button size="m" variant="secondary" onClick={() => toastError(new NetworkError())}>
+              Error
+            </Button>
+            <Button size="m" variant="secondary" onClick={() => toast.info("You're offline. Changes are kept on this device and sync when you're back.")}>
+              Offline
+            </Button>
+            <Button size="m" variant="secondary" onClick={() => toast.success("Back online. Everything's synced.")}>
+              Back online
+            </Button>
           </div>
         </Section>
       </div>

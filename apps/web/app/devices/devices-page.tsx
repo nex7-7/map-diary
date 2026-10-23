@@ -4,7 +4,7 @@ import QRCode from "qrcode";
 import { useCallback, useEffect, useState, type FormEvent, type ReactNode } from "react";
 import { PASSPHRASE_MIN_LENGTH, PairingError, type OpenPairing, type PairingCheck } from "@map-diary/sync";
 import { AccountPage, IconTile, accountStyles as s, day, seen } from "@/app/_account/parts";
-import { claudeErrorMessage, errorMessage, pairingErrorMessage, revokeErrorMessage } from "@/app/(device)/messages";
+import { userMessage } from "@/lib/errors";
 import {
   addDevice,
   choosePassphrase,
@@ -302,7 +302,7 @@ function RenameForm({ diary, device, onDone }: { diary: Diary; device: ListedDev
       await renameDevice(diary, device.id, name);
       onDone();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Couldn't save the name.");
+      setError(userMessage(err));
       setBusy(false);
     }
   }
@@ -348,7 +348,7 @@ function ConnectClaude({ diary, onClose, onConnected }: { diary: Diary; onClose:
       setSecret((await connectClaudeDevice(diary)).connectorSecret);
       onConnected();
     } catch (err) {
-      setError(claudeErrorMessage(err));
+      setError(userMessage(err));
     } finally {
       setBusy(false);
     }
@@ -468,7 +468,7 @@ function Passphrase({ diary, hasPassphrase, onCancel, onDone }: { diary: Diary; 
       await choosePassphrase(diary, phrase, passphrase);
       onDone();
     } catch (err) {
-      setError(errorMessage(err));
+      setError(userMessage(err));
       setBusy(false);
     }
   }
@@ -542,7 +542,7 @@ function AddDevice({ diary, onDone }: { diary: Diary; onDone: (added: boolean) =
         setPairing(p);
         setQr(await QRCode.toDataURL(p.link, { margin: 1, width: 240 }));
       },
-      (err: unknown) => live && setError(pairingErrorMessage(err)),
+      (err: unknown) => live && setError(userMessage(err)),
     );
     return () => {
       live = false;
@@ -556,12 +556,12 @@ function AddDevice({ diary, onDone }: { diary: Diary; onDone: (added: boolean) =
     const timer = setInterval(() => {
       if (Date.now() > pairing.expiresAt) {
         clearInterval(timer);
-        setError(pairingErrorMessage(new PairingError("expired")));
+        setError(userMessage(new PairingError("expired")));
         return;
       }
       pairing.check().then(setSeen, (err: unknown) => {
         clearInterval(timer);
-        setError(pairingErrorMessage(err));
+        setError(userMessage(err));
       });
     }, POLL_MS);
     return () => clearInterval(timer);
@@ -574,7 +574,7 @@ function AddDevice({ diary, onDone }: { diary: Diary; onDone: (added: boolean) =
       await pairing.approve();
       onDone(true);
     } catch (err) {
-      setError(pairingErrorMessage(err));
+      setError(userMessage(err));
       setBusy(false);
     }
   }
@@ -657,7 +657,7 @@ function RemoveDevice({ diary, device, onCancel, onDone }: { diary: Diary; devic
       setValue("");
       onDone();
     } catch (err) {
-      setError(revokeErrorMessage(err));
+      setError(userMessage(err));
       setBusy(false);
     }
   }

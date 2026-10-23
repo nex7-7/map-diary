@@ -9,6 +9,7 @@ import { registerProtocol } from "@/lib/map/protocol";
 import { basemapStyle, drawMapImage, MUMBAI_CENTER } from "@/lib/map/style";
 import type { LngLat } from "@/lib/places/types";
 import styles from "./entries.module.css";
+import { mapLoadMessage } from "@/lib/errors";
 
 type LoadState = { kind: "loading"; loaded: number; total: number | undefined } | { kind: "ready" } | { kind: "failed"; message: string };
 
@@ -64,7 +65,7 @@ export function PinPicker({ value, onChange }: Props) {
         setState({ kind: "ready" });
       })
       .catch((err: unknown) => {
-        if (!abort.signal.aborted) setState({ kind: "failed", message: err instanceof Error ? err.message : "The map could not load" });
+        if (!abort.signal.aborted) setState({ kind: "failed", message: mapLoadMessage(err) });
       });
 
     return () => {
