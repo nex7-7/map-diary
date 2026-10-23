@@ -260,3 +260,15 @@ export function openResolverResult(sealed: Uint8Array, keys: ReplyKeys): Resolve
   if (!parsed.ok) throw new CryptoError("bad_payload", "Resolver result failed its checks");
   return parsed.result;
 }
+
+/** "The Bombay Cartel" and "bombay cartel" are the same chain. */
+export function normaliseChainName(name: string): string {
+  return name
+    .toLowerCase()
+    .normalize("NFKD")
+    .replace(/[̀-ͯ]/g, "")
+    .replace(/&/g, " and ")
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim()
+    .replace(/^the /, "");
+}

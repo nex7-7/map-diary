@@ -66,6 +66,7 @@ describe("the Claude assistant's MCP tools", () => {
       "get_place",
       "list_tags",
       "add_place",
+      "set_chain",
       "set_status",
       "add_tag",
       "add_comment",
@@ -253,6 +254,96 @@ describe("the Claude assistant's MCP tools", () => {
     const statuses = (await ownerDiary.listItems()).filter((i) => i.type === "status" && (i.placeId === parel.id || i.placeId === bandra.id));
     expect(statuses).toHaveLength(1);
     expect(statuses[0]).toMatchObject({ placeId: parel.id, payload: { status: "visited" } });
+  });
+
+  it("adds a chain's outlets as one place, joining the chain by name", async () => {
+    const outlet = (area: string, lat: number, extra: Record<string, unknown> = {}) => ({
+      name: "Burma Burma",
+      category: "restaurant",
+      address: `${area}, Mumbai`,
+      location: { lat, lng: 72.83 },
+      sourceLinks: [`https://maps.app.goo.gl/burma-${area.toLowerCase().replace(/\W+/g, "-")}`],
+      chain: "Burma Burma",
+      ...extra,
+    });
+    const fort = await call("add_place", outlet("Fort", 18.93));
+    expect(fort.value).toMatchObject({ chain: "Burma Burma", status: "want" });
+    const bandra = await call("add_place", outlet("Bandra West", 19.06, { chain: "burma  burma", status: "visited", boards: ["public"] }));
+    expect(bandra.value).toMatchObject({ chain: "Burma Burma", status: "visited", boards: ["personal", "public"] });
+
+    await ownerDiary.sync();
+    expect(ownerDiary.skipped).toEqual([]);
+    const items = await ownerDiary.listItems();
+    const chains = [fort, bandra].map((r) => (items.find((i) => i.id === r.value.placeId)!.payload as { chain?: { id: string; name: string } }).chain);
+    expect(chains[0]).toEqual(chains[1]);
+    expect(chains[0]?.name).toBe("Burma Burma");
+    // One status for the chain: Visited, on both boards.
+    const ids = [fort.value.placeId, bandra.value.placeId];
+    const statuses = items.filter((i) => i.type === "status" && ids.includes(i.placeId));
+    expect(statuses).toHaveLength(1);
+    expect(statuses[0]!.payload).toEqual({ status: "visited" });
+    expect(new Set(statuses[0]!.boardIds)).toEqual(new Set([owner.personalBoardId, masterBoardOf(owner)!.id]));
+
+    const found = await call("search_places", { query: "burma" });
+    expect(found.value.places).toMatchObject([{ chain: "Burma Burma", myStatus: "visited" }]);
+    expect((found.value.places as { outlets: unknown[] }[])[0]!.outlets).toHaveLength(2);
+  });
+
+  it("puts places Claude added into a chain, and takes them out", async () => {
+    const add = (area: string, lat: number, status: string, boards: string[]) =>
+      call("add_place", {
+        name: `Pa Pa Ya ${area}`,
+        category: "restaurant",
+        location: { lat, lng: 72.84 },
+        sourceLinks: [`https://maps.app.goo.gl/papaya-${area.toLowerCase()}`],
+        status,
+        boards,
+      });
+    const bkc = await add("BKC", 19.06, "want", ["public"]);
+    const powai = await add("Powai", 19.12, "visited", ["personal"]);
+    const ids = [bkc.value.placeId as string, powai.value.placeId as string];
+
+    const first = await call("set_chain", { placeId: ids[0], chain: "Pa Pa Ya" });
+    expect(first.value).toMatchObject({ chain: "Pa Pa Ya", myStatus: "want" });
+    const second = await call("set_chain", { placeId: ids[1], chain: "pa pa ya" });
+    expect(second.value).toMatchObject({ chain: "Pa Pa Ya", myStatus: "visited" });
+    expect((second.value.outlets as { id: string }[]).map((o) => o.id).sort()).toEqual([...ids].sort());
+
+    await ownerDiary.sync();
+    expect(ownerDiary.skipped).toEqual([]);
+    let items = await ownerDiary.listItems();
+    const facts = ids.map((id) => items.find((i) => i.id === id)!.payload as { chain?: { id: string }; sourceLinks: string[] });
+    expect(facts[0]!.chain?.id).toBeDefined();
+    expect(facts[0]!.chain?.id).toBe(facts[1]!.chain?.id);
+    expect(facts[1]!.sourceLinks).toEqual(["https://maps.app.goo.gl/papaya-powai"]);
+    const statuses = items.filter((i) => i.type === "status" && ids.includes(i.placeId!));
+    expect(statuses).toHaveLength(1);
+    expect(statuses[0]).toMatchObject({ placeId: ids[1], payload: { status: "visited" } });
+    expect(new Set(statuses[0]!.boardIds)).toEqual(new Set([owner.personalBoardId, masterBoardOf(owner)!.id]));
+    expect((await call("search_places", { query: "pa pa ya" })).value.total).toBe(1);
+
+    // The duplicate check still holds per outlet.
+    const dup = await call("add_place", { name: "Pa Pa Ya", category: "restaurant", location: { lat: 19.06, lng: 72.84 }, sourceLinks: ["https://maps.app.goo.gl/papaya-bkc"], chain: "Pa Pa Ya" });
+    expect(dup.isError).toBe(true);
+
+    // An empty chain takes the place out again.
+    expect((await call("set_chain", { placeId: ids[0], chain: "" })).value).toMatchObject({ chain: null });
+    await ownerDiary.sync();
+    items = await ownerDiary.listItems();
+    expect((items.find((i) => i.id === ids[0])!.payload as { chain?: unknown }).chain).toBeUndefined();
+    expect((await call("search_places", { query: "pa pa ya" })).value.total).toBe(2);
+  });
+
+  it("will not put a place someone else's device added into a chain", async () => {
+    const theirs = await ownerDiary.write({
+      type: "place",
+      placeId: null,
+      payload: { name: "Foo Lower Parel", category: "restaurant", location: { lat: 19.0, lng: 72.83 }, sourceLinks: [] },
+    });
+    await ownerDiary.sync();
+    const refused = await call("set_chain", { placeId: theirs.id, chain: "Foo" });
+    expect(refused.isError).toBe(true);
+    expect(refused.text).toMatch(/Part of a chain/);
   });
 
   it("never reads a group board, and will not rewrite an item that is also on one", async () => {

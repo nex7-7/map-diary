@@ -1,3 +1,4 @@
+import { normaliseChainName } from "@map-diary/crypto";
 import type { StoredItem } from "./items-source";
 import { mergeTargets, resolvePlace, withMerged } from "./merges";
 import { readPayload } from "./payloads";
@@ -10,17 +11,7 @@ import type { Opinion, Outlet, PlaceChain, PlaceView } from "./types";
  * comments are about one outlet or, flagged `allOutlets`, all of them.
  */
 
-/** "The Bombay Cartel" and "bombay cartel" are the same chain. */
-export function normaliseChainName(name: string): string {
-  return name
-    .toLowerCase()
-    .normalize("NFKD")
-    .replace(/[̀-ͯ]/g, "")
-    .replace(/&/g, " and ")
-    .replace(/[^a-z0-9]+/g, " ")
-    .trim()
-    .replace(/^the /, "");
-}
+export { normaliseChainName };
 
 /** The chain each catalogue place on this device belongs to, by place id. */
 export function chainsOf(items: readonly StoredItem[]): Map<string, PlaceChain> {
