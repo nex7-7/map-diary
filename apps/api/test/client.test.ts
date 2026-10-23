@@ -79,6 +79,7 @@ describe("device setup, sign-in and sync", () => {
   let master: BoardInfo;
 
   it("sets up the account on the first device", async () => {
+    await expect(api.setupStatus()).resolves.toEqual({ open: true });
     const setup = await prepareSetup({ passphrase: PASSPHRASE, kdf: FAST_KDF });
     phrase = setup.recoveryPhrase;
     expect(phrase).toMatch(/^(\w{4}-){6}\w{4}$/);
@@ -91,6 +92,14 @@ describe("device setup, sign-in and sync", () => {
 
     const again = await prepareSetup({ passphrase: "another long phrase", kdf: FAST_KDF });
     await expectSetupError(again.complete(api), "registration_closed");
+    await expect(api.setupStatus()).resolves.toEqual({ open: false });
+  });
+
+  it("tells a device the server no longer knows, so it can clear its copy", async () => {
+    // As after a database reset: the browser still holds keys for a device id nobody knows.
+    const d = diaryOf({ ...phone, deviceId: crypto.randomUUID() });
+    await d.sync();
+    expect(d.getStatus().error).toBe("device_unknown");
   });
 
   it("refuses a wrong passphrase and a short one", async () => {
