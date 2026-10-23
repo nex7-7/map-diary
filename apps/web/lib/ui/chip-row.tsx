@@ -1,13 +1,16 @@
 "use client";
 
 import { useEffect, useRef, type ReactNode } from "react";
+import { useScrollHint } from "./scroll-hint";
 
 /**
  * A horizontally scrolling row of chips. A mouse wheel scrolls it sideways too, since a
  * desktop mouse has no sideways scroll; at either end the wheel scrolls the page as usual.
+ * An edge with more chips past it fades out.
  */
 export function ChipRow({ label, children }: { label: string; children: ReactNode }) {
   const row = useRef<HTMLDivElement>(null);
+  useScrollHint(row);
   useEffect(() => {
     const el = row.current;
     if (!el) return;
@@ -24,7 +27,7 @@ export function ChipRow({ label, children }: { label: string; children: ReactNod
     return () => el.removeEventListener("wheel", wheel);
   }, []);
   return (
-    <div ref={row} className="flex gap-2 overflow-x-auto pt-1 pb-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden" role="group" aria-label={label}>
+    <div ref={row} className="scroll-hint flex gap-2 overflow-x-auto pt-1 pb-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden" role="group" aria-label={label}>
       {children}
     </div>
   );

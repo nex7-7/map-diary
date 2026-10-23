@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useEffect, useState, type CSSProperties, type ReactNode } from "react";
+import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { AddForm, type AddInitial } from "@/app/_entries/add-form";
 import { DiaryShell } from "@/app/_shell/diary-shell";
 import { sealDate } from "@/app/diary/places-list";
@@ -75,6 +75,7 @@ export function AddPage() {
                           <Icon name="x" size="m" />
                         </button>
                       </div>
+                      <EscapeCloses onClose={() => close(pending !== null)} />
                       <AddForm
                         diary={diary}
                         initial={{ ...initial, ...(pending ? { pending } : {}) }}
@@ -92,6 +93,25 @@ export function AddPage() {
       )}
     </DeviceGate>
   ) : null;
+}
+
+/**
+ * Escape closes the Add sheet, as it would a dialog, unless a menu or sheet is open on top of
+ * it (that one closes first) or the key ends typing in an input method.
+ */
+function EscapeCloses({ onClose }: { onClose: () => void }) {
+  const latest = useRef(onClose);
+  latest.current = onClose;
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape" || e.defaultPrevented || e.isComposing) return;
+      if (document.querySelector('[role="dialog"], [role="menu"], [role="listbox"]')) return;
+      latest.current();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+  return null;
 }
 
 /** Drops of ink thrown out when the seal lands. */

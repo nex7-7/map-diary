@@ -48,7 +48,9 @@ function Inbox({ diary }: { diary: Diary }) {
   const failed = group(["failed"]);
   const waiting = group(["unsent", "waiting"]);
   const added = group(["added"]);
-  const left = choose.length + failed.length + friends.news.length;
+  // The same count as the Inbox badge: only what needs the person. Friends' news is counted apart.
+  const left = choose.length + failed.length;
+  const news = friends.news.length;
   let n = 0;
   const delay = () => ({ animationDelay: `${0.15 + n++ * 0.1}s` });
 
@@ -63,11 +65,15 @@ function Inbox({ diary }: { diary: Diary }) {
           <h1 className="display flip-wrap text-[46px]">
             <span className="flip">Inbox</span>
           </h1>
-          {left > 0 && (
+          {left > 0 ? (
             <span className="hand pop text-[17px] text-seal [--r:-3deg]" style={{ animationDelay: "0.5s" }}>
-              {left} {left === 1 ? "thing" : "things"} for you
+              {left} to check
             </span>
-          )}
+          ) : news > 0 ? (
+            <span className="hand pop text-[17px] text-ink-2 [--r:-3deg]" style={{ animationDelay: "0.5s" }}>
+              {news} new from friends
+            </span>
+          ) : null}
         </div>
       </header>
 

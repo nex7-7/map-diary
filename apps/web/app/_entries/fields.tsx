@@ -135,9 +135,9 @@ export function TagPicker({ tags, selected, onToggle, onCreate, disabled }: TagP
         <div className={styles.newtag}>
           <input
             className={styles.input}
-            aria-label="Emoji"
+            aria-label="Emoji (optional)"
             style={{ textAlign: "center" }}
-            placeholder="🌶️"
+            placeholder="Emoji"
             value={def.emoji}
             onChange={(e) => setDef({ ...def, emoji: oneEmoji(e.target.value) })}
           />

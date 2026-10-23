@@ -16,8 +16,41 @@ import { Icon } from "./icon";
 import type { IconName } from "./icon-paths";
 
 /**
+ * The last few elements focused outside a sheet, newest last. A sheet is often opened from a
+ * menu item that is gone by the time it closes, so closing hands focus back to the newest one
+ * still on the page (usually the menu's button) rather than letting it fall to the page top.
+ */
+const focusTrail: HTMLElement[] = [];
+if (typeof document !== "undefined") {
+  document.addEventListener(
+    "focusin",
+    (e) => {
+      const el = e.target;
+      if (!(el instanceof HTMLElement) || el.closest('[role="dialog"]')) return;
+      const i = focusTrail.indexOf(el);
+      if (i >= 0) focusTrail.splice(i, 1);
+      focusTrail.push(el);
+      if (focusTrail.length > 12) focusTrail.shift();
+    },
+    true,
+  );
+}
+
+function returnFocus(e: Event) {
+  for (let i = focusTrail.length - 1; i >= 0; i--) {
+    const el = focusTrail[i];
+    if (el?.isConnected && el.getClientRects().length > 0) {
+      e.preventDefault();
+      el.focus({ preventScroll: true });
+      return;
+    }
+  }
+}
+
+/**
  * A modal sheet of paper: it slides up from the bottom on phones with a scalloped top edge,
- * and is a centred card on desktop. Focus stays inside; Escape or the backdrop closes it.
+ * and is a centred card on desktop. Focus stays inside; Escape or the backdrop closes it, and
+ * focus goes back to what opened it.
  */
 export function Sheet({ open, onClose, label, children }: { open: boolean; onClose: () => void; label: string; children: ReactNode }) {
   return (
@@ -26,6 +59,7 @@ export function Sheet({ open, onClose, label, children }: { open: boolean; onClo
         <DialogPrimitive.Overlay className="fixed inset-0 z-50 bg-ink/40 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:animate-in data-[state=open]:fade-in-0" />
         <DialogPrimitive.Content
           aria-describedby={undefined}
+          onCloseAutoFocus={returnFocus}
           className={cn(
             "lift fixed inset-x-0 bottom-0 z-50 max-h-[92dvh] outline-none",
             "data-[state=open]:animate-[sheetUp_0.55s_var(--ease-page)_both] data-[state=closed]:animate-out data-[state=closed]:slide-out-to-bottom",
