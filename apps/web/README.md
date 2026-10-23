@@ -2,9 +2,13 @@
 
 Next.js app, client-rendered: decryption and everything the map shows happen in the browser.
 
+## Build and hosting
+
+`pnpm build` makes a static export in `out/`: one HTML file per page, no server code. `scripts/finish-export.mjs` then writes `out/_headers` (the CSP and security headers from `security-headers.mjs`, which `next dev` also sends) and removes `out/dev`. `wrangler deploy` uploads `out/` as a Worker with static assets only, so page requests never run Worker code or count against its CPU limit. Pages take their parameters from the query string (`/place?id=…`), since a static export has no dynamic routes.
+
 ## Map and list
 
-- `/` shows the map and list over this device's decrypted items (`createItemsSource` in `lib/places/items-source.ts`) once it is signed in. `/sample` shows the same views over sample data (`lib/places/fixtures.ts`).
+- `/` shows the map and list over this device's decrypted items (`createItemsSource` in `lib/places/items-source.ts`) once it is signed in. `/sample` shows the same views over sample data (`lib/places/fixtures.ts`); it and `/sample/ui` are `page.dev.tsx` files, so they exist only under `next dev`.
 - Filtering, sorting and distance live in `lib/places/filter.ts` (tested in `test/places.test.ts`). Near me asks for the position only on tap and keeps it in memory; it is never sent anywhere.
 - The Mumbai map file is downloaded whole, once, into Cache Storage (`lib/map/map-file.ts`), and MapLibre reads tiles from that local copy, so the server never learns which area is on screen.
 

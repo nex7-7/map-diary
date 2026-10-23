@@ -199,7 +199,10 @@ function lastSlug(path: string): string | undefined {
   return parts.at(-1);
 }
 
-/** "britannia-co-fort" → "Britannia Co Fort": a starting point the person can edit. */
+/**
+ * "britannia-co-fort" → "Britannia & Co Fort": a starting point the person can edit, until the
+ * resolver fills in the real name. Slugs drop "&", so a "co" after a name gets it back.
+ */
 function nameFromSlug(slug: string | undefined): string | undefined {
   if (!slug) return undefined;
   const words = decodePlus(slug)
@@ -207,7 +210,7 @@ function nameFromSlug(slug: string | undefined): string | undefined {
     .split(/[-_]+/)
     .filter((w) => w && !/^[0-9a-f]{6,}$/i.test(w));
   if (words.length === 0) return undefined;
-  return words.map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(" ");
+  return words.map((w, i) => (i > 0 && /^co$/i.test(w) ? "& Co" : w.charAt(0).toUpperCase() + w.slice(1))).join(" ");
 }
 
 function cleanName(s: string): string {

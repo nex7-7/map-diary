@@ -26,7 +26,7 @@ import {
   updateFacts,
 } from "@/lib/entries/actions";
 import { boardName, opinionBoards, tagFit } from "@/lib/places/boards";
-import { chainFor, outletLabel, outletOf, viewOf } from "@/lib/places/chains";
+import { addressArea, chainFor, outletLabel, outletOf, viewOf } from "@/lib/places/chains";
 import { categoryStyle } from "@/lib/places/categories";
 import { readPayload } from "@/lib/places/payloads";
 import type { CommentOpinion, DiarySnapshot, Opinion, Outlet, PlaceView as Place, Status, StatusOpinion, TagOpinion } from "@/lib/places/types";
@@ -193,7 +193,7 @@ export function PlaceView({ diary, placeId }: { diary: Diary; placeId: string })
             Places
           </Link>
           <header key={myStatus ?? "none"} className={p.head}>
-            <p className="kicker rise">{[style.label, place.cuisine, outlets ? undefined : area(place.address)].filter(Boolean).join(" · ")}</p>
+            <p className="kicker rise">{[style.label, place.cuisine, outlets ? undefined : addressArea(place.address)].filter(Boolean).join(" · ")}</p>
             <h1 className="display flip-wrap text-[42px] leading-[0.98]">
               <span className="flip" style={{ animationDelay: "0.05s" }}>
                 {place.name}
@@ -411,11 +411,6 @@ export function PlaceView({ diary, placeId }: { diary: Diary; placeId: string })
 
 /** Tags go on by hand, so each sticker sits at its own angle. */
 const TILTS = ["-3deg", "2.5deg", "-1.5deg", "3deg", "-2deg"];
-
-/** The last part of an address, usually the neighbourhood. */
-function area(address: string | undefined): string | undefined {
-  return address?.split(",").map((x) => x.trim()).filter(Boolean).at(-2);
-}
 
 function personName(snapshot: DiarySnapshot, me: string, o: Opinion): string {
   const name = o.authorId === me ? "You" : (snapshot.people.find((p) => p.id === o.authorId)?.name ?? "Someone");

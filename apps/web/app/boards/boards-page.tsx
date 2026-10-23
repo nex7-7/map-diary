@@ -149,11 +149,11 @@ function BoardPage({ board, snapshot, me }: { board: Board; snapshot: DiarySnaps
             : board.kind === "personal"
               ? "Only you. What you keep to yourself shows here."
               : `${members.length} ${members.length === 1 ? "member" : "members"}. Only they can read this board.`}
-          {board.kind === "group" && (
+          {board.kind !== "personal" && (
             <>
               {" "}
               <Link href="/groups" className="sketch-link font-semibold">
-                Manage
+                {board.kind === "group" ? "Manage" : "Make a group or join one"}
               </Link>
             </>
           )}

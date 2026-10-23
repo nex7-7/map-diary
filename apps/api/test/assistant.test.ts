@@ -163,6 +163,27 @@ describe("the Claude assistant's MCP tools", () => {
     expect(widened.isError).toBe(false);
     const after = await call("list_tags");
     expect((after.value.tags as { id: string; boards: string[] }[]).find((t) => t.id === breakfast.id)!.boards.sort()).toEqual(["personal", "public"]);
+    // The tag on the place moves to the board asked for too, not only its definition.
+    expect(widened.value.boards).toEqual(["personal", "public"]);
+    await ownerDiary.sync();
+    const tagged = (await ownerDiary.listItems()).filter((i) => i.type === "tag" && i.placeId === cafeId);
+    expect(tagged).toHaveLength(1);
+    expect(tagged[0]!.boardIds.sort()).toEqual([owner.personalBoardId, masterBoardOf(owner)!.id].sort());
+  });
+
+  it("keeps opinions on a dropped pin to the boards the pin is on", async () => {
+    const pin = await ownerDiary.write({
+      type: "private_place",
+      placeId: null,
+      payload: { name: "Secret vada pav", category: "restaurant", location: { lat: 19.02, lng: 72.84 }, sourceLinks: [] },
+    });
+    await ownerDiary.sync();
+    const publicStatus = await call("set_status", { placeId: pin.id, status: "want", boards: ["public"] });
+    expect(publicStatus).toMatchObject({ isError: true });
+    expect(publicStatus.text).toMatch(/dropped pin/);
+    expect((await call("set_status", { placeId: pin.id, status: "want" })).value).toMatchObject({ boards: ["personal"] });
+    expect((await call("add_comment", { placeId: pin.id, text: "Best chutney", boards: ["personal", "public"] })).isError).toBe(true);
+    expect((await call("add_comment", { placeId: pin.id, text: "Best chutney" })).isError).toBe(false);
   });
 
   it("needs a status before tagging or commenting", async () => {
@@ -175,6 +196,39 @@ describe("the Claude assistant's MCP tools", () => {
     const refused = await call("add_comment", { placeId: bare.id, text: "Irish coffee" });
     expect(refused).toMatchObject({ isError: true });
     expect(refused.text).toMatch(/set_status/);
+  });
+
+  it("treats a chain's outlets as one place, with one status", async () => {
+    const chain = { id: "chain-cartel", name: "The Bombay Cartel" };
+    const outlet = (area: string, lat: number) => ({
+      name: "The Bombay Cartel",
+      category: "cafe-bar",
+      address: `${area}, Mumbai 400013`,
+      location: { lat, lng: 72.83 },
+      sourceLinks: [],
+      chain,
+    });
+    const parel = await ownerDiary.write({ type: "place", placeId: null, payload: outlet("Lower Parel", 19.0) });
+    const bandra = await ownerDiary.write({ type: "place", placeId: null, payload: outlet("Bandra West", 19.06) });
+    await ownerDiary.write({ type: "status", placeId: parel.id, payload: { status: "want" } });
+    await ownerDiary.sync();
+
+    const found = await call("search_places", { query: "cartel" });
+    const places = found.value.places as { id: string; myStatus: string | null; outlets?: { id: string }[] }[];
+    expect(places).toHaveLength(1);
+    expect(places[0]!.myStatus).toBe("want");
+    expect(places[0]!.outlets?.map((o) => o.id).sort()).toEqual([parel.id, bandra.id].sort());
+    expect((await call("search_places", { query: "bandra cartel" })).value.places).toMatchObject([{ myStatus: "want" }]);
+    expect((await call("search_places", { query: "cartel", status: "none" })).value.total).toBe(0);
+
+    // Through the other outlet: the same status changes, and tagging needs no second one.
+    expect((await call("get_place", { placeId: bandra.id })).value.place).toMatchObject({ myStatus: "want" });
+    expect((await call("set_status", { placeId: bandra.id, status: "visited" })).isError).toBe(false);
+    expect((await call("add_comment", { placeId: bandra.id, text: "Bandra one is quieter" })).isError).toBe(false);
+    await ownerDiary.sync();
+    const statuses = (await ownerDiary.listItems()).filter((i) => i.type === "status" && (i.placeId === parel.id || i.placeId === bandra.id));
+    expect(statuses).toHaveLength(1);
+    expect(statuses[0]).toMatchObject({ placeId: parel.id, payload: { status: "visited" } });
   });
 
   it("never reads a group board, and will not rewrite an item that is also on one", async () => {

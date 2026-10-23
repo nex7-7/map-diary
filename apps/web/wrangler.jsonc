@@ -1,12 +1,14 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "map-diary-web",
-  "main": ".open-next/worker.js",
   "compatibility_date": "2026-10-01",
-  "compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
+  // Static assets only, with no Worker script: page requests are served from the asset store
+  // and never use Worker CPU. Headers come from out/_headers (scripts/finish-export.mjs).
   "assets": {
-    "directory": ".open-next/assets",
-    "binding": "ASSETS"
+    "directory": "out",
+    // /place serves out/place.html.
+    "html_handling": "auto-trailing-slash",
+    "not_found_handling": "404-page"
   },
   "workers_dev": false,
   // The API Worker serves map.snehilsinha.com/api/* through a route that runs

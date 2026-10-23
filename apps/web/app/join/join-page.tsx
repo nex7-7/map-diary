@@ -4,12 +4,17 @@ import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { AccountPage, IconTile, accountStyles as s } from "@/app/_account/parts";
 import { groupErrorMessage } from "@/app/groups/messages";
-import type { Diary } from "@/lib/device";
+import { useSession, type Diary } from "@/lib/device";
 import { joinGroup, previewInvite, readInviteSecret, type OpenedInvite } from "@/lib/groups";
-import { Button, ButtonLink } from "@/lib/ui";
+import { Button, ButtonLink, CopyCode } from "@/lib/ui";
 
 /** `/join#<secret>`: a group invite link. The secret after the `#` never reaches the server. */
 export function JoinPage() {
+  const session = useSession();
+  // A group invite only works for someone already on the diary, so a signed-out browser (a new
+  // friend, or an iPhone where the link opened in Safari rather than the installed app) is told
+  // what to do instead of landing on the plain welcome screen with the link lost.
+  if (session.state === "signed-out") return <SignedOut />;
   return (
     <AccountPage current="groups" title="Join a group" back={false}>
       {(diary) => <Join diary={diary} />}
@@ -97,5 +102,59 @@ function Join({ diary }: { diary: Diary }) {
       )}
       {toGroups}
     </div>
+  );
+}
+
+function SignedOut() {
+  const [link, setLink] = useState<string | null | undefined>(undefined);
+  const [iphone, setIphone] = useState(false);
+  useEffect(() => {
+    let live = true;
+    void readInviteSecret(window.location.hash).then((secret) => {
+      if (live) setLink(secret ? `${window.location.origin}/join#${secret}` : null);
+    });
+    setIphone(/iPhone|iPad|iPod/.test(navigator.userAgent));
+    return () => {
+      live = false;
+    };
+  }, []);
+
+  return (
+    <main className={s.page}>
+      <header className={s.head}>
+        <h1 className="display">Join a group</h1>
+      </header>
+      <div className={s.card}>
+        <IconTile name="users" large />
+        <h2 className="heading-m">This is an invite to a group</h2>
+        <p style={{ margin: 0, color: "var(--ink-2)" }}>
+          Group invites are for people already on the diary, and this {iphone ? "browser" : "device"} isn&apos;t signed in.
+        </p>
+        {iphone ? (
+          <p style={{ margin: 0 }}>
+            On iPhone, links open in Safari instead of the diary on your Home Screen. Copy the link below, open the diary
+            from your Home Screen, go to <strong>Groups</strong> and paste it under <strong>Got an invite?</strong> New to
+            the diary? You first need an app invite from the person who runs it.
+          </p>
+        ) : (
+          <p style={{ margin: 0 }}>
+            Already on the diary? Sign in on this device, then open the link again. New to it? You first need an app
+            invite from the person who runs the diary; set up with that, then open this link again.
+          </p>
+        )}
+        {link && <CopyCode label="group invite link" value={link} />}
+        {link === null && <p className={s.error}>This link is missing its invite. Open the whole link again.</p>}
+        {!iphone && (
+          <>
+            <ButtonLink href="/sign-in" block>
+              Sign in on this device
+            </ButtonLink>
+            <ButtonLink href="/invite" variant="secondary" block>
+              I have an app invite
+            </ButtonLink>
+          </>
+        )}
+      </div>
+    </main>
   );
 }
