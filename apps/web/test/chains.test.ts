@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { JsonValue } from "@map-diary/crypto";
 import { addComment, applyTag, editComment, setStatus, unapplyTag } from "../lib/entries/actions";
 import { buildFacts, formFromFacts } from "../lib/entries/facts";
-import { chainFor, normaliseChainName, outletLabel, viewOf } from "../lib/places/chains";
+import { addressArea, chainFor, normaliseChainName, outletLabel, viewOf } from "../lib/places/chains";
 import { EMPTY_FILTERS, filterPlaces } from "../lib/places/filter";
 import { pinsCollection } from "../lib/map/style";
 import { readPayload, type PlacePayload } from "../lib/places/payloads";
@@ -35,6 +35,14 @@ describe("chains", () => {
     expect(places[0]!.outlets?.map((o) => o.id)).toEqual([parel, bandra]);
     expect(viewOf(places, bandra)?.id).toBe(parel);
     expect(outletLabel(places[0]!, places[0]!.outlets![0]!)).toBe("Lower Parel");
+  });
+
+  it("names an outlet by its neighbourhood, not its city or postcode", () => {
+    expect(addressArea("Unit 1, Kamala Mills, Lower Parel, Mumbai 400013")).toBe("Lower Parel");
+    expect(addressArea("Todi Mill, Lower Parel, Mumbai, Maharashtra 400013, India")).toBe("Lower Parel");
+    expect(addressArea("Hill Road, Bandra West, Mumbai - 400 050")).toBe("Bandra West");
+    expect(addressArea("Mumbai 400001")).toBeUndefined();
+    expect(addressArea(undefined)).toBeUndefined();
   });
 
   it("keeps one status per person for the whole chain", async () => {

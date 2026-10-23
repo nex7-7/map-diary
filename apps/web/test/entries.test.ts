@@ -61,9 +61,10 @@ describe("parseEntry", () => {
 
   it("guesses a name from Zomato and District links", () => {
     expect(parseEntry("https://www.zomato.com/mumbai/britannia-co-fort/info")).toMatchObject({
-      name: "Britannia Co Fort",
+      name: "Britannia & Co Fort",
       source: "zomato",
     });
+    expect(parseEntry("https://www.zomato.com/mumbai/kyani-co-marine-lines/info").name).toBe("Kyani & Co Marine Lines");
     expect(parseEntry("https://www.district.in/movies/pvr-icon-andheri").source).toBe("district");
   });
 
@@ -323,6 +324,24 @@ describe("boards", () => {
     // The old Personal tag now reads on the Public board too, so the Public tag makes sense.
     expect(d.items.get(old.id)?.boardIds).toEqual(["board-personal", MASTER]);
     expect(items.find((i) => i.type === "tag_def" && i.id !== old.id)?.boardIds).toEqual([MASTER]);
+  });
+
+  it("puts a dropped pin on every board its opinions go to", async () => {
+    const d = new FakeDiary();
+    const id = await addPlace(d, {
+      kind: "private_place",
+      facts: facts(),
+      status: "want",
+      tagIds: [],
+      newTags: [],
+      comment: "Rooftop",
+      boards: ["board-group"],
+      commentBoards: ["board-personal", "board-group-2"],
+    });
+    expect(d.items.get(id)?.boardIds).toEqual(["board-group", "board-personal", "board-group-2"]);
+    // With no boards picked, the pin stays Personal.
+    const solo = await addPlace(d, { kind: "private_place", facts: facts(), status: "want", tagIds: [], newTags: [], comment: "" });
+    expect(d.items.get(solo)?.boardIds).toEqual(["board-personal"]);
   });
 
   it("refuses to apply someone else's tag where its definition is not shared", async () => {
