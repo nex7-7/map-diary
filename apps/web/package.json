@@ -4,8 +4,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "node scripts/copy-maplibre-worker.mjs && next dev",
-    "build": "node scripts/copy-maplibre-worker.mjs && next build && node scripts/finish-export.mjs",
+    "dev": "node scripts/copy-maplibre-worker.mjs && node scripts/write-service-worker.mjs && next dev",
+    "build": "node scripts/copy-maplibre-worker.mjs && node scripts/write-service-worker.mjs && next build && node scripts/finish-export.mjs",
     "typecheck": "tsc --noEmit",
     "preview": "pnpm build && wrangler dev",
     "deploy": "pnpm build && wrangler deploy",
