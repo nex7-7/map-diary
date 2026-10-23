@@ -1,1 +1,1 @@
-export function securityHeaders(apiOrigin: string): { key: string; value: string }[];
+export function securityHeaders(apiOrigin: string, scriptHashes?: string[]): { key: string; value: string }[];

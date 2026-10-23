@@ -195,3 +195,21 @@ describe("sync client", () => {
     expect(seen.every((r) => r.headers.get("X-Device-Id") === null)).toBe(true);
   });
 });
+
+describe("resolver rate limit", () => {
+  it("lets one client submit only a few jobs a minute", async () => {
+    await ready();
+    const submit = () =>
+      exports.default.fetch(
+        new Request("https://map.snehilsinha.com/api/resolver/jobs", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "CF-Connecting-IP": "203.0.113.20" },
+          body: JSON.stringify({ query: "Cafe Madras", replyPublicKey: toBase64(generateReplyKeys().publicKey) }),
+        }),
+      );
+    const statuses: number[] = [];
+    for (let i = 0; i < 32; i++) statuses.push((await submit()).status);
+    expect(statuses.slice(0, 30).every((s) => s === 201)).toBe(true);
+    expect(statuses.at(-1)).toBe(429);
+  });
+});

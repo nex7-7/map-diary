@@ -20,12 +20,14 @@ import { tiles } from "./tiles";
 // map.snehilsinha.com on the same origin.
 export const app = new Hono<{ Bindings: Env }>().basePath("/api");
 
-// Only needed for local web development; in production the web app and the
-// API share an origin.
+// Only for local web development (`next dev` calling `wrangler dev`); in production the web
+// app and the API share an origin, so no other origin is ever allowed.
+const DEV_WEB_ORIGIN = "http://localhost:3000";
+const LOCAL_HOSTS = ["localhost", "127.0.0.1"];
 app.use(
   "*",
   cors({
-    origin: ["http://localhost:3000"],
+    origin: (origin, c) => (origin === DEV_WEB_ORIGIN && LOCAL_HOSTS.includes(new URL(c.req.url).hostname) ? origin : null),
     allowMethods: ["GET", "HEAD", "POST", "PUT", "DELETE"],
     allowHeaders: ["Content-Type", "Authorization", "Range", "If-None-Match", ...Object.values(AUTH_HEADERS)],
     exposeHeaders: ["Content-Range", "Content-Length", "ETag"],
