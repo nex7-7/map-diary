@@ -2,6 +2,7 @@ import { Hono, type Context } from "hono";
 import {
   MUMBAI_BOUNDS,
   RESOLVER_CATEGORIES,
+  normaliseChainName,
   parseOutsidePlace,
   parseResolution,
   randomId,
@@ -76,6 +77,13 @@ const boardsSchema = {
 
 const statusSchema = { type: "string", enum: ["visited", "want"], description: "visited, or want (Want to)." } as const;
 const placeIdSchema = { type: "string", description: "A place id from search_places." } as const;
+const chainSchema = {
+  type: "string",
+  maxLength: 200,
+  description:
+    "The chain's name, e.g. Burma Burma. Joins the chain of that name already in the diary (search_places shows " +
+    "chain on its outlets), or starts a new one.",
+} as const;
 
 const write = { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false };
 const read = { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false };
@@ -133,7 +141,9 @@ const TOOLS = [
     description:
       "Adds a place Claude looked up to the shared catalogue and puts it on the owner's list with a status (default " +
       "want). The facts are checked like a resolver result. A place whose link is already in the diary is refused " +
-      "with its placeId: use set_status on that one instead.",
+      "with its placeId: use set_status on that one instead. When the place is one outlet of a chain, add each " +
+      "outlet as its own place (its own address, pin and link) with the same chain: the app shows them as one place " +
+      "with a row per location. A chain has one status per person, Visited if any outlet was visited.",
     inputSchema: {
       type: "object",
       properties: {
@@ -152,8 +162,25 @@ const TOOLS = [
         status: statusSchema,
         boards: boardsSchema,
         comment: { type: "string", maxLength: COMMENT_MAX },
+        chain: chainSchema,
       },
       required: ["name", "category", "location"],
+      additionalProperties: false,
+    },
+    annotations: write,
+  },
+  {
+    name: "set_chain",
+    title: "Put a place in a chain",
+    description:
+      "Makes a place Claude added one outlet of a chain, so the app shows the chain's outlets as one place with a " +
+      "row per location. chain joins the chain of that name already in the diary, or starts a new one; an empty " +
+      "chain takes the place out of its chain. The owner's statuses on the chain's outlets become one (Visited if " +
+      "any outlet was visited). Only for places Claude added itself; the owner changes others in the app.",
+    inputSchema: {
+      type: "object",
+      properties: { placeId: placeIdSchema, chain: { ...chainSchema, description: chainSchema.description + " Empty to take the place out of its chain." } },
+      required: ["placeId", "chain"],
       additionalProperties: false,
     },
     annotations: write,
@@ -636,18 +663,20 @@ class Tools {
 
   async addPlace(args: JsonObject): Promise<ToolResult> {
     if (args.outsideMumbai === true) return this.addOutsidePlace(args);
-    const { status: _s, boards: _b, comment: _c, outsideMumbai: _o, ...facts } = args;
+    const { status: _s, boards: _b, comment: _c, outsideMumbai: _o, chain: _ch, ...facts } = args;
     const parsed = parseResolution({ candidates: [facts] });
     if (!parsed.ok) throw new ToolError(PROBLEMS[parsed.problem as ResolutionProblem]);
     const place = parsed.result.candidates[0]!;
     const status = argStatus(args, "want");
     const boards = this.boardIds(args);
     const comment = argString(args, "comment", COMMENT_MAX);
+    const chainName = argString(args, "chain", 200);
 
     const existing = await findByLinks(this.db, this.session, place.sourceLinks);
     if (existing) throw new WriteRefused("That place is already in the diary. Use set_status on it instead.", existing);
 
-    const payload = { ...place } as unknown as JsonValue;
+    const chain = chainName ? await this.chainNamed(chainName) : undefined;
+    const payload = { ...place, ...(chain ? { chain } : {}) } as unknown as JsonValue;
     // With a master board, a place lives in the catalogue there alone; before it, on Personal.
     const placeBoards = this.master ? [this.master] : [this.personal];
     // One push, so the place never lands without its status.
@@ -657,7 +686,86 @@ class Tools {
       { type: "status", placeId, payload: { status }, boardIds: boards },
       ...(comment ? [{ type: "comment" as const, placeId, payload: { text: comment }, boardIds: boards }] : []),
     ]);
-    return toolText({ placeId, name: place.name, status, boards: boards.map((b) => this.boardName(b)) });
+    if (!chain) return toolText({ placeId, name: place.name, status, boards: boards.map((b) => this.boardName(b)) });
+    const joined = await this.oneChainStatus(await this.place(placeId));
+    return toolText({
+      placeId,
+      name: place.name,
+      chain: chain.name,
+      status: joined.myStatus ?? status,
+      boards: joined.boards ?? boards.map((b) => this.boardName(b)),
+      ...(joined.note ? { note: joined.note } : {}),
+    });
+  }
+
+  /**
+   * Puts a place Claude added into a chain (or takes it out), as the admin's Edit details →
+   * Part of a chain does in the app. The Worker lets Claude rewrite only facts it wrote itself.
+   */
+  async setChain(args: JsonObject): Promise<ToolResult> {
+    const place = await this.place(argString(args, "placeId", 64, true));
+    if (typeof args.chain !== "string" || args.chain.length > 200) {
+      throw new ToolError("chain must be the chain's name, or empty to take the place out of its chain.");
+    }
+    if (place.type !== "place") throw new ToolError("Only places in the shared catalogue can be in a chain, not a dropped pin or a place outside Mumbai.");
+    if (place.deviceId !== this.session.deviceId) {
+      throw new ToolError("Claude can only put places it added itself into a chain. The owner can do it in the app: Edit details, then Part of a chain.");
+    }
+    const chain = args.chain.trim() ? await this.chainNamed(args.chain) : undefined;
+    if (chain?.id !== place.facts.chainId) {
+      const { chain: _old, ...rest } = obj(place.payload) ?? {};
+      const payload = { ...rest, ...(chain ? { chain } : {}) };
+      await writeItems(this.db, this.session, [
+        { type: "place", placeId: null, payload, boardIds: place.boardIds, id: place.id, createdAt: place.createdAt },
+      ]);
+    }
+    if (!chain) return toolText({ placeId: place.id, name: place.facts.name, chain: null });
+    const updated = await this.place(place.id);
+    const outlets = await this.outlets(updated);
+    return toolText({
+      placeId: place.id,
+      name: place.facts.name,
+      chain: chain.name,
+      outlets: outlets.map((o) => ({ id: o.item.id, name: o.facts.name, ...(o.facts.address ? { address: o.facts.address } : {}) })),
+      ...(await this.oneChainStatus(updated)),
+    });
+  }
+
+  /** The chain of this name in the diary, or a new one; names match as in the app ("The Bombay Cartel" is "bombay cartel"). */
+  private async chainNamed(name: string): Promise<{ id: string; name: string }> {
+    const key = normaliseChainName(name);
+    if (!key) throw new ToolError("chain must be the chain's name.");
+    const { items } = await this.reader.load({ types: ["place"] });
+    for (const item of items) {
+      const facts = readPlace(item.payload);
+      if (facts?.chain && facts.chainId && normaliseChainName(facts.chain) === key) return { id: facts.chainId, name: facts.chain };
+    }
+    return { id: crypto.randomUUID(), name: name.trim() };
+  }
+
+  /**
+   * A chain has one status per person, as in the app: the owner's statuses on its outlets become
+   * one, Visited if any is, on every board any of them was on. One also shared with a group is
+   * left for the app, since Claude cannot rewrite it without dropping it from the group.
+   */
+  private async oneChainStatus(place: Item & { facts: Place }): Promise<{ myStatus: Status | null; boards?: string[]; note?: string }> {
+    const ids = await this.opinionPlaceIds(place);
+    const mine = await this.myItems("status", ids);
+    const keep = mine.find((s) => readStatus(s.payload) === "visited") ?? mine[0];
+    const myStatus = (keep && readStatus(keep.payload)) ?? null;
+    if (!keep || mine.length < 2) return { myStatus, ...(keep ? { boards: keep.boardIds.map((b) => this.boardName(b)) } : {}) };
+    const reach = await Promise.all(mine.map((s) => boardsOutOfReach(this.db, this.session, s.id)));
+    if (reach.some((n) => n > 0) || (await this.hiddenStatuses(ids, mine))) {
+      return { myStatus, note: "The owner has more than one status on this chain's outlets, and one is shared with a group: they can tidy it in the app." };
+    }
+    const boards = [...new Set(mine.flatMap((s) => s.boardIds))];
+    if (boards.length > keep.boardIds.length) {
+      await writeItems(this.db, this.session, [
+        { type: "status", placeId: keep.placeId, payload: { status: myStatus! }, boardIds: boards, id: keep.id, createdAt: keep.createdAt },
+      ]);
+    }
+    await removeItems(this.db, this.session, mine.filter((s) => s !== keep).map((s) => s.id));
+    return { myStatus, boards: [...new Set(boards.map((b) => this.boardName(b)))].sort(), note: `Combined ${mine.length} statuses on the chain's outlets into one.` };
   }
 
   /**
@@ -677,7 +785,8 @@ class Tools {
       throw new ToolError('A place outside Mumbai can only go to the "personal" board.');
     }
 
-    const { status: _s, boards: _b, comment: _c, outsideMumbai: _o, ...facts } = args;
+    if (args.chain !== undefined && args.chain !== "") throw new ToolError("A place outside Mumbai cannot be part of a chain.");
+    const { status: _s, boards: _b, comment: _c, outsideMumbai: _o, chain: _ch, ...facts } = args;
     const place = parseOutsidePlace(facts);
     if (typeof place === "string") throw new ToolError(PROBLEMS[place]);
     const status = argStatus(args, "want");
@@ -840,6 +949,8 @@ async function callTool(
         return await tools.listTags();
       case "add_place":
         return await tools.addPlace(args);
+      case "set_chain":
+        return await tools.setChain(args);
       case "set_status":
         return await tools.setStatus(args);
       case "add_tag":

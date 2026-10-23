@@ -79,6 +79,7 @@ export {
   REPLY_PUBLIC_KEY_BYTES,
   parseResolution,
   parseOutsidePlace,
+  normaliseChainName,
   generateReplyKeys,
   sealResolverResult,
   openResolverResult,
