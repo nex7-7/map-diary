@@ -141,6 +141,7 @@ Toasts use sonner (`components/ui/sonner.tsx`, styles in `app/toast.css`), pinne
 | `stale` | The diary's keys just changed. Let it sync, then try again. |
 | `too_large` | That's too big to save. Try something smaller. |
 | `too_many_tries` | Too many tries in a short time. Wait a minute, then try again. |
+| `too_many_requests` | Too many lookups in a short time. Wait a minute, then try again. |
 | `device_revoked` | This device was removed from your account. |
 | `device_unknown` | The server no longer knows this device. Sign in again. |
 | `claude_not_allowed` | The Claude connector can't do that. |
