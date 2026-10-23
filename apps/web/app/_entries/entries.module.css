@@ -157,7 +157,8 @@
 
 .input:focus,
 .textarea:focus {
-  outline: none;
+  outline: 2px solid var(--indigo);
+  outline-offset: 2px;
   box-shadow: 0 1px 0 var(--ink);
   transform: translateY(2px);
 }
@@ -416,6 +417,11 @@
   border: 1.5px dashed var(--ink-3);
   border-radius: 14px;
   background: var(--page);
+}
+
+/* The emoji box is narrow; less padding lets its "Emoji" placeholder fit. */
+.newtag > .input:first-child {
+  padding-inline: 6px;
 }
 
 .newtag .full {

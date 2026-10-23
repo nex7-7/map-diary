@@ -101,7 +101,7 @@ function TagForm(props: { initial?: TagDefPayload; submitLabel: string; onSubmit
         if (!props.initial) setDef(empty);
       }}
     >
-      <input className={styles.input} aria-label="Emoji" placeholder="🌶️" value={def.emoji} onChange={(e) => setDef({ ...def, emoji: oneEmoji(e.target.value) })} />
+      <input className={styles.input} aria-label="Emoji (optional)" placeholder="Emoji" style={{ textAlign: "center" }} value={def.emoji} onChange={(e) => setDef({ ...def, emoji: oneEmoji(e.target.value) })} />
       <input className={styles.input} aria-label="Tag name" placeholder="Name" value={def.name} onChange={(e) => setDef({ ...def, name: e.target.value })} />
       <input
         className={`${styles.input} ${styles.full}`}

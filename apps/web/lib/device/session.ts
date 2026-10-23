@@ -2,6 +2,7 @@
 
 import { Api, Diary, IdbStorage, type DeviceState } from "@map-diary/sync";
 import { placeLinks } from "../entries/actions";
+import { nameThisDevice } from "./names";
 import { clearPending } from "../pending/session";
 
 /**
@@ -63,6 +64,8 @@ function startDiary(diary: Diary): void {
     void forgetDevice();
   });
   diary.start(SYNC_INTERVAL_MS);
+  // Name this device from its browser, so the account's other devices list it as, say, "Mac · Chrome".
+  void nameThisDevice(diary, navigator.userAgent).catch(() => undefined);
   const sync = () => void diary.sync();
   const onVisible = () => document.visibilityState === "visible" && sync();
   window.addEventListener("online", sync);

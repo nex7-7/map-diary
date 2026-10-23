@@ -1,6 +1,12 @@
 import type { MetadataRoute } from "next";
 
-/** Makes the diary installable: Install app on Android and desktop Chrome, Add to Home Screen on iPhone. */
+// Written to out/manifest.webmanifest at build time.
+export const dynamic = "force-static";
+
+/**
+ * Makes the diary installable: Install app on Android and desktop Chrome, Add to Home Screen on
+ * iPhone. Installed on Android, it also shows in the share sheet: `/share` opens the Add sheet.
+ */
 export default function manifest(): MetadataRoute.Manifest {
   return {
     id: "/",
@@ -17,5 +23,10 @@ export default function manifest(): MetadataRoute.Manifest {
       { src: "/icons/icon-512.png", sizes: "512x512", type: "image/png", purpose: "any" },
       { src: "/icons/maskable-512.png", sizes: "512x512", type: "image/png", purpose: "maskable" },
     ],
+    share_target: {
+      action: "/share",
+      method: "GET",
+      params: { title: "title", text: "text", url: "url" },
+    },
   };
 }

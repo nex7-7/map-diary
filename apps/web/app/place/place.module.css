@@ -232,6 +232,8 @@
 
 .lined:focus {
   border-color: var(--ink);
+  outline: 2px solid var(--indigo);
+  outline-offset: 2px;
 }
 
 .lined::placeholder {

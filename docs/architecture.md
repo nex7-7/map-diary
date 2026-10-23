@@ -65,7 +65,7 @@ Everything runs on one free Cloudflare account behind `map.snehilsinha.com`; not
 
 Next.js, React and TypeScript on Cloudflare, with all decryption in the browser.
 
-- **Web app:** Next.js + React + TypeScript (strict), deployed to Cloudflare Workers (OpenNext adapter; evaluate vinext). Mostly client-rendered, since the server cannot read the data.
+- **Web app:** Next.js + React + TypeScript (strict), built as a static export (`output: "export"`) and served as Cloudflare Workers static assets, so page requests run no Worker code and use no CPU budget; security headers come from a `_headers` file. Fully client-rendered, since the server cannot read the data.
 - **API Worker:** a separate small Worker (Hono) for sync, invites, key backups, the resolver queue and the MCP server.
 - **On-device store:** IndexedDB holding the device's keys, decrypted items and pending places, each record sealed (AES-GCM) under a per-browser key made with WebCrypto as non-extractable, so a copy of the browser's files cannot be read elsewhere. Code running inside the open app can still use it.
 - **Crypto:** libsodium (libsodium-wrappers).

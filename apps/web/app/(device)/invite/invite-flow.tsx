@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { type FormEvent, useEffect, useRef, useState } from "react";
-import { checkAppInvite, type InviteCheck } from "@map-diary/sync";
+import { checkAppInvite, readInviteSecret, type InviteCheck } from "@map-diary/sync";
 import { api, useSession } from "@/lib/device";
 import styles from "@/lib/device/device.module.css";
 import { InstallWarning } from "../install-warning";
@@ -16,6 +16,9 @@ const CHECK_MESSAGES: Record<Exclude<InviteCheck["state"], "open">, string> = {
   used: "That invite was already used. Each one works once; ask for a new one.",
   expired: "That invite has expired. Ask for a new one.",
 };
+
+const GROUP_LINK_MESSAGE =
+  "That’s a group invite, which works only once you’re on the diary. Ask the person who runs the diary for an app invite code, set up with it, then open the group link again.";
 
 /**
  * `/invite#CODE`: where an app invite link leads. The code never reaches the server. Without a
@@ -45,6 +48,11 @@ export function InviteFlow() {
     setBusy(true);
     setError(null);
     try {
+      // A group link pasted here is the most likely mix-up: it only works once someone is on the diary.
+      if (await readInviteSecret(code)) {
+        setError(GROUP_LINK_MESSAGE);
+        return;
+      }
       const result = await checkAppInvite(api, code);
       if (result.state === "open") setAccepted(code);
       else setError(CHECK_MESSAGES[result.state]);

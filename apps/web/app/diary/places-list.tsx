@@ -14,11 +14,19 @@ interface Props {
   justStamped: ReadonlySet<string>;
   onSelect: (id: string) => void;
   onSetStatus: (id: string, status: Status) => void;
+  /** Why the list could be empty: a new diary, a quiet board, or filters that rule everything out. */
+  empty: "diary" | "board" | "filters";
 }
 
-export function PlacesList({ listed, snapshot, selectedId, justStamped, onSelect, onSetStatus }: Props) {
+const EMPTY_TEXT: Record<Props["empty"], string> = {
+  diary: "Your diary is empty. Add your first place with the red Add button, or long-press the map to drop a pin.",
+  board: "Nothing on this board yet.",
+  filters: "Nothing here matches. Try clearing the search or a filter.",
+};
+
+export function PlacesList({ listed, snapshot, selectedId, justStamped, onSelect, onSetStatus, empty }: Props) {
   if (listed.length === 0) {
-    return <p className="hand py-10 pr-6 pl-12 text-[18px] text-ink-3">Nothing on this page matches.</p>;
+    return <p className="hand py-10 pr-6 pl-12 text-[18px] text-ink-3">{EMPTY_TEXT[empty]}</p>;
   }
   return (
     <ul className="m-0 list-none p-0 pb-6" aria-label="Places">
@@ -65,7 +73,7 @@ function SwipeRow({
   stamped,
   onSelect,
   onSetStatus,
-}: { item: ListedPlace; index: number; selected: boolean; stamped: boolean } & Omit<Props, "listed" | "selectedId" | "justStamped">) {
+}: { item: ListedPlace; index: number; selected: boolean; stamped: boolean } & Omit<Props, "listed" | "selectedId" | "justStamped" | "empty">) {
   const { place, status, mine, distanceM } = item;
   const style = categoryStyle(place.category);
   const start = useRef<{ x: number; y: number; id: number } | null>(null);
