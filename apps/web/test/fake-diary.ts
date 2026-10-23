@@ -4,7 +4,7 @@ import { snapshotFromItems, type StoredItem } from "../lib/places/items-source";
 
 /** An in-memory stand-in for the device diary: items go to the boards asked for, Personal by default. */
 export class FakeDiary implements DiaryWriter {
-  readonly device = { accountId: "acct-me", personalBoardId: "board-personal" };
+  readonly device = { accountId: "acct-me", personalBoardId: "board-personal", deviceId: "dev-me", kind: "web" };
   items = new Map<string, StoredItem>();
   private n = 0;
   async listItems() {

@@ -135,4 +135,13 @@ describe("createItemsSource", () => {
     await source.setStatus(kyani.id, "visited");
     expect(calls).toBe(1);
   });
+
+  it("names every member of a group, even one who has posted nothing this device can read", () => {
+    const boards = [
+      { id: PERSONAL, kind: "personal" as const, name: "Personal", memberIds: [ME] },
+      { id: "board-g", kind: "group" as const, name: "Four", memberIds: [ME, "acct-a"] },
+    ];
+    const snap = snapshotFromItems([], ME, PERSONAL, boards);
+    expect(snap.people.map((p) => p.id)).toEqual([ME, "acct-a"]);
+  });
 });

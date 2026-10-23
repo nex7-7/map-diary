@@ -1,11 +1,11 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useEffect, useState, type CSSProperties, type ReactNode } from "react";
+import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { AddForm, type AddInitial } from "@/app/_entries/add-form";
 import { DiaryShell } from "@/app/_shell/diary-shell";
 import { sealDate } from "@/app/diary/places-list";
-import { Button, Icon } from "@/lib/ui";
+import { Button, ButtonLink, Icon } from "@/lib/ui";
 import type { Status } from "@/lib/places/types";
 import a from "./add.module.css";
 import { parseCoordinates } from "@/lib/entries/parse-input";
@@ -56,7 +56,7 @@ export function AddPage() {
                     history.replaceState(null, "", "/add");
                     setInitial({});
                   }}
-                  onDone={() => router.push(`/place#${saved.id}`)}
+                  href={`/place#${encodeURIComponent(saved.id)}`}
                 />
               ) : (
                 <WithPending key={round} diary={diary} pendingId={initial.pendingId}>
@@ -75,6 +75,7 @@ export function AddPage() {
                           <Icon name="x" size="m" />
                         </button>
                       </div>
+                      <EscapeCloses onClose={() => close(pending !== null)} />
                       <AddForm
                         diary={diary}
                         initial={{ ...initial, ...(pending ? { pending } : {}) }}
@@ -94,6 +95,25 @@ export function AddPage() {
   ) : null;
 }
 
+/**
+ * Escape closes the Add sheet, as it would a dialog, unless a menu or sheet is open on top of
+ * it (that one closes first) or the key ends typing in an input method.
+ */
+function EscapeCloses({ onClose }: { onClose: () => void }) {
+  const latest = useRef(onClose);
+  latest.current = onClose;
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape" || e.defaultPrevented || e.isComposing) return;
+      if (document.querySelector('[role="dialog"], [role="menu"], [role="listbox"]')) return;
+      latest.current();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+  return null;
+}
+
 /** Drops of ink thrown out when the seal lands. */
 const SPLATS = [
   { size: 16, dx: -92, dy: -58 },
@@ -106,7 +126,7 @@ const SPLATS = [
 ];
 
 /** "Saved": the place pressed into the diary as a seal, Visited in red, Want to in graphite. */
-function Saved({ name, status, onAgain, onDone }: { name: string; status: Status; onAgain: () => void; onDone: () => void }) {
+function Saved({ name, status, onAgain, href }: { name: string; status: Status; onAgain: () => void; href: string }) {
   const ink = status === "visited" ? "var(--seal)" : "var(--graphite)";
   const now = new Date();
   return (
@@ -138,7 +158,8 @@ function Saved({ name, status, onAgain, onDone }: { name: string; status: Status
         <Button variant="secondary" onClick={onAgain}>
           Add another
         </Button>
-        <Button onClick={onDone}>Open it</Button>
+        {/* A link like the map card's, so the place id in the fragment survives a full page load too. */}
+        <ButtonLink href={href}>Open it</ButtonLink>
       </div>
     </div>
   );

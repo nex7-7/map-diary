@@ -1,5 +1,8 @@
 import type { MetadataRoute } from "next";
 
+// Written to out/manifest.webmanifest at build time.
+export const dynamic = "force-static";
+
 /**
  * Makes the diary installable: Install app on Android and desktop Chrome, Add to Home Screen on
  * iPhone. Installed on Android, it also shows in the share sheet: `/share` opens the Add sheet.

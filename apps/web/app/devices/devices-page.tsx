@@ -177,7 +177,7 @@ export function Devices({ diary }: { diary: Diary }) {
           onClose={close}
           onConnected={() => {
             load();
-            setNotice("Claude is connected.");
+            setNotice("Claude is set up. Its row shows when it was last used once the connector first calls in.");
           }}
         />
       </Sheet>
@@ -248,7 +248,7 @@ function DeviceRow({
           </span>
         )}
         <span className="sub">
-          {what} · {d.current ? "active now" : seen(d.lastSeenAt)}
+          {what} · {d.current ? "active now" : claude && d.lastSeenAt === null ? "set up, waiting for first use" : seen(d.lastSeenAt)}
         </span>
       </span>
       {!d.current && !renaming && (

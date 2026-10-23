@@ -41,13 +41,28 @@ export function audienceWithin(board: Board, postedTo: readonly string[], boards
 /** Applies the board rules to a snapshot built from raw posted boards. */
 export function applyBoardRules(snapshot: DiarySnapshot): DiarySnapshot {
   const { boards } = snapshot;
-  const places = snapshot.places.map((p): PlaceView => ({
-    ...p,
-    boards: p.boards.filter((id) => boards.some((b) => b.id === id)),
-    opinions: p.opinions
-      .map((o) => ({ ...o, boards: badgesFor(o.authorId, o.boards, boards), shownOn: shownOn(o.authorId, o.boards, boards) }))
-      .filter((o) => o.shownOn.length > 0),
-  }));
+  const places = snapshot.places.map((p): PlaceView => {
+    // A board shows an opinion on a dropped pin only where its readers can also read the pin: a
+    // pin kept on Personal stays off the group and Public boards, even for the person who
+    // dropped it. Their own opinion still counts on Personal, so the pin stays on their list.
+    const readable = (o: { authorId: string }, ids: string[]) => {
+      if (!p.isPrivate) return ids;
+      const kept = ids.filter((id) => audienceWithin(boards.find((b) => b.id === id)!, p.boards, boards));
+      const personal = boards.find((b) => b.kind === "personal" && b.memberIds?.includes(o.authorId));
+      return kept.length === 0 && ids.length > 0 && personal && p.boards.includes(personal.id) ? [personal.id] : kept;
+    };
+    return {
+      ...p,
+      boards: p.boards.filter((id) => boards.some((b) => b.id === id)),
+      opinions: p.opinions
+        .map((o) => ({
+          ...o,
+          boards: badgesFor(o.authorId, o.boards, boards),
+          shownOn: readable(o, shownOn(o.authorId, o.boards, boards)),
+        }))
+        .filter((o) => o.shownOn.length > 0),
+    };
+  });
   const tags = snapshot.tags
     .map((t): TagDefinition => ({ ...t, boards: badgesFor(t.authorId, t.boards, boards) }))
     .filter((t) => t.boards.length > 0);

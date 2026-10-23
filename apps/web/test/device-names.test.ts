@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { deviceNames, forgetDeviceName, guessDeviceName, nameDevice } from "../lib/device/names";
+import { deviceNames, forgetDeviceName, guessDeviceName, nameDevice, nameThisDevice } from "../lib/device/names";
 import { FakeDiary } from "./fake-diary";
 
 describe("device names", () => {
@@ -20,6 +20,15 @@ describe("device names", () => {
     await nameDevice(diary, "dev-2", "Laptop");
     await forgetDeviceName(diary, "dev-1");
     expect(await deviceNames(diary)).toEqual(new Map([["dev-2", "Laptop"]]));
+  });
+
+  it("names this device from its browser once, keeping a name it already has", async () => {
+    const diary = new FakeDiary();
+    const ua = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36";
+    expect(await nameThisDevice(diary, ua)).toBe("Mac · Chrome");
+    await nameDevice(diary, diary.device.deviceId, "Work laptop");
+    expect(await nameThisDevice(diary, ua)).toBeNull();
+    expect(await deviceNames(diary)).toEqual(new Map([[diary.device.deviceId, "Work laptop"]]));
   });
 
   it("ignores names written by someone else", async () => {

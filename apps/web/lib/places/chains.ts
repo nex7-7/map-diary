@@ -113,13 +113,21 @@ export function viewOf(places: readonly PlaceView[], id: string): PlaceView | un
   return places.find((p) => p.id === id) ?? places.find((p) => p.outlets?.some((o) => o.id === id));
 }
 
+/**
+ * The neighbourhood in an address: its last part once the city, state, country and postcode
+ * are dropped, so "…, Lower Parel, Mumbai, Maharashtra 400013" gives "Lower Parel".
+ */
+export function addressArea(address: string | undefined): string | undefined {
+  return (address ?? "")
+    .split(",")
+    .map((p) => p.replace(/\b\d{3}\s?\d{3}\b/g, "").replace(/[\s-]+$/, "").trim())
+    .filter((p) => p && !/^(mumbai|bombay|maharashtra|india)$/i.test(p))
+    .at(-1);
+}
+
 /** A short name for an outlet: its area ("Lower Parel"), else its own name, else its number. */
 export function outletLabel(place: PlaceView, outlet: Outlet): string {
-  const parts = (outlet.address ?? "")
-    .split(",")
-    .map((p) => p.trim())
-    .filter((p) => p && !/^(mumbai|maharashtra|india|\d{6})$/i.test(p));
-  const area = parts.at(-1);
+  const area = addressArea(outlet.address);
   if (area) return area;
   if (normaliseChainName(outlet.name) !== normaliseChainName(place.name)) return outlet.name;
   return `Location ${(place.outlets?.indexOf(outlet) ?? 0) + 1}`;

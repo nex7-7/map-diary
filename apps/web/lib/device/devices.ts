@@ -39,7 +39,7 @@ export interface AccountOverview {
 export async function listDevices(diary: Diary): Promise<AccountOverview> {
   const [me, names] = await Promise.all([api.me(signerOf(diary)), deviceNames(diary)]);
   const self = diary.device.deviceId;
-  // This device names itself once, from its browser, so the others can tell it apart.
+  // Normally named when the diary opened; this covers a write that failed then.
   if (!names.has(self)) {
     const guess = guessDeviceName(navigator.userAgent, diary.device.kind);
     names.set(self, guess);

@@ -5,7 +5,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import type { Diary } from "@map-diary/sync";
 import { Icon, buttonClass } from "@/lib/ui";
 import { useSession } from "./hooks";
-import { wasRemoved } from "./session";
+import { wasRemoved, type RemovedReason } from "./session";
 import s from "./welcome.module.css";
 
 /**
@@ -24,7 +24,7 @@ export function DeviceGate({ children }: { children: (diary: Diary) => ReactNode
  * friends join with an invite, and people already on the app add this device or sign in.
  */
 export function Welcome() {
-  const [removed, setRemoved] = useState(false);
+  const [removed, setRemoved] = useState<RemovedReason | null>(null);
   const [phone, setPhone] = useState(true);
   const [iphone, setIphone] = useState(false);
   useEffect(() => {
@@ -46,7 +46,11 @@ export function Welcome() {
         {removed && (
           <p className={s.small} role="status">
             <Icon name="alert" size="m" />
-            <span>This device was removed from the diary, so its copy was cleared.</span>
+            <span>
+              {removed === "unknown"
+                ? "The diary no longer knows this device (it was reset or the device was removed), so its copy was cleared. Join again with an invite or sign in."
+                : "This device was removed from the diary, so its copy was cleared."}
+            </span>
           </p>
         )}
         <div className={s.welcomeButtons}>

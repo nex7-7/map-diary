@@ -1,8 +1,9 @@
 "use client";
 
-import type { CSSProperties, ReactNode } from "react";
+import { useRef, type CSSProperties, type ReactNode } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
+import { useScrollHint } from "./scroll-hint";
 
 export interface NotebookTab {
   id: string;
@@ -36,10 +37,12 @@ export function Notebook({
   children: ReactNode;
 }) {
   const current = tabs.find((t) => t.id === value) ?? tabs[0];
+  const list = useRef<HTMLDivElement>(null);
+  useScrollHint(list);
   return (
     <Tabs value={current?.id ?? ""} onValueChange={onValueChange} className={cn("nb min-h-0", className)} style={{ "--tint": current?.tint } as CSSProperties}>
       <div className="nb-cover" aria-hidden />
-      <TabsList variant="notebook" aria-label={label}>
+      <TabsList ref={list} variant="notebook" aria-label={label} className="scroll-hint">
         {tabs.map((t) => (
           <TabsTrigger key={t.id} value={t.id} style={{ "--t": t.tint } as CSSProperties}>
             {t.label}
