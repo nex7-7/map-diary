@@ -4,6 +4,8 @@
 .welcome {
   min-height: 100dvh;
   display: grid;
+  /* minmax(0, …) so long button labels wrap instead of widening the page on small phones. */
+  grid-template-columns: minmax(0, 1fr);
   align-content: start;
 }
 
@@ -48,6 +50,15 @@
   max-width: 400px;
 }
 
+/* Buttons never wrap by default; here a label may take two lines on a narrow phone. */
+.welcomeButtons > * {
+  height: auto;
+  min-height: 48px;
+  padding-block: 10px;
+  white-space: normal;
+  text-align: center;
+}
+
 .small {
   display: flex;
   gap: 10px;
@@ -59,7 +70,7 @@
 
 @media (min-width: 900px) {
   .welcome {
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
     align-content: stretch;
   }
 
