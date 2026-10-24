@@ -478,6 +478,9 @@ describe("device setup, sign-in and sync", () => {
     expect(admin.getStatus()).toMatchObject({ phase: "idle", error: null });
     expect(writeKey(admin.device, after.id)?.version).toBe(after.keyVersion);
     phone = admin.device;
+    // The Public board now lists only the members who stay.
+    expect(after.memberIds).toEqual([phone.accountId]);
+    expect(phone.boards?.find((b) => b.id === after.id)?.memberIds).toEqual([phone.accountId]);
 
     const d = diaryOf(friend);
     await d.sync();

@@ -319,7 +319,8 @@ me.get("/me", readBody, requireDevice, async (c) => {
     // Same order as /sync, so a device does not see its groups change between the two.
     db
       .prepare(
-        `SELECT g.board_id, g.account_id FROM board_members g JOIN boards b ON b.id = g.board_id AND b.kind = 'group'
+        `SELECT g.board_id, g.account_id FROM board_members g JOIN boards b ON b.id = g.board_id AND b.kind IN ('group', 'master')
+           JOIN accounts a ON a.id = g.account_id AND a.removed_at IS NULL
           WHERE g.board_id IN (SELECT board_id FROM board_members WHERE account_id = ?)
           ORDER BY g.joined_at, g.account_id`,
       )
@@ -364,7 +365,7 @@ me.get("/me", readBody, requireDevice, async (c) => {
       kind: b.kind,
       keyVersion: b.key_version,
       rotationDue: b.rotation_due_at !== null,
-      ...(b.kind === "group"
+      ...(b.kind === "group" || b.kind === "master"
         ? { memberIds: groupMembers.filter((m) => m.board_id === b.id).map((m) => m.account_id) }
         : {}),
       keys: keyRows
