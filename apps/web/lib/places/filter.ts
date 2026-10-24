@@ -1,4 +1,4 @@
-import type { Category, LngLat, PlaceView, Status, StatusOpinion } from "./types";
+import type { Category, DiarySnapshot, LngLat, Person, PlaceView, Status, StatusOpinion } from "./types";
 
 export interface PlaceFilters {
   /** Matches name, address, cuisine and signature dish, case-insensitively. */
@@ -123,4 +123,14 @@ export function formatDistance(m: number): string {
 /** Distinct cuisines across places, for the filter picker. */
 export function cuisinesOf(places: readonly PlaceView[]): string[] {
   return [...new Set(places.flatMap((p) => (p.cuisine ? [p.cuisine] : [])))].sort();
+}
+
+/**
+ * Who the "Added by" filter offers: me, and everyone with a status on a place this device can
+ * see. People who left the app or wrote nothing visible are left out, unless already picked.
+ */
+export function authorsOf(snapshot: DiarySnapshot, picked: readonly string[]): Person[] {
+  const ids = new Set<string>([snapshot.me.id, ...picked]);
+  for (const p of snapshot.places) for (const o of p.opinions) if (o.kind === "status") ids.add(o.authorId);
+  return snapshot.people.filter((p) => ids.has(p.id));
 }

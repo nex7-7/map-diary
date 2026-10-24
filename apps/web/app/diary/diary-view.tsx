@@ -2,7 +2,7 @@
 
 import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { MeLink } from "@/app/_shell/me-link";
 import { cuisinesOf, EMPTY_FILTERS, filterPlaces, sortPlaces, type PlaceFilters, type SortKey } from "@/lib/places/filter";
 import type { DiarySnapshot, DiarySource, LngLat, Status } from "@/lib/places/types";
@@ -26,22 +26,38 @@ export type DiaryViewMode = "map" | "list";
 type Locate = { kind: "off" } | { kind: "locating" } | { kind: "on"; here: LngLat } | { kind: "failed"; message: string };
 
 /**
+ * What the screen looked like when it was last left, so opening a place and coming back keeps
+ * the filters, sort and scroll. Kept in this tab's memory only, never stored, and lost on reload.
+ */
+interface Kept {
+  filters: PlaceFilters;
+  sort: SortKey;
+  filtersOpen: boolean;
+  locate: Locate;
+  /** The list's scroll offset per board tab. */
+  scroll: Record<string, number>;
+}
+let kept: Kept | undefined;
+
+/**
  * The places screen. Phones show the map or the notebook (`view`, from the tab bar); from
  * 900px up the notebook and the map sit side by side.
  */
 export function DiaryView({ source, view }: { source: DiarySource; view: DiaryViewMode }) {
   const [snapshot, setSnapshot] = useState<DiarySnapshot | null>(null);
-  const [filters, setFilters] = useState<PlaceFilters>(EMPTY_FILTERS);
-  const [sort, setSort] = useState<SortKey>("added");
+  const [filters, setFilters] = useState<PlaceFilters>(kept?.filters ?? EMPTY_FILTERS);
+  const [sort, setSort] = useState<SortKey>(kept?.sort ?? "added");
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [locate, setLocate] = useState<Locate>({ kind: "off" });
-  const [filtersOpen, setFiltersOpen] = useState(false);
+  const [locate, setLocate] = useState<Locate>(kept?.locate.kind === "on" ? kept.locate : { kind: "off" });
+  const [filtersOpen, setFiltersOpen] = useState(kept?.filtersOpen ?? false);
   const [justStamped, setJustStamped] = useState<ReadonlySet<string>>(new Set());
   /** Bumped by the replay button, so the heading and rows play their entrance again. */
   const [take, setTake] = useState(0);
   const here = locate.kind === "on" ? locate.here : undefined;
   const router = useRouter();
   const stampTimers = useRef<ReturnType<typeof setTimeout>[]>([]);
+  const scroll = useRef<Record<string, number>>(kept?.scroll ?? {});
+  const restored = useRef(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -54,6 +70,15 @@ export function DiaryView({ source, view }: { source: DiarySource; view: DiaryVi
     };
   }, [source]);
   useEffect(() => () => stampTimers.current.forEach(clearTimeout), []);
+  useEffect(() => {
+    kept = { filters, sort, filtersOpen, locate, scroll: scroll.current };
+  }, [filters, sort, filtersOpen, locate]);
+  /** The first time the list is on screen, scrolls it back to where it was left. */
+  const restoreScroll = useCallback((el: HTMLDivElement | null) => {
+    if (!el || restored.current) return;
+    restored.current = true;
+    el.scrollTop = scroll.current[el.dataset.board ?? "all"] ?? 0;
+  }, []);
 
   const listed = useMemo(() => (snapshot ? sortPlaces(filterPlaces(snapshot.places, filters, snapshot.me.id, here), sort) : []), [snapshot, filters, here, sort]);
   const mine = useMemo(() => (snapshot ? filterPlaces(snapshot.places, EMPTY_FILTERS, snapshot.me.id).filter((l) => l.mine) : []), [snapshot]);
@@ -188,10 +213,21 @@ export function DiaryView({ source, view }: { source: DiarySource; view: DiaryVi
           label="Boards"
           tabs={tabs}
           value={board}
-          onValueChange={(id) => setFilters({ ...filters, boards: id === "all" ? [] : [id] })}
+          onValueChange={(id) => {
+            scroll.current[id] = 0;
+            setFilters({ ...filters, boards: id === "all" ? [] : [id] });
+          }}
           className="flex-1"
         >
-          <div key={`${board}-${take}`} className="min-h-0 flex-1 overflow-y-auto pt-2">
+          <div
+            key={`${board}-${take}`}
+            ref={restoreScroll}
+            data-board={board}
+            className="min-h-0 flex-1 overflow-y-auto pt-2"
+            onScroll={(e) => {
+              scroll.current[board] = e.currentTarget.scrollTop;
+            }}
+          >
             <PlacesList
               listed={listed}
               snapshot={snapshot}
