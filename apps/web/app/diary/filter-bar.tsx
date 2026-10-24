@@ -3,7 +3,7 @@
 import type { ReactNode } from "react";
 import { BUILTIN_CATEGORIES, type Category, type DiarySnapshot, type Status } from "@/lib/places/types";
 import { categoryStyle, STATUS_LABELS } from "@/lib/places/categories";
-import { EMPTY_FILTERS, type PlaceFilters } from "@/lib/places/filter";
+import { authorsOf, EMPTY_FILTERS, type PlaceFilters } from "@/lib/places/filter";
 import { ChipRow, FilterChip, Icon, StatusDot } from "@/lib/ui";
 
 interface Props {
@@ -140,7 +140,7 @@ export function FilterPanel({ snapshot, cuisines, filters, onChange }: Props & {
         </Group>
       )}
       <Group legend="Added by">
-        {snapshot.people.map((p) => (
+        {authorsOf(snapshot, filters.authorIds).map((p) => (
           <FilterChip key={p.id} on={filters.authorIds.includes(p.id)} onClick={() => set({ authorIds: toggle(filters.authorIds, p.id) })}>
             {p.id === snapshot.me.id ? "Me" : p.name}
           </FilterChip>
