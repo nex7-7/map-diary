@@ -1,10 +1,12 @@
 "use client";
 
+import type { JsonValue } from "@map-diary/crypto";
 import { Api, Diary, IdbStorage, type DeviceState } from "@map-diary/sync";
 import { placeLinks } from "../entries/actions";
 import { nameThisDevice } from "./names";
 import { clearPending } from "../pending/session";
 import { watchSync } from "../errors/notify";
+import { unwrittenChains } from "../places/chains";
 
 /**
  * The API Worker's origin. In production the web app and the API share
@@ -66,6 +68,7 @@ function startDiary(diary: Diary): void {
   });
   // Offline, a failed round, or a write the server refused: say so instead of failing quietly.
   const offNotices = watchSync(diary);
+  const offChains = diary.subscribe(() => void writeChains(diary));
   diary.start(SYNC_INTERVAL_MS);
   // Name this device from its browser, so the account's other devices list it as, say, "Mac · Chrome".
   void nameThisDevice(diary, navigator.userAgent).catch(() => undefined);
@@ -76,10 +79,32 @@ function startDiary(diary: Diary): void {
   stopTriggers = () => {
     offRevoked();
     offNotices();
+    offChains();
     diary.stop();
     window.removeEventListener("online", sync);
     document.removeEventListener("visibilitychange", onVisible);
   };
+}
+
+let writingChains = false;
+
+/**
+ * On the admin's device: a place a newer branch named as its chain gets that chain written
+ * into its own facts, which only the admin may edit, so the Claude assistant and every
+ * device see one chain without working it out. Until then the app folds them anyway.
+ */
+async function writeChains(diary: Diary): Promise<void> {
+  if (!diary.device.isAdmin || writingChains) return;
+  writingChains = true;
+  try {
+    for (const { item, facts } of unwrittenChains(await diary.listItems())) {
+      await diary.write({ type: "place", placeId: null, payload: facts as unknown as JsonValue, id: item.id });
+    }
+  } catch {
+    // Tried again after the next change; the app shows the chain either way.
+  } finally {
+    writingChains = false;
+  }
 }
 
 /** The device's session, loaded once from IndexedDB. Sync starts when a device is found. */

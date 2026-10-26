@@ -6,6 +6,7 @@ import { useEffect, useMemo, useState } from "react";
 import { api, type Diary } from "@/lib/device";
 import { addOpinions, addPlace, findCataloguePlace, findDuplicate } from "@/lib/entries/actions";
 import { buildFacts } from "@/lib/entries/facts";
+import { branchOf } from "@/lib/places/chains";
 import { userMessage } from "@/lib/errors";
 import { parseEntry, parseLink, type ParsedEntry } from "@/lib/entries/parse-input";
 import { getPendingQueue, MAX_QUERY_LENGTH, type PendingItem } from "@/lib/pending";
@@ -102,6 +103,12 @@ export function AddForm({ diary, initial, onSaved, onQueued, onCancel }: Props) 
   const name = nameEdit ?? parsed.name ?? "";
   const category = categoryEdit ?? guessCategory(parsed);
   const duplicate = useMemo(() => (parsed.link ? findDuplicate(items, parsed.link) : undefined), [items, parsed.link]);
+  // The same name elsewhere on the map is probably another branch; here, the same place.
+  const match = useMemo(
+    () => (kind === "place" && location && name.trim() && !duplicate ? branchOf(items, { name, location }) : undefined),
+    [items, kind, location, name, duplicate],
+  );
+  const [joinBranch, setJoinBranch] = useState(true);
   const showPicker = adjusting || (location === null && !findLater && expansion.kind !== "loading");
 
   const tagChoices: TagChoice[] = [
@@ -172,7 +179,9 @@ export function AddForm({ diary, initial, onSaved, onQueued, onCancel }: Props) 
     try {
       const opinions = { status, tagIds: [...selected], newTags, comment, boards: pickedBoards, ...ownBoards };
       // Someone may have put it in the catalogue already: add to theirs rather than a copy.
-      const existing = kind === "place" ? await findCataloguePlace(diary, result.facts.sourceLinks) : undefined;
+      const existing =
+        kind === "place" ? ((await findCataloguePlace(diary, result.facts.sourceLinks)) ?? (match?.kind === "same" ? match.placeId : undefined)) : undefined;
+      if (match?.kind === "branch" && joinBranch) result.facts.chain = { ...match.chain };
       let id: string;
       if (existing) {
         await addOpinions(diary, existing, opinions);
@@ -223,6 +232,20 @@ export function AddForm({ diary, initial, onSaved, onQueued, onCancel }: Props) 
               Open it
             </Link>
           </p>
+        )}
+        {match?.kind === "same" && (
+          <p className={styles.found}>
+            {match.name} is already on the map here. Saving adds your notes to it.{" "}
+            <Link href={`/place#${match.placeId}`} className={styles.textbutton}>
+              Open it
+            </Link>
+          </p>
+        )}
+        {match?.kind === "branch" && (
+          <label className={styles.found}>
+            <input type="checkbox" checked={joinBranch} onChange={(e) => setJoinBranch(e.target.checked)} /> Another branch of {match.chain.name}
+            {match.area ? ` (on the map in ${match.area})` : ""}. Show them as one place, with your notes on this branch.
+          </label>
         )}
       </div>
 

@@ -1,6 +1,6 @@
 import type { EnvelopeType, JsonValue } from "@map-diary/crypto";
 import { applyBoardRules } from "./boards";
-import { foldChains, outletIds } from "./chains";
+import { chainsOf, foldChains, outletIds } from "./chains";
 import { mergeTargets, resolvePlace } from "./merges";
 import { readPayload, type ProfilePayload } from "./payloads";
 import type { Board, BoardKind, DiarySnapshot, DiarySource, Opinion, Person, PlaceView, Status, StatusOpinion, TagDefinition } from "./types";
@@ -163,7 +163,11 @@ export function snapshotFromItems(
     if (!place) continue;
     place.opinions.push(opinion);
   }
-  // A chain's outlets show as one place.
+  // A chain's outlets show as one place, including a place a newer branch named as its chain.
+  for (const [id, chain] of chainsOf(items)) {
+    const place = places.get(id);
+    if (place && !place.chain) place.chain = chain;
+  }
   const folded = foldChains([...places.values()], (id) => created.get(id) ?? 0);
   // One status per person per place (or chain): keep the latest if a sync race left two.
   for (const place of folded) {

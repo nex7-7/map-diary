@@ -13,7 +13,7 @@ import {
 import { ApiError, NetworkError, type Api } from "@map-diary/sync";
 import { EntryError, addOpinions, addPlace, findCataloguePlace, type DiaryWriter } from "../entries/actions";
 import { isFood } from "../entries/facts";
-import { chainFor } from "../places/chains";
+import { branchOf, chainFor } from "../places/chains";
 import type { PlaceChain } from "../places/types";
 import { readPayload, type PlacePayload } from "../places/payloads";
 import type { PendingDraft, PendingItem, PendingState, PendingStore, WaitingJob } from "./store";
@@ -165,9 +165,10 @@ export class PendingQueue {
 
   /**
    * Picks one of several matches (for a chain, one of `choicesOf`: the matches, then the
-   * other outlets) and writes it to the diary. Returns the place id.
+   * other outlets) and writes it to the diary. Returns the place id, or nothing when the
+   * match may be another branch of a place on the map and the person is asked first.
    */
-  async choose(id: string, index: number): Promise<string> {
+  async choose(id: string, index: number): Promise<string | undefined> {
     const item = await this.store.get(id);
     if (!item || item.state.kind !== "choose") throw new EntryError("That was already sorted out. Reload the Inbox.");
     const candidate = choicesOf(item.state)[index];
@@ -191,14 +192,40 @@ export class PendingQueue {
     return placeId;
   }
 
-  private async write(item: PendingItem, candidate: ResolvedPlace, chain?: ResolvedChain): Promise<string> {
+  private async write(item: PendingItem, candidate: ResolvedPlace, chain?: ResolvedChain): Promise<string | undefined> {
     if (item.draft.refreshPlaceId) {
       const placeId = await refreshFacts(this.diary, item.draft.refreshPlaceId, candidate);
       await this.save(item, { kind: "added", placeId, name: candidate.name });
       return placeId;
     }
-    const label = chain ? chainFor(await this.diary.listItems(), chain.name) : undefined;
-    const placeId = await writeResolved(this.diary, item.draft, candidate, label);
+    const items = await this.diary.listItems();
+    let label = chain ? chainFor(items, chain.name) : undefined;
+    let placeId: string;
+    // The resolver starts from nothing each time, so the catalogue on this device is what
+    // knows a place by this name is already on the map.
+    const match = label ? undefined : branchOf(items, candidate);
+    if (match?.kind === "same") {
+      placeId = match.placeId;
+      await addDraftOpinions(this.diary, placeId, item.draft);
+    } else if (match?.kind === "branch") {
+      await this.save(item, { kind: "branch", candidate, chain: match.chain, ...(match.area ? { area: match.area } : {}) });
+      return undefined;
+    } else {
+      placeId = await writeResolved(this.diary, item.draft, candidate, label);
+    }
+    await this.save(item, { kind: "added", placeId, name: candidate.name });
+    return placeId;
+  }
+
+  /**
+   * Answers whether the match is another branch of the place on the map with its name: if so
+   * it joins that chain, so both show as one place with a row per location.
+   */
+  async answerBranch(id: string, isBranch: boolean): Promise<string> {
+    const item = await this.store.get(id);
+    if (!item || item.state.kind !== "branch") throw new EntryError("That was already sorted out. Reload the Inbox.");
+    const { candidate, chain } = item.state;
+    const placeId = await writeResolved(this.diary, item.draft, candidate, isBranch ? chain : undefined);
     await this.save(item, { kind: "added", placeId, name: candidate.name });
     return placeId;
   }
@@ -298,7 +325,12 @@ export async function writeResolved(w: DiaryWriter, draft: PendingDraft, c: Reso
     });
   }
 
-  const placeId = existing;
+  await addDraftOpinions(w, existing, draft, allOutlets);
+  return existing;
+}
+
+/** Puts the draft's status, tags and note on a place already in the diary. */
+async function addDraftOpinions(w: DiaryWriter, placeId: string, draft: PendingDraft, allOutlets = false): Promise<void> {
   await addOpinions(w, placeId, {
     status: draft.status,
     tagIds: draft.tagIds,
@@ -307,7 +339,6 @@ export async function writeResolved(w: DiaryWriter, draft: PendingDraft, c: Reso
     ...(allOutlets ? { commentAllOutlets: true } : {}),
     ...boardsOf(draft),
   });
-  return placeId;
 }
 
 /**

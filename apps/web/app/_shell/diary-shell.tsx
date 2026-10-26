@@ -12,7 +12,7 @@ import { AppShell, type NavKey } from "@/lib/ui";
 export function DiaryShell({ diary, current, who, children }: { diary: Diary; current: NavKey; who?: string | undefined; children: ReactNode }) {
   const { items } = usePending(diary);
   // Matches to pick and lookups that failed need the person; waiting ones don't.
-  const needsMe = items.filter((i) => i.state.kind === "choose" || i.state.kind === "failed").length;
+  const needsMe = items.filter((i) => i.state.kind === "choose" || i.state.kind === "branch" || i.state.kind === "failed").length;
   const waiting = items.filter((i) => i.state.kind === "unsent" || i.state.kind === "waiting").length;
   const isAdmin = diary.device.isAdmin === true;
   return (

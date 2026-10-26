@@ -2,6 +2,7 @@ import { beforeAll, describe, expect, it } from "vitest";
 import { fromBase64, generateReplyKeys, ready, sealResolverResult, toBase64, type ResolvedChain, type ResolvedPlace } from "@map-diary/crypto";
 import { ApiError, NetworkError, type ResolverJobResponse } from "@map-diary/sync";
 import { readPayload } from "../lib/places/payloads";
+import { unwrittenChains } from "../lib/places/chains";
 import { ADDED_KEEP_MS, PendingQueue, type ResolverApi } from "../lib/pending/queue";
 import { MemoryPendingStore, type PendingDraft } from "../lib/pending/store";
 import { FakeDiary } from "./fake-diary";
@@ -314,6 +315,90 @@ describe("PendingQueue", () => {
       await queue.poll();
       await queue.addAll(item.id);
       expect(places(diary)).toHaveLength(3);
+    });
+  });
+
+  describe("branches of a place already on the map", () => {
+    const juhu: ResolvedPlace = {
+      name: "Blabber All Day",
+      category: "restaurant",
+      location: { lat: 19.1154, lng: 72.8357 },
+      address: "46 Gulmohar Road, Juhu, Mumbai",
+      sourceLinks: ["https://maps.google.com/?cid=1"],
+    };
+    const borivali: ResolvedPlace = {
+      ...juhu,
+      category: "cafe-bar",
+      location: { lat: 19.221, lng: 72.8621 },
+      address: "Esspee Tower, Dattapada Rd, Borivali East, Mumbai",
+      sourceLinks: ["https://www.eazydiner.com/mumbai/blabber-all-day-borivali-east"],
+    };
+    const onMap = (d: FakeDiary, p: ResolvedPlace) =>
+      d.write({ type: "place", placeId: null, payload: { name: p.name, category: p.category, location: p.location, address: p.address!, sourceLinks: p.sourceLinks } });
+
+    it("asks whether a match with the same name elsewhere is another branch", async () => {
+      const { api, diary, queue } = setup();
+      const first = await onMap(diary, juhu);
+      const item = await queue.add("Blabber all day - Borivali", draft({ label: "Blabber all day - Borivali", status: "visited", comment: "Mid food" }));
+      api.answer([borivali]);
+      await queue.poll();
+      expect((await queue.list())[0]!.state).toMatchObject({ kind: "branch", chain: { id: first.id, name: "Blabber All Day" }, area: "Juhu" });
+      expect(places(diary)).toHaveLength(1);
+
+      const placeId = await queue.answerBranch(item.id, true);
+      // The new branch names the first place as its chain; the app folds them into one place.
+      expect(readPayload("place", diary.items.get(placeId)!.payload)!.chain).toEqual({ id: first.id, name: "Blabber All Day" });
+      const view = diary.snapshot().places;
+      expect(view).toHaveLength(1);
+      expect(view[0]!.outlets?.map((o) => o.id)).toEqual([first.id, placeId]);
+      // The note stays on the branch it was written about.
+      expect(view[0]!.opinions.find((o) => o.kind === "comment")).toMatchObject({ text: "Mid food", placeId });
+      expect(view[0]!.opinions.find((o) => o.kind === "comment")).not.toHaveProperty("allOutlets");
+      // The admin's device writes the chain into the first place's facts.
+      expect(unwrittenChains([...diary.items.values()]).map((u) => [u.item.id, u.facts.chain])).toEqual([[first.id, { id: first.id, name: "Blabber All Day" }]]);
+    });
+
+    it("keeps a different place with the same name apart when told so", async () => {
+      const { api, diary, queue } = setup();
+      await onMap(diary, juhu);
+      const item = await queue.add("Blabber", draft({ label: "Blabber" }));
+      api.answer([borivali]);
+      await queue.poll();
+      await queue.answerBranch(item.id, false);
+      expect(diary.snapshot().places).toHaveLength(2);
+    });
+
+    it("joins a chain the place is already in", async () => {
+      const { api, diary, queue } = setup();
+      const chain = { id: "chain-blabber", name: "Blabber All Day" };
+      await diary.write({ type: "place", placeId: null, payload: { name: juhu.name, category: "restaurant", location: juhu.location, sourceLinks: juhu.sourceLinks, chain } });
+      await queue.add("Blabber Borivali", draft({ label: "Blabber Borivali" }));
+      api.answer([borivali]);
+      await queue.poll();
+      expect((await queue.list())[0]!.state).toMatchObject({ kind: "branch", chain });
+    });
+
+    it("adds to the place already on the map when it is the same spot under another link", async () => {
+      const { api, diary, queue } = setup();
+      const first = await onMap(diary, juhu);
+      const item = await queue.add("Blabber Juhu", draft({ label: "Blabber Juhu", status: "visited" }));
+      api.answer([{ ...juhu, location: { lat: 19.1156, lng: 72.8358 }, sourceLinks: ["https://www.zomato.com/mumbai/blabber-all-day-juhu"] }]);
+      await queue.poll();
+      expect((await queue.list()).find((i) => i.id === item.id)!.state).toMatchObject({ kind: "added", placeId: first.id });
+      expect(places(diary)).toHaveLength(1);
+      expect([...diary.items.values()].filter((i) => i.type === "status")).toMatchObject([{ placeId: first.id }]);
+    });
+
+    it("lets a resolver chain join a same-name place that has no chain yet", async () => {
+      const { api, diary, queue } = setup();
+      const first = await onMap(diary, juhu);
+      const item = await queue.add("Blabber Borivali", draft({ label: "Blabber Borivali" }));
+      const bandra = { ...borivali, location: { lat: 19.06, lng: 72.83 }, address: "Bandra West", sourceLinks: ["https://example.com/blabber-bandra"] };
+      api.answer([borivali], { name: "Blabber All Day", outlets: [bandra] });
+      await queue.poll();
+      const placeId = await queue.choose(item.id, 0);
+      expect(readPayload("place", diary.items.get(placeId!)!.payload)!.chain?.id).toBe(first.id);
+      expect(diary.snapshot().places).toHaveLength(1);
     });
   });
 });
