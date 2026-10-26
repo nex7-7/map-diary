@@ -9,7 +9,7 @@ import {
 } from "@map-diary/crypto";
 import { loadAtRestKey } from "@map-diary/sync";
 import type { TagDefPayload } from "../places/payloads";
-import type { Category, Status } from "../places/types";
+import type { Category, PlaceChain, Status } from "../places/types";
 
 /**
  * Places saved without a location, waiting for the resolver. They live on this device only:
@@ -51,6 +51,11 @@ export type PendingState =
    * in the Inbox, or (for a chain) adds every outlet.
    */
   | { kind: "choose"; candidates: ResolvedPlace[]; chain?: ResolvedChain }
+  /**
+   * The match has the name of a place already on the map somewhere else: the person says
+   * whether it is another branch of it. `area` is where the one on the map is.
+   */
+  | { kind: "branch"; candidate: ResolvedPlace; chain: PlaceChain; area?: string }
   /**
    * `job` is kept while the failed job is still on the server, so if the admin puts it back in
    * the queue its answer still reaches this device.

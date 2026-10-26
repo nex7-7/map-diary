@@ -43,7 +43,7 @@ function Inbox({ diary }: { diary: Diary }) {
     action().catch(toastError);
   };
   const group = (kinds: PendingItem["state"]["kind"][]) => items.filter((i) => kinds.includes(i.state.kind));
-  const choose = group(["choose"]);
+  const choose = group(["choose", "branch"]);
   const failed = group(["failed"]);
   const waiting = group(["unsent", "waiting"]);
   const added = group(["added"]);
@@ -123,7 +123,9 @@ function Inbox({ diary }: { diary: Diary }) {
       {queue && choose.length > 0 && (
         <Section title="Pick one">
           {choose.map((i) =>
-            i.state.kind === "choose" && i.state.chain ? (
+            i.state.kind === "branch" ? (
+              <BranchLetter key={i.id} item={i} queue={queue} run={run} style={delay()} />
+            ) : i.state.kind === "choose" && i.state.chain ? (
               <ChainLetter key={i.id} item={i} queue={queue} run={run} style={delay()} />
             ) : (
               <ChooseLetter key={i.id} item={i} queue={queue} run={run} style={delay()} />
@@ -305,6 +307,34 @@ function ChainLetter({ item, queue, run, style }: LetterProps) {
         <button type="button" className={styles.textbutton} onClick={() => run(() => queue.dismiss(item.id))}>
           Remove
         </button>
+      </div>
+    </Letter>
+  );
+}
+
+/** A match with the name of a place already on the map elsewhere: another branch of it, or not? */
+function BranchLetter({ item, queue, run, style }: LetterProps) {
+  if (item.state.kind !== "branch") return null;
+  const { candidate, chain, area } = item.state;
+  return (
+    <Letter style={style}>
+      <div className="flex flex-col gap-1">
+        <span className="font-serif text-[21px]">Another branch of {chain.name}?</span>
+        <span className="hand text-[15px] leading-snug text-ink-2">
+          {chain.name} is already on the map{area ? ` in ${area}` : ""}. If this is the same restaurant, they show as one place with a row per location, and
+          your notes stay on this branch.
+        </span>
+      </div>
+      <div className={b.cand}>
+        <Candidate place={candidate} />
+      </div>
+      <div className={styles.row}>
+        <Button size="m" onClick={() => run(() => queue.answerBranch(item.id, true))}>
+          Yes, same restaurant
+        </Button>
+        <Button variant="secondary" size="m" onClick={() => run(() => queue.answerBranch(item.id, false))}>
+          No, a different place
+        </Button>
       </div>
     </Letter>
   );

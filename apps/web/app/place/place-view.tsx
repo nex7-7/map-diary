@@ -267,8 +267,9 @@ export function PlaceView({ diary, placeId: asked }: { diary: Diary; placeId: st
             </p>
           )}
 
-          <section className={styles.section}>
-            <h2>Shown on</h2>
+          {/* Where this person's own stamp, tags and notes go, not where others posted theirs. */}
+          <section className={`${styles.section} ${myStatus === null ? "opacity-60" : ""}`}>
+            <h2>{myStatus === null ? "Your stamp will go on" : "Your stamp is on"}</h2>
             <BoardPicker
               boards={choices}
               value={boards}

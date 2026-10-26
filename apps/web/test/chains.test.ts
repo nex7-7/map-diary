@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { JsonValue } from "@map-diary/crypto";
 import { addComment, applyTag, editComment, setStatus, unapplyTag } from "../lib/entries/actions";
 import { buildFacts, formFromFacts } from "../lib/entries/facts";
-import { addressArea, chainFor, normaliseChainName, outletLabel, viewOf } from "../lib/places/chains";
+import { addressArea, branchKey, chainFor, normaliseChainName, outletLabel, viewOf } from "../lib/places/chains";
 import { EMPTY_FILTERS, filterPlaces } from "../lib/places/filter";
 import { pinsCollection } from "../lib/map/style";
 import { readPayload, type PlacePayload } from "../lib/places/payloads";
@@ -35,6 +35,14 @@ describe("chains", () => {
     expect(places[0]!.outlets?.map((o) => o.id)).toEqual([parel, bandra]);
     expect(viewOf(places, bandra)?.id).toBe(parel);
     expect(outletLabel(places[0]!, places[0]!.outlets![0]!)).toBe("Lower Parel");
+  });
+
+  it("compares branch names without the area after them", () => {
+    expect(branchKey("Blabber all day - Borivali")).toBe("blabber all day");
+    expect(branchKey("Blabber All Day (Juhu)")).toBe("blabber all day");
+    expect(branchKey("The Bombay Canteen | Lower Parel")).toBe("bombay canteen");
+    expect(branchKey("Gajalee")).toBe("gajalee");
+    expect(branchKey("Hop-Scotch")).toBe("hop scotch");
   });
 
   it("names an outlet by its neighbourhood, not its city or postcode", () => {
