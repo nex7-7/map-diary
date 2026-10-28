@@ -1,5 +1,6 @@
 import { Hono } from "hono";
 import {
+  CORRECTION_WINDOW_MS,
   ENVELOPE_TYPES,
   ENVELOPE_VERSION,
   fromBase64,
@@ -19,6 +20,8 @@ const MAX_CIPHERTEXT_B64 = 64 * 1024;
 const MAX_BOARDS = 10;
 const DEFAULT_PULL = 200;
 const MAX_PULL = 500;
+/** A device clock this far ahead still counts as now, for the correction window. */
+const CLOCK_SKEW_MS = 10 * 60 * 1000;
 
 /** `placeId` names the catalogue place that already has the link, for `duplicate_place`. */
 export type Rejection = { id: string | null; reason: string; placeId?: string };
@@ -201,6 +204,8 @@ export async function pushEnvelopes(
     }
   }
 
+  const correctable = await correctablePlaces(db, device, candidates, existing);
+
   const accepted: Envelope[] = [];
   const unchanged: string[] = [];
   for (const e of candidates) {
@@ -237,9 +242,10 @@ export async function pushEnvelopes(
       rejected.push({ id: e.id, reason: "immutable_field" });
     } else if (e.updatedAt <= prior.updated_at) {
       unchanged.push(e.id);
-    } else if (e.type === "place" && !device.isAdmin && !(isClaude && prior.device_id === device.id)) {
+    } else if (e.type === "place" && !device.isAdmin && !(isClaude && prior.device_id === device.id) && !correctable.has(e.id)) {
       // Facts are written once by the first resolution; after that only the admin edits them,
-      // and Claude only facts it wrote itself.
+      // Claude only facts it wrote itself, and the person who added the place only while
+      // correcting it (see CORRECTION_WINDOW_MS).
       rejected.push({ id: e.id, reason: "facts_locked" });
     } else {
       accepted.push(e);
@@ -300,6 +306,37 @@ export async function pushEnvelopes(
   if (statements.length > 0) await db.batch(statements);
 
   return { accepted: accepted.map((e) => e.id), unchanged, rejected };
+}
+
+/**
+ * Catalogue places in this push that their author may still correct: added by this account
+ * less than CORRECTION_WINDOW_MS ago, and nobody else has put a status, tag or comment on them.
+ * A creation time in the future gets no window, so it cannot be stretched.
+ */
+async function correctablePlaces(
+  db: D1Database,
+  device: AuthedDevice,
+  candidates: readonly Envelope[],
+  existing: ReadonlyMap<string, { author_id: string; type: string; created_at: number }>,
+): Promise<Set<string>> {
+  if (device.isAdmin || device.kind === "claude") return new Set();
+  const now = Date.now();
+  const ids = candidates
+    .map((e) => existing.get(e.id) && { e, prior: existing.get(e.id)! })
+    .filter((x): x is { e: Envelope; prior: { author_id: string; type: string; created_at: number } } => !!x)
+    .filter(({ e, prior }) => e.type === "place" && prior.type === "place" && prior.author_id === device.accountId)
+    .filter(({ prior }) => prior.created_at <= now + CLOCK_SKEW_MS && now - prior.created_at < CORRECTION_WINDOW_MS)
+    .map(({ e }) => e.id);
+  if (ids.length === 0) return new Set();
+  const { results } = await db
+    .prepare(
+      `SELECT DISTINCT place_id FROM envelopes
+        WHERE place_id IN (SELECT value FROM json_each(?)) AND author_id <> ? AND deleted_at IS NULL`,
+    )
+    .bind(JSON.stringify(ids), device.accountId)
+    .all<{ place_id: string }>();
+  const shared = new Set(results.map((r) => r.place_id));
+  return new Set(ids.filter((id) => !shared.has(id)));
 }
 
 /**

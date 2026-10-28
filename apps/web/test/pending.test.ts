@@ -56,6 +56,8 @@ const kyani: ResolvedPlace = {
   sourceLinks: ["https://www.zomato.com/mumbai/kyani-co-marine-lines"],
 };
 
+const KYANI = "https://www.zomato.com/mumbai/kyani-co-marine-lines";
+
 const draft = (over: Partial<PendingDraft> = {}): PendingDraft => ({
   label: "Kyani",
   status: "want",
@@ -132,7 +134,7 @@ describe("PendingQueue", () => {
 
   it("uses the category the person picked, and drops a dish it doesn't fit", async () => {
     const { api, diary, queue } = setup();
-    await queue.add("Kyani", draft({ category: "recreation" }));
+    await queue.add(KYANI, draft({ link: KYANI, category: "recreation" }));
     api.answer([kyani]);
     await queue.poll();
     const facts = readPayload("place", places(diary)[0]!.payload);
@@ -142,10 +144,10 @@ describe("PendingQueue", () => {
 
   it("puts the opinions on a place already in the diary instead of adding it twice", async () => {
     const { api, diary, queue } = setup();
-    await queue.add("Kyani", draft());
+    await queue.add(KYANI, draft({ link: KYANI }));
     api.answer([kyani]);
     await queue.poll();
-    await queue.add("Kyani again", draft({ comment: "Second visit" }));
+    await queue.add(KYANI, draft({ link: KYANI, comment: "Second visit" }));
     api.answer([kyani]);
     await queue.poll();
     expect(places(diary)).toHaveLength(1);
@@ -188,7 +190,7 @@ describe("PendingQueue", () => {
 
   it("picks up a failed job the admin put back in the queue", async () => {
     const { api, diary, queue } = setup();
-    await queue.add("Kyani", draft());
+    await queue.add(KYANI, draft({ link: KYANI }));
     const [jobId, job] = api.only();
     job.status = "failed";
     await queue.poll();
@@ -244,12 +246,89 @@ describe("PendingQueue", () => {
     expect(api.jobs.size).toBe(0);
     expect(await queue.list()).toHaveLength(0);
 
-    await queue.add("Kyani", draft());
+    await queue.add(KYANI, draft({ link: KYANI }));
     api.answer([kyani]);
     await queue.poll();
     clock.advance(ADDED_KEEP_MS + 1);
     await queue.poll();
     expect(await queue.list()).toHaveLength(0);
+  });
+
+  it("asks before adding a lone match for a plain name or a Zomato share link", async () => {
+    const { api, diary, queue } = setup();
+    await queue.add("Kyani", draft());
+    api.answer([kyani]);
+    await queue.poll();
+    expect((await queue.list())[0]!.state).toMatchObject({ kind: "choose", candidates: [{ name: "Kyani & Co." }] });
+    expect(places(diary)).toHaveLength(0);
+
+    const { api: api2, diary: diary2, queue: queue2 } = setup();
+    const onelink = "https://zomato.onelink.me/xqzv/lxa9ebfu";
+    await queue2.add(onelink, draft({ link: onelink }));
+    api2.answer([kyani]);
+    await queue2.poll();
+    expect((await queue2.list())[0]!.state.kind).toBe("choose");
+    expect(places(diary2)).toHaveLength(0);
+  });
+
+  it("looks an item up again with a better link, keeping its opinions and dropping the wrong link", async () => {
+    const { api, diary, queue } = setup();
+    const wrong = "https://zomato.onelink.me/xqzv/lxa9ebfu";
+    const item = await queue.add(wrong, draft({ label: wrong, link: wrong, status: "visited", comment: "Thali" }));
+    const [firstId, first] = api.only();
+    first.status = "failed";
+    await queue.poll();
+
+    await queue.requery(item.id, `  ${KYANI}  `);
+    expect(api.jobs.has(firstId)).toBe(false);
+    const [, job] = api.only();
+    expect(job.query).toBe(KYANI);
+    const again = (await queue.list())[0]!;
+    expect(again.draft).toMatchObject({ label: "", link: KYANI, status: "visited", comment: "Thali" });
+
+    api.answer([kyani]);
+    await queue.poll();
+    const facts = readPayload("place", places(diary)[0]!.payload);
+    expect(facts?.sourceLinks).toEqual([KYANI]);
+    expect(diary.snapshot().places[0]!.opinions.find((o) => o.kind === "comment")).toMatchObject({ text: "Thali" });
+  });
+
+  it("adds a place filled in by hand, with the item's opinions", async () => {
+    const { api, diary, queue } = setup();
+    const item = await queue.add("Samai", draft({ label: "Samai", comment: "Marathi thali" }));
+    api.only()[1].status = "failed";
+    await queue.poll();
+
+    const placeId = await queue.fillIn(item.id, {
+      name: "Samai Marathmola Jewanachi Mejwani",
+      category: "restaurant",
+      location: { lat: 18.9953, lng: 72.8258 },
+      sourceLinks: ["https://www.zomato.com/mumbai/samai-marathmola-jewanachi-mejwani-lower-parel"],
+    });
+    expect(api.jobs.size).toBe(0);
+    expect(readPayload("place", diary.items.get(placeId)!.payload)?.name).toBe("Samai Marathmola Jewanachi Mejwani");
+    expect(diary.snapshot().places[0]!.opinions.map((o) => o.kind).sort()).toEqual(["comment", "status"]);
+    expect((await queue.list())[0]!.state).toEqual({ kind: "added", placeId, name: "Samai Marathmola Jewanachi Mejwani" });
+  });
+
+  it("corrects a wrong match: the new facts replace its links and chain", async () => {
+    const { api, diary, queue } = setup();
+    const placeId = (
+      await diary.write({
+        type: "place",
+        placeId: null,
+        payload: { name: "SAMAA", category: "restaurant", location: { lat: 19.1, lng: 72.86 }, sourceLinks: ["https://www.zomato.com/mumbai/samaa-fairmont"], chain: { id: "c", name: "SAMAA" } },
+      })
+    ).id;
+    const right = "https://www.zomato.com/mumbai/samai-marathmola-jewanachi-mejwani-lower-parel";
+    const item = await queue.lookUpAgain(placeId, right, "SAMAA", true);
+    api.answer([{ ...kyani, name: "Samai", sourceLinks: [] }]);
+    await queue.poll();
+    await queue.choose(item.id, 0);
+    const facts = readPayload("place", diary.items.get(placeId)!.payload)!;
+    expect(facts.name).toBe("Samai");
+    expect(facts.sourceLinks).toEqual([right]);
+    expect(facts.chain).toBeUndefined();
   });
 
   describe("chains", () => {
@@ -342,6 +421,8 @@ describe("PendingQueue", () => {
       const item = await queue.add("Blabber all day - Borivali", draft({ label: "Blabber all day - Borivali", status: "visited", comment: "Mid food" }));
       api.answer([borivali]);
       await queue.poll();
+      // A plain name asks first, even for one match.
+      expect((await queue.choose(item.id, 0))).toBeUndefined();
       expect((await queue.list())[0]!.state).toMatchObject({ kind: "branch", chain: { id: first.id, name: "Blabber All Day" }, area: "Juhu" });
       expect(places(diary)).toHaveLength(1);
 
@@ -364,6 +445,7 @@ describe("PendingQueue", () => {
       const item = await queue.add("Blabber", draft({ label: "Blabber" }));
       api.answer([borivali]);
       await queue.poll();
+      await queue.choose(item.id, 0);
       await queue.answerBranch(item.id, false);
       expect(diary.snapshot().places).toHaveLength(2);
     });
@@ -372,9 +454,10 @@ describe("PendingQueue", () => {
       const { api, diary, queue } = setup();
       const chain = { id: "chain-blabber", name: "Blabber All Day" };
       await diary.write({ type: "place", placeId: null, payload: { name: juhu.name, category: "restaurant", location: juhu.location, sourceLinks: juhu.sourceLinks, chain } });
-      await queue.add("Blabber Borivali", draft({ label: "Blabber Borivali" }));
+      const item = await queue.add("Blabber Borivali", draft({ label: "Blabber Borivali" }));
       api.answer([borivali]);
       await queue.poll();
+      await queue.choose(item.id, 0);
       expect((await queue.list())[0]!.state).toMatchObject({ kind: "branch", chain });
     });
 
@@ -384,6 +467,7 @@ describe("PendingQueue", () => {
       const item = await queue.add("Blabber Juhu", draft({ label: "Blabber Juhu", status: "visited" }));
       api.answer([{ ...juhu, location: { lat: 19.1156, lng: 72.8358 }, sourceLinks: ["https://www.zomato.com/mumbai/blabber-all-day-juhu"] }]);
       await queue.poll();
+      await queue.choose(item.id, 0);
       expect((await queue.list()).find((i) => i.id === item.id)!.state).toMatchObject({ kind: "added", placeId: first.id });
       expect(places(diary)).toHaveLength(1);
       expect([...diary.items.values()].filter((i) => i.type === "status")).toMatchObject([{ placeId: first.id }]);

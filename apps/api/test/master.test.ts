@@ -3,6 +3,7 @@
 import { env, exports } from "cloudflare:workers";
 import { describe, expect, it } from "vitest";
 import {
+  CORRECTION_WINDOW_MS,
   deriveAccount,
   fromBase64,
   generateIdentity,
@@ -191,7 +192,7 @@ describe("the master board and the place catalogue", () => {
     expect(results.map((r) => [toBase64(new Uint8Array(r.link_hash)), r.place_id])).toEqual([[expected, cafeId]]);
   });
 
-  it("locks a member's place facts after the first write and keeps dropped pins off the master board", async () => {
+  it("locks a member's place facts once corrected or shared and keeps dropped pins off the master board", async () => {
     const d = diaryOf(friend, friendStorage);
     const mine = await d.write({ type: "place", placeId: null, payload: place("Bastian", "https://maps.google.com/?cid=222") });
     await d.write({ type: "status", placeId: mine.id, payload: { status: "want" }, boards: [masterBoardOf(friend)!.id] });
@@ -200,9 +201,41 @@ describe("the master board and the place catalogue", () => {
     await d.sync();
     expect(d.skipped).toEqual([]);
 
+    // A fresh place nobody else has touched can still be corrected by the person who added it.
     await d.write({ id: mine.id, type: "place", placeId: null, payload: place("Bastian Worli", "https://maps.google.com/?cid=222") });
     await d.sync();
+    expect(d.skipped).toEqual([]);
+
+    // Once someone else puts a status on it, only the admin edits its facts.
+    const other = diaryOf(admin, adminStorage);
+    await other.sync();
+    const theirs = await other.write({ type: "status", placeId: mine.id, payload: { status: "visited" }, boards: [masterBoardOf(admin)!.id] });
+    await other.sync();
+    await d.write({ id: mine.id, type: "place", placeId: null, payload: place("Bastian Bandra", "https://maps.google.com/?cid=222") });
+    await d.sync();
     expect(d.skipped.at(-1)).toEqual({ id: mine.id, reason: "facts_locked" });
+    await other.remove(theirs.id);
+    await other.sync();
+
+    // And so does a place added longer ago than the correction window.
+    const old = Date.now() - CORRECTION_WINDOW_MS - 60_000;
+    const seal = (id: string | undefined, name: string, updatedAt: number) =>
+      sealEnvelope({
+        ...(id ? { id } : {}),
+        type: "place",
+        authorId: friend.accountId,
+        deviceId: friend.deviceId,
+        placeId: null,
+        payload: place(name, "https://maps.google.com/?cid=223"),
+        boards: [writeKey(friend, masterBoardOf(friend)!.id)!],
+        signSecretKey: friend.identity.signSecretKey,
+        createdAt: old,
+        updatedAt,
+      });
+    const first = seal(undefined, "Old place", old);
+    expect((await api.pushEnvelopes([first], signer(friend))).rejected).toEqual([]);
+    const late = seal(first.id, "Old place, renamed", Date.now());
+    expect((await api.pushEnvelopes([late], signer(friend))).rejected).toEqual([{ id: first.id, reason: "facts_locked" }]);
 
     // A dropped pin sealed to the master board by hand is refused too.
     const forged = sealEnvelope({
@@ -224,7 +257,7 @@ describe("the master board and the place catalogue", () => {
     const a = diaryOf(admin, adminStorage);
     await a.sync();
     const seen = await a.listItems();
-    expect(seen.find((i) => i.id === mine.id)?.payload).toMatchObject({ name: "Bastian" });
+    expect(seen.find((i) => i.id === mine.id)?.payload).toMatchObject({ name: "Bastian Worli" });
     expect(seen.some((i) => i.type === "status" && i.authorId === friend.accountId)).toBe(true);
     expect(seen.some((i) => i.id === pin.id)).toBe(false);
     await a.write({ id: cafeId, type: "place", placeId: null, payload: place("Kyani & Co.", "https://maps.google.com/?cid=111") });

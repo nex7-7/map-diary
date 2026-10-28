@@ -1,4 +1,4 @@
-import type { EnvelopeType, JsonValue } from "@map-diary/crypto";
+import { CORRECTION_WINDOW_MS, type EnvelopeType, type JsonValue } from "@map-diary/crypto";
 import { outletIds } from "../places/chains";
 import { mergeTargets, resolvePlace } from "../places/merges";
 import type { StoredItem } from "../places/items-source";
@@ -222,6 +222,19 @@ export async function removeOpinion(w: DiaryWriter, id: string): Promise<void> {
 export async function updateFacts(w: DiaryWriter, place: StoredItem, facts: PlacePayload): Promise<void> {
   if (place.type !== "place" && place.type !== "private_place") throw new EntryError("That isn't a place.");
   await w.write({ type: place.type, placeId: place.placeId, payload: json(facts), id: place.id });
+}
+
+/**
+ * Whether this person may change a catalogue place's facts: the admin always; whoever added it
+ * while correcting a wrong match, for CORRECTION_WINDOW_MS and while nobody else has put
+ * anything on it. The Worker checks the same, and also counts what this device cannot see.
+ */
+export function canChangeFacts(items: readonly StoredItem[], placeId: string, me: string, isAdmin: boolean, now = Date.now()): boolean {
+  const place = items.find((i) => i.id === placeId);
+  if (!place || place.type !== "place") return false;
+  if (isAdmin) return true;
+  if (place.authorId !== me || place.createdAt > now || now - place.createdAt >= CORRECTION_WINDOW_MS) return false;
+  return !items.some((i) => i.placeId === placeId && i.authorId !== me);
 }
 
 /**

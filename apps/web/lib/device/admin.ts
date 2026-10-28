@@ -25,7 +25,7 @@ import {
 import { EntryError } from "../entries/actions";
 import { getPendingQueue } from "../pending/session";
 import { factsAfterMerge, factsOfMerged } from "../places/merges";
-import { readPayload } from "../places/payloads";
+import { readPayload, type PlacePayload } from "../places/payloads";
 import { api } from "./session";
 
 // Admin-only actions. The Worker checks the admin device's signature on each one; nothing
@@ -90,12 +90,16 @@ export async function mergePlaces(diary: Diary, keptId: string, duplicateId: str
  * Sends a catalogue place to the resolver again, by its first link or else its name. The
  * answer waits in this device's Inbox, where picking a match replaces the place's facts.
  */
-export async function lookUpAgain(diary: Diary, placeId: string): Promise<void> {
+export async function lookUpAgain(diary: Diary, placeId: string, query?: string, correcting = false): Promise<void> {
   const item = (await diary.listItems()).find((i) => i.id === placeId && i.type === "place");
   const facts = item && readPayload("place", item.payload);
   if (!facts) throw new EntryError("That place isn't on this device. Let it sync, then try again.");
-  const query = facts.sourceLinks[0] ?? [facts.name, facts.address].filter(Boolean).join(", ");
-  await (await getPendingQueue(diary)).lookUpAgain(placeId, query, facts.name);
+  await (await getPendingQueue(diary)).lookUpAgain(placeId, query?.trim() || defaultQuery(facts), facts.name, correcting);
+}
+
+/** What a place is looked up again by when nothing better is given: its first link, or its name and address. */
+export function defaultQuery(facts: PlacePayload): string {
+  return facts.sourceLinks[0] ?? [facts.name, facts.address].filter(Boolean).join(", ");
 }
 
 export function inviteFriend(diary: Diary): Promise<NewAppInvite> {

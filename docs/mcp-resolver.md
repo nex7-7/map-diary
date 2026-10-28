@@ -18,8 +18,22 @@ a plain JSON reply. `GET` and `DELETE` answer `405`.
 
 | Tool | Input | Output |
 | --- | --- | --- |
-| `get_pending_jobs` | `{ limit?: 1-50 }` (default 10) | `{ jobs: [{ id, query, expandedUrl?, attempts, createdAt }] }`. Each listing counts an attempt; 5 without an answer fails the job |
-| `submit_resolution` | `{ jobId, candidates: ResolvedPlace[] }` or `{ jobId, failed: true }` | `{ jobId, status }`, or an error in plain words (outside Mumbai, bad price, already answered…) that Claude can fix and retry |
+| `get_pending_jobs` | `{ limit?: 1-50 }` (default 10) | `{ jobs: [{ id, query, expandedUrl?, linkName?, attempts, createdAt }] }`. Each listing counts an attempt; 5 without an answer fails the job |
+| `submit_resolution` | `{ jobId, candidates: ResolvedPlace[] }` or `{ jobId, failed: true }` | `{ jobId, status }`, or an error in plain words (outside Mumbai, bad price, already answered…) that Claude can fix and retry. A failed job can still be answered while `get_failed_jobs` lists it |
+| `get_failed_jobs` | `{ limit?: 1-50 }` (default 10) | Failed jobs the device still waits on, newest first, same fields as `get_pending_jobs`. Listing counts no attempt |
+| `requeue_job` | `{ jobId, query? }` | Puts a failed job back in the queue with fresh attempts, with `query` (a better link, or name and area) in place of the old one |
+
+`linkName` is the restaurant's name behind a Zomato share link (`zomato.onelink.me`). Those
+links only carry a token the Zomato app opens; asked like a link preview
+(`facebookexternalhit/1.1`), Zomato redirects once with the name in `af_og_title`, which the
+Worker reads. It never says which branch, so the resolver searches the name like a plain
+name and the person picks the branch in the Inbox.
+
+**Fixing a failed job from a chat:** with the connector on, ask Claude to list failed jobs,
+then give it the right link for one ("the Samai one is
+https://www.zomato.com/mumbai/samai-marathmola-jewanachi-mejwani-lower-parel"). It calls
+`requeue_job` with that link, and the next run resolves it; or it can look the place up and
+answer it there and then. The answer still reaches only the device that asked.
 
 `ResolvedPlace` is the format in [resolver.md](resolver.md#result-format).
 
@@ -68,8 +82,11 @@ connector. Use no other connector, and do not save anything about these places t
 1. Call get_pending_jobs with limit 10. If there are no jobs, stop and say "No pending jobs."
 2. For each job, find the place its query describes. The query is a Google Maps, Zomato,
    District or other link, or a plain name. If expandedUrl is present, it is the full Google
-   Maps URL behind a short link; its coordinates and name are the best evidence. Search
-   the web for anything else. A plain name means a place in Mumbai.
+   Maps URL behind a short link; its coordinates and name are the best evidence. If linkName
+   is present, the query is a Zomato share link that only opens the app: don't open it, but
+   search Zomato for linkName in Mumbai and use its page; if several branches carry that
+   name, give each one as a candidate. Search the web for anything else. A plain name means
+   a place in Mumbai.
 3. Check whether the place is one outlet of a chain. On its Zomato page, scroll down to the
    Direction box: a link such as "See all 3 The Bombay Cartel outlets in Mumbai" means it is.
    Open that link and note every outlet listed (name, area and address, and its own Zomato

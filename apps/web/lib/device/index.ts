@@ -8,6 +8,7 @@ export { addDevice, choosePassphrase, connectClaudeDevice, listDevices, removeDe
 export {
   allDevices,
   exportSql,
+  defaultQuery,
   lookUpAgain,
   mergePlaces,
   resolver,

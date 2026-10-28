@@ -107,7 +107,7 @@ Places hold shared facts, people attach opinions to them, and every opinion is p
 - **A group's list** is every place where some member has a status opinion on that group's board or the master board.
 - Anyone who can see a place can tag and comment on it, at a visibility no wider than their own access.
 - A tag opinion can only go to boards where its tag definition is also visible; the app warns and offers to widen the definition.
-- **Facts:** written once by the first resolution. After that, only the admin can edit them. Duplicate places are blocked by a keyed hash of the normalised source link, which the server can check without reading the place.
+- **Facts:** written once by the first resolution. The person who added a place can still correct a wrong match (look it up again with a better link, or type the details in) for three days, while nobody else has an opinion on it. After that, only the admin can edit them. Duplicate places are blocked by a keyed hash of the normalised source link, which the server can check without reading the place.
 - Dropped pins are private places and never enter the shared catalogue.
 - **Chains:** each outlet of a chain is its own catalogue place (own pin, address, links and duplicate check), and its facts carry the chain's id and name. The app folds a chain's outlets into one place page with a row per location, one list entry, and a pin per outlet. Status and tags count for the whole chain (one status per person); a comment is about one outlet or all of them. Boards work as for any place. The resolver returns a chain's other outlets and the Inbox asks whether to add all of them or only one. The resolver keeps no memory, so the device itself compares a newly found place with the catalogue it already holds: the same name at the same spot adds to the existing place, and the same name elsewhere asks "Another branch of …?" and, if so, joins it (a place not yet in a chain lends its id as the chain id, and the admin's device writes the chain into its facts). Only the admin can add an existing place to a chain (Edit details → Part of a chain); the Claude assistant can also do it, but only for places it added itself.
 - **Categories:** Restaurant, Café/Bar, Roadside Stall, Desserts, Movies, Recreation, Beach, plus custom ones. The four food and drink ones carry a wallet bleeder.
@@ -149,7 +149,7 @@ Adding saves instantly on the device; everything slow happens afterwards.
 2. The Add sheet shows category, status, tag chips, description and a board picker. Defaults: Want to, Personal board. Only the save tap is required.
 3. The item is encrypted on the device and synced immediately.
 4. Google Maps links resolve on the device (coordinates are in the expanded URL). Dropped pins need no resolution.
-5. Zomato, District and plain names go to the resolver queue and show as pending in the Inbox until resolved.
+5. Zomato, District and plain names go to the resolver queue and show as pending in the Inbox until resolved. A plain name (or a Zomato share link, which only gives the name) always asks "Is this it?" before adding. A failed or wrong lookup can be looked up again with a better link or name, or filled in by hand.
 
 **Manage**
 

@@ -40,6 +40,11 @@ export interface PendingDraft {
    * that place's new facts, and no opinions are written.
    */
   refreshPlaceId?: string;
+  /**
+   * With `refreshPlaceId`: the place was the wrong match, so its links and chain go and the
+   * new facts start over, instead of adding to them.
+   */
+  correcting?: true;
 }
 
 export type PendingState =

@@ -9,7 +9,7 @@ import {
   toBase64,
 } from "@map-diary/crypto";
 import { readBody, type SignedEnv } from "./auth";
-import { expandShortLink, isShortMapsLink } from "./expand";
+import { expandShortLink, isShortMapsLink, isZomatoOnelink, onelinkName } from "./expand";
 import { bytes, fail, isB64, isId, isObject } from "./http";
 
 /**
@@ -108,13 +108,20 @@ resolverJobs.delete("/resolver/jobs/:id", async (c) => {
 
 /**
  * Expands a short Google Maps link (maps.app.goo.gl and friends) to the full URL, whose
- * coordinates the device then reads itself. A web page cannot follow that redirect
- * (no CORS), so the Worker does. Only Google hosts are ever fetched.
+ * coordinates the device then reads itself, or reads the restaurant's name off a Zomato
+ * share link (`{ name }`). A web page cannot follow those redirects (no CORS), so the Worker
+ * does. Only Google hosts and zomato.onelink.me are ever fetched.
  */
 resolverJobs.post("/resolver/expand", perClient, readBody, async (c) => {
   const body = c.var.body;
   const url = isObject(body) ? body.url : undefined;
-  if (typeof url !== "string" || url.length > 2000 || !isShortMapsLink(url)) return fail(c, 400, "bad_request");
+  if (typeof url !== "string" || url.length > 2000) return fail(c, 400, "bad_request");
+  if (isZomatoOnelink(url)) {
+    const name = await onelinkName(url, (r) => fetch(r));
+    if (!name) return fail(c, 422, "not_expanded");
+    return c.json({ name });
+  }
+  if (!isShortMapsLink(url)) return fail(c, 400, "bad_request");
   const expanded = await expandShortLink(url, (r) => fetch(r));
   if (!expanded) return fail(c, 422, "not_expanded");
   return c.json({ url: expanded });
@@ -145,8 +152,22 @@ export interface PendingJob {
   query: string;
   /** The full URL behind a short Google Maps link, when the query is one. */
   expandedUrl?: string;
+  /** The restaurant's name behind a Zomato share link, which never says which branch. */
+  linkName?: string;
   attempts: number;
   createdAt: number;
+}
+
+/** Fills in what the Worker can read from a link the resolver cannot open itself. */
+async function withLinkDetails(job: PendingJob, doFetch: (r: Request) => Promise<Response>): Promise<PendingJob> {
+  if (isShortMapsLink(job.query)) {
+    const expanded = await expandShortLink(job.query, doFetch);
+    if (expanded) job.expandedUrl = expanded;
+  } else if (isZomatoOnelink(job.query)) {
+    const name = await onelinkName(job.query, doFetch);
+    if (name) job.linkName = name;
+  }
+  return job;
 }
 
 /**
@@ -177,16 +198,54 @@ export async function takePendingJobs(
     .bind(now, now, limit)
     .all<{ id: string; query: string; attempts: number; created_at: number }>();
   results.sort((a, b) => a.created_at - b.created_at);
-  return Promise.all(
-    results.map(async (r) => {
-      const job: PendingJob = { id: r.id, query: r.query, attempts: r.attempts, createdAt: r.created_at };
-      if (isShortMapsLink(r.query)) {
-        const expanded = await expandShortLink(r.query, doFetch);
-        if (expanded) job.expandedUrl = expanded;
-      }
-      return job;
-    }),
-  );
+  return Promise.all(results.map((r) => withLinkDetails({ id: r.id, query: r.query, attempts: r.attempts, createdAt: r.created_at }, doFetch)));
+}
+
+/**
+ * Lists failed jobs that still have their query (the device that asked has not given up on
+ * them yet), newest first, so someone holding the resolver token can look at them again.
+ * Listing does not count an attempt.
+ */
+export async function listFailedJobs(
+  db: D1Database,
+  limit: number,
+  now: number,
+  doFetch: (r: Request) => Promise<Response> = (r) => fetch(r),
+): Promise<PendingJob[]> {
+  const { results } = await db
+    .prepare(
+      `SELECT id, query, attempts, created_at FROM resolver_jobs
+        WHERE status = 'failed' AND query IS NOT NULL AND expires_at > ?
+        ORDER BY created_at DESC LIMIT ?`,
+    )
+    .bind(now, limit)
+    .all<{ id: string; query: string; attempts: number; created_at: number }>();
+  return Promise.all(results.map((r) => withLinkDetails({ id: r.id, query: r.query, attempts: r.attempts, createdAt: r.created_at }, doFetch)));
+}
+
+export type RequeueOutcome = { ok: true } | { ok: false; status: 400 | 404; error: string };
+
+/**
+ * Puts a failed job back in the queue with a fresh count of attempts, optionally with a
+ * better query (the right link, or the name and area). The device that asked still holds the
+ * job's one-time key, so the answer reaches it as before.
+ */
+export async function requeueJob(db: D1Database, id: string, query: unknown, now: number): Promise<RequeueOutcome> {
+  if (!isId(id)) return { ok: false, status: 404, error: "not_found" };
+  let next: string | null = null;
+  if (query !== undefined) {
+    if (typeof query !== "string" || !query.trim() || query.trim().length > MAX_QUERY_LENGTH) return { ok: false, status: 400, error: "bad_query" };
+    next = query.trim();
+  }
+  const { meta } = await db
+    .prepare(
+      `UPDATE resolver_jobs SET status = 'pending', attempts = 0, query = COALESCE(?, query), updated_at = ?
+        WHERE id = ? AND status = 'failed' AND query IS NOT NULL AND expires_at > ?`,
+    )
+    .bind(next, now, id, now)
+    .run();
+  if (meta.changes === 0) return { ok: false, status: 404, error: "not_found" };
+  return { ok: true };
 }
 
 export type SubmitOutcome =
@@ -202,11 +261,13 @@ export type SubmitOutcome =
 export async function submitResolution(db: D1Database, id: string, answer: unknown, now: number): Promise<SubmitOutcome> {
   if (!isId(id)) return { ok: false, status: 404, error: "not_found" };
   const row = await db
-    .prepare("SELECT status, reply_public_key, expires_at FROM resolver_jobs WHERE id = ?")
+    .prepare("SELECT status, query, reply_public_key, expires_at FROM resolver_jobs WHERE id = ?")
     .bind(id)
-    .first<{ status: string; reply_public_key: unknown; expires_at: number }>();
+    .first<{ status: string; query: string | null; reply_public_key: unknown; expires_at: number }>();
   if (!row || row.expires_at <= now) return { ok: false, status: 404, error: "not_found" };
-  if (row.status !== "pending") return { ok: false, status: 409, error: "not_pending" };
+  // A failed job can still be answered while the device waits on it: someone found the place after all.
+  const open = row.status === "pending" || (row.status === "failed" && row.query !== null);
+  if (!open) return { ok: false, status: 409, error: "not_pending" };
 
   if (isObject(answer) && answer.failed === true) {
     await db
@@ -225,7 +286,7 @@ export async function submitResolution(db: D1Database, id: string, answer: unkno
   const { meta } = await db
     .prepare(
       `UPDATE resolver_jobs SET status = 'resolved', query = NULL, sealed_result = ?, updated_at = ?
-        WHERE id = ? AND status = 'pending'`,
+        WHERE id = ? AND status IN ('pending', 'failed')`,
     )
     .bind(sealed, now, id)
     .run();
@@ -241,6 +302,21 @@ resolverWork.get("/resolver/pending", requireResolver, async (c) => {
   if (!Number.isSafeInteger(n) || n < 1) return fail(c, 400, "bad_request");
   const jobs = await takePendingJobs(c.env.DB, Math.min(n, MAX_PENDING), Date.now());
   return c.json({ jobs });
+});
+
+resolverWork.get("/resolver/failed", requireResolver, async (c) => {
+  const raw = c.req.query("limit");
+  const n = raw === undefined ? DEFAULT_PENDING : Number(raw);
+  if (!Number.isSafeInteger(n) || n < 1) return fail(c, 400, "bad_request");
+  const jobs = await listFailedJobs(c.env.DB, Math.min(n, MAX_PENDING), Date.now());
+  return c.json({ jobs });
+});
+
+resolverWork.post("/resolver/jobs/:id/requeue", requireResolver, readBody, async (c) => {
+  const body = c.var.body;
+  const outcome = await requeueJob(c.env.DB, c.req.param("id"), isObject(body) ? body.query : undefined, Date.now());
+  if (!outcome.ok) return fail(c, outcome.status, outcome.error);
+  return c.json({ status: "pending" });
 });
 
 resolverWork.post("/resolver/jobs/:id/resolution", requireResolver, readBody, async (c) => {

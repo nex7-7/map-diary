@@ -34,6 +34,12 @@ const FOOD: ReadonlySet<ResolverCategory> = new Set(FOOD_CATEGORIES);
 export const MUMBAI_BOUNDS = [72.75, 18.85, 73.15, 19.35] as const;
 
 export const MAX_CANDIDATES = 5;
+/**
+ * How long the person who added a catalogue place may still correct its facts themselves
+ * (a wrong match, a pin in the wrong spot), as long as nobody else has put anything on it.
+ * After that only the admin edits them.
+ */
+export const CORRECTION_WINDOW_MS = 3 * 24 * 60 * 60 * 1000;
 /** The most other outlets one chain can bring along. */
 export const MAX_OUTLETS = 40;
 const MAX_LINKS = 5;
