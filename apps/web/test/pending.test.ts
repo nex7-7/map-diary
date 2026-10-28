@@ -2,6 +2,7 @@ import { beforeAll, describe, expect, it } from "vitest";
 import { fromBase64, generateReplyKeys, ready, sealResolverResult, toBase64, type ResolvedChain, type ResolvedPlace } from "@map-diary/crypto";
 import { ApiError, NetworkError, type ResolverJobResponse } from "@map-diary/sync";
 import { readPayload } from "../lib/places/payloads";
+import { setStatus } from "../lib/entries/actions";
 import { unwrittenChains } from "../lib/places/chains";
 import { ADDED_KEEP_MS, PendingQueue, type ResolverApi } from "../lib/pending/queue";
 import { MemoryPendingStore, type PendingDraft } from "../lib/pending/store";
@@ -414,6 +415,31 @@ describe("PendingQueue", () => {
     };
     const onMap = (d: FakeDiary, p: ResolvedPlace) =>
       d.write({ type: "place", placeId: null, payload: { name: p.name, category: p.category, location: p.location, address: p.address!, sourceLinks: p.sourceLinks } });
+
+    it("puts a re-added place's notes on the one already there, keeping its status, and says so", async () => {
+      const { api, diary, queue } = setup();
+      const first = await onMap(diary, juhu);
+      await setStatus(diary, first.id, "visited");
+      const item = await queue.add("Blabber All Day", draft({ label: "Blabber All Day", comment: "Back again" }));
+      api.answer([{ ...juhu, name: "Blabber All Day - Juhu", sourceLinks: ["https://www.zomato.com/mumbai/blabber-all-day-juhu"] }]);
+      await queue.poll();
+      await queue.choose(item.id, 0);
+
+      expect(places(diary)).toHaveLength(1);
+      expect((await queue.list())[0]!.state).toEqual({ kind: "added", placeId: first.id, name: "Blabber All Day - Juhu", existing: true });
+      const snap = diary.snapshot().places[0]!;
+      expect(snap.opinions.filter((o) => o.kind === "status")).toMatchObject([{ status: "visited" }]);
+      expect(snap.opinions.some((o) => o.kind === "comment")).toBe(true);
+    });
+
+    it("says a match found by its link was already in the diary", async () => {
+      const { api, diary, queue } = setup();
+      const first = await onMap(diary, juhu);
+      await queue.add("https://maps.google.com/?cid=1", draft({ link: "https://maps.google.com/?cid=1" }));
+      api.answer([juhu]);
+      await queue.poll();
+      expect((await queue.list())[0]!.state).toMatchObject({ kind: "added", placeId: first.id, existing: true });
+    });
 
     it("asks whether a match with the same name elsewhere is another branch", async () => {
       const { api, diary, queue } = setup();
