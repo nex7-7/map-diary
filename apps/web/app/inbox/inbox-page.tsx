@@ -14,6 +14,7 @@ import { toastError } from "@/lib/errors";
 import b from "./inbox.module.css";
 import { DeviceGate, type Diary } from "@/lib/device";
 import { choicesOf, usePending, type FailReason, type PendingItem, type PendingQueue } from "@/lib/pending";
+import { canChangeFacts } from "@/lib/entries/actions";
 import { categoryStyle, STATUS_LABELS } from "@/lib/places/categories";
 import type { CommentOpinion, DiarySnapshot, StatusOpinion } from "@/lib/places/types";
 
@@ -35,7 +36,7 @@ export function InboxPage() {
 
 function Inbox({ diary }: { diary: Diary }) {
   const { queue, items } = usePending(diary, INBOX_POLL_MS);
-  const { snapshot } = useItems(diary);
+  const { snapshot, items: diaryItems } = useItems(diary);
   const friends = useFriendNews(snapshot, diary.device.accountId);
   const me = snapshot.people.find((p) => p.id === diary.device.accountId);
 
@@ -142,6 +143,11 @@ function Inbox({ diary }: { diary: Diary }) {
                 <ItemHead item={i} />
               </div>
               <p className="hand m-0 text-[15px] text-seal-deep">{failText(i.state.kind === "failed" ? i.state.reason : "not_found")}</p>
+              <Correct
+                start={i.query}
+                onLookUp={(q) => run(() => queue.requery(i.id, q))}
+                fillHref={`/fill#pending=${encodeURIComponent(i.id)}`}
+              />
               <div className={styles.row}>
                 <Button variant="secondary" size="m" onClick={() => run(() => queue.retry(i.id))}>
                   Try again
@@ -165,15 +171,16 @@ function Inbox({ diary }: { diary: Diary }) {
         <Section title="Found">
           {added.map((i) =>
             i.state.kind === "added" ? (
-              <div key={i.id} className={`rise ${b.found}`} style={delay()}>
-                <span className="seal size-[44px] shrink-0 text-[7px] tracking-[0.12em] [transform:rotate(-8deg)]">Added</span>
-                <Link href={`/place#${encodeURIComponent(i.state.placeId)}`} className="sketch-link min-w-0 flex-1 font-serif text-[19px] no-underline">
-                  {i.state.name}
-                </Link>
-                <button type="button" className={styles.textbutton} onClick={() => run(() => queue.dismiss(i.id))}>
-                  Clear
-                </button>
-              </div>
+              <FoundRow
+                key={i.id}
+                item={i}
+                placeId={i.state.placeId}
+                name={i.state.name}
+                canFix={!i.draft.refreshPlaceId && canChangeFacts(diaryItems, i.state.placeId, diary.device.accountId, diary.device.isAdmin === true)}
+                queue={queue}
+                run={run}
+                style={delay()}
+              />
             ) : null,
           )}
         </Section>
@@ -231,7 +238,7 @@ function ItemHead({ item }: { item: PendingItem }) {
   return (
     <div className="flex min-w-0 flex-col gap-0.5">
       <span className="font-serif text-[21px] leading-tight">{item.draft.label || item.query}</span>
-      <span className="text-[12px] text-ink-3">{item.draft.refreshPlaceId ? "New details for a place (admin)" : STATUS_LABELS[item.draft.status]}</span>
+      <span className="text-[12px] text-ink-3">{item.draft.refreshPlaceId ? "New details for a place" : STATUS_LABELS[item.draft.status]}</span>
       {item.draft.link && item.draft.link !== item.draft.label && <span className={`text-[12px] text-ink-3 ${b.link}`}>{item.draft.link}</span>}
     </div>
   );
@@ -250,7 +257,9 @@ function ChooseLetter({ item, queue, run, style }: LetterProps) {
         <span className="font-serif text-[21px]">“{item.draft.label || item.query}”</span>
         <span className="hand text-[15px] text-ink-2">
           {refresh
-            ? "Pick the match to replace its details with. Its links, chain and everyone's notes stay."
+            ? item.draft.correcting
+              ? "Pick the right place. Its details and links are replaced; everyone's notes stay."
+              : "Pick the match to replace its details with. Its links, chain and everyone's notes stay."
             : n === 1
               ? "One place came back. Is this it?"
               : `${n} places came back. Which one did you mean?`}
@@ -265,10 +274,16 @@ function ChooseLetter({ item, queue, run, style }: LetterProps) {
           </li>
         ))}
       </ul>
+      <Correct
+        prompt="None of these?"
+        start={item.query}
+        onLookUp={(q) => run(() => queue.requery(item.id, q))}
+        fillHref={`/fill#pending=${encodeURIComponent(item.id)}`}
+      />
       <div className={styles.row}>
         {!refresh && (
           <Link href={`/add#pending=${encodeURIComponent(item.id)}`} className={styles.textbutton}>
-            None of these, drop a pin
+            Drop a private pin instead
           </Link>
         )}
         <button type="button" className={styles.textbutton} onClick={() => run(() => queue.dismiss(item.id))}>
@@ -337,6 +352,102 @@ function BranchLetter({ item, queue, run, style }: LetterProps) {
         </Button>
       </div>
     </Letter>
+  );
+}
+
+/**
+ * Puts a lookup right by hand: a better link or name to look up instead, or the details typed
+ * in by the person themselves.
+ */
+function Correct({
+  prompt,
+  start,
+  onLookUp,
+  fillHref,
+  onCancel,
+}: {
+  prompt?: string;
+  start: string;
+  onLookUp: (query: string) => void;
+  fillHref: string;
+  /** Given when the form starts open; Cancel then closes it from outside. */
+  onCancel?: () => void;
+}) {
+  const [open, setOpen] = useState(onCancel !== undefined);
+  const [query, setQuery] = useState(start);
+  if (!open) {
+    return (
+      <div className={styles.row}>
+        <button type="button" className={styles.textbutton} onClick={() => setOpen(true)}>
+          {prompt ? `${prompt} Look up something else` : "Look up something else"}
+        </button>
+        <Link href={fillHref} className={styles.textbutton}>
+          Fill it in yourself
+        </Link>
+      </div>
+    );
+  }
+  return (
+    <form
+      className="flex flex-col gap-2"
+      onSubmit={(e) => {
+        e.preventDefault();
+        if (query.trim()) onLookUp(query);
+      }}
+    >
+      <label className="flex flex-col gap-1">
+        <span className="text-[12px] text-ink-2">The right Zomato or Google Maps link, or the name and area</span>
+        <input className={styles.input} value={query} onChange={(e) => setQuery(e.target.value)} autoFocus inputMode="url" />
+      </label>
+      <div className={styles.row}>
+        <Button size="m" type="submit" disabled={!query.trim()}>
+          Look it up
+        </Button>
+        <Link href={fillHref} className="chip soft">
+          <Icon name="pencil" size="s" />
+          Fill it in yourself
+        </Link>
+        <button type="button" className={styles.textbutton} onClick={() => (onCancel ? onCancel() : setOpen(false))}>
+          Cancel
+        </button>
+      </div>
+    </form>
+  );
+}
+
+/** A place the resolver found and the diary added; while it is still the person's to correct, it can be put right. */
+function FoundRow({ item, placeId, name, canFix, queue, run, style }: LetterProps & { placeId: string; name: string; canFix: boolean }) {
+  const [fixing, setFixing] = useState(false);
+  return (
+    <div className="rise flex flex-col gap-2" style={style}>
+      <div className={b.found}>
+        <span className="seal size-[44px] shrink-0 text-[7px] tracking-[0.12em] [transform:rotate(-8deg)]">Added</span>
+        <Link href={`/place#${encodeURIComponent(placeId)}`} className="sketch-link min-w-0 flex-1 font-serif text-[19px] no-underline">
+          {name}
+        </Link>
+        {canFix && !fixing && (
+          <button type="button" className={styles.textbutton} onClick={() => setFixing(true)}>
+            Wrong place?
+          </button>
+        )}
+        <button type="button" className={styles.textbutton} onClick={() => run(() => queue.dismiss(item.id))}>
+          Clear
+        </button>
+      </div>
+      {fixing && (
+        <Correct
+          start={item.query}
+          onCancel={() => setFixing(false)}
+          onLookUp={(q) =>
+            run(async () => {
+              await queue.lookUpAgain(placeId, q, name, true);
+              await queue.dismiss(item.id);
+            })
+          }
+          fillHref={`/fill#place=${encodeURIComponent(placeId)}`}
+        />
+      )}
+    </div>
   );
 }
 

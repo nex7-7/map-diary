@@ -53,7 +53,7 @@ const candidate = {
 };
 
 describe("MCP resolver endpoint", () => {
-  it("initializes and lists the two tools", async () => {
+  it("initializes and lists the tools", async () => {
     const init = await rpc("initialize", {
       protocolVersion: "2025-06-18",
       capabilities: {},
@@ -75,7 +75,7 @@ describe("MCP resolver endpoint", () => {
     expect(note.status).toBe(202);
 
     const list = await (await rpc("tools/list")).json<{ result: { tools: { name: string }[] } }>();
-    expect(list.result.tools.map((t) => t.name)).toEqual(["get_pending_jobs", "submit_resolution"]);
+    expect(list.result.tools.map((t) => t.name)).toEqual(["get_pending_jobs", "submit_resolution", "get_failed_jobs", "requeue_job"]);
 
     const unknown = await (await rpc("resources/list")).json<{ error: { code: number } }>();
     expect(unknown.error.code).toBe(-32601);
@@ -126,6 +126,25 @@ describe("MCP resolver endpoint", () => {
     const out = await callTool("submit_resolution", { jobId: id, failed: true });
     expect(out.structuredContent).toEqual({ jobId: id, status: "failed" });
     expect((await callTool("submit_resolution", { jobId: "nope", failed: true })).content[0]!.text).toMatch(/No such job/);
+  });
+
+  it("lists failed jobs and puts one back with a better link", async () => {
+    const { id, keys } = await submit("Samai");
+    await callTool("submit_resolution", { jobId: id, failed: true });
+    const failed = await callTool("get_failed_jobs", { limit: 50 });
+    expect((failed.structuredContent as { jobs: { id: string; query: string }[] }).jobs).toContainEqual(expect.objectContaining({ id, query: "Samai" }));
+
+    const link = "https://www.zomato.com/mumbai/samai-marathmola-jewanachi-mejwani-lower-parel";
+    expect((await callTool("requeue_job", { jobId: id, query: link })).structuredContent).toEqual({ jobId: id, status: "pending" });
+    const listed = await callTool("get_pending_jobs", { limit: 50 });
+    expect((listed.structuredContent as { jobs: { id: string; query: string }[] }).jobs).toContainEqual(expect.objectContaining({ id, query: link }));
+    const again = await callTool("requeue_job", { jobId: id });
+    expect(again.isError).toBe(true);
+    expect(again.content[0]!.text).toMatch(/No such failed job/);
+
+    await callTool("submit_resolution", { jobId: id, candidates: [candidate] });
+    const job = await (await fetchApi(`/api/resolver/jobs/${id}`)).json<{ sealedResult: string }>();
+    expect(openResolverResult(fromBase64(job.sealedResult), keys).candidates).toHaveLength(1);
   });
 
   it("needs the token as a Bearer header, never in the URL", async () => {

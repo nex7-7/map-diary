@@ -12,7 +12,7 @@ const STATIC_FILES = __STATIC_FILES__;
 const SHELL = `shell-${VERSION}`;
 
 /** Pages kept for offline use. Each one's scripts, styles and fonts are kept with it. */
-const PAGES = ["/", "/add", "/inbox", "/place", "/tags", "/boards", "/groups", "/devices", "/profile", "/share"];
+const PAGES = ["/", "/add", "/inbox", "/fill", "/place", "/tags", "/boards", "/groups", "/devices", "/profile", "/share"];
 const NETWORK_WAIT_MS = 4000;
 const BUILT = /\/_next\/static\/[^"'\s)\\]+/g;
 

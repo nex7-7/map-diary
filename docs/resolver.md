@@ -21,7 +21,22 @@ A job listed 5 times without an answer is marked failed. A failed job keeps its 
 
 Short Google Maps links (maps.app.goo.gl) usually don't need a job: the device calls
 `POST /api/resolver/expand` and parses the full URL itself. When that fails, the job's
-listing carries `expandedUrl` if the Worker can expand it later.
+listing carries `expandedUrl` if the Worker can expand it later. A Zomato share link
+(zomato.onelink.me) only carries a token the Zomato app opens, so its listing carries
+`linkName`, the restaurant's name the Worker reads off the link-preview redirect (see
+[mcp-resolver.md](mcp-resolver.md)); it never says which branch.
+
+**Asking first:** the device adds a lone match by itself only for a link to one place. A
+plain name or a Zomato share link always asks "Is this it?" in the Inbox, since a name can
+mean another place.
+
+**Putting it right:** a failed job, or matches the person doesn't want, can be looked up
+again with a better link or name (a new job, with the same status, tags, note and boards;
+a wrong link is dropped), or filled in by hand on `/fill`. The resolver side can list failed
+jobs, put one back with a better query, or answer it directly. A place the resolver got
+wrong can be corrected by the person who added it (Inbox → Wrong place?, or the place page)
+for three days (`CORRECTION_WINDOW_MS`) while nobody else has a status, tag or comment on
+it; the Worker checks the same. After that only the admin edits its facts.
 
 ## Device routes (no auth)
 
@@ -30,7 +45,7 @@ listing carries `expandedUrl` if the Worker can expand it later.
 | `POST /api/resolver/jobs` | `{ query, replyPublicKey }` (query ≤ 1000 chars, key base64url 32 bytes) → `201 { id, status: "pending", expiresAt }`; `503 queue_full` |
 | `GET /api/resolver/jobs/:id` | `{ id, status: "pending" \| "resolved" \| "failed", sealedResult?, expiresAt }`; `404` once deleted or expired |
 | `DELETE /api/resolver/jobs/:id` | `204` |
-| `POST /api/resolver/expand` | `{ url }` (a short Google Maps link) → `{ url }` full Maps URL; `422 not_expanded` |
+| `POST /api/resolver/expand` | `{ url }` (a short Google Maps link) → `{ url }` full Maps URL, or (a Zomato share link) → `{ name }`; `422 not_expanded` |
 
 `Api` in `@map-diary/sync` has `submitResolverJob`, `getResolverJob`,
 `deleteResolverJob` and `expandMapsLink`.
@@ -40,9 +55,11 @@ listing carries `expandedUrl` if the Worker can expand it later.
 | Route | Body / response |
 | --- | --- |
 | `GET /api/resolver/pending?limit=10` (max 50) | `{ jobs: [{ id, query, expandedUrl?, attempts, createdAt }] }`, oldest first. Each listing counts an attempt |
-| `POST /api/resolver/jobs/:id/resolution` | `{ candidates: ResolvedPlace[] }` or `{ failed: true }` → `{ status }`; `400 <problem>` (see `ResolutionProblem`), `404`, `409 not_pending` |
+| `POST /api/resolver/jobs/:id/resolution` | `{ candidates: ResolvedPlace[] }` or `{ failed: true }` → `{ status }`; `400 <problem>` (see `ResolutionProblem`), `404`, `409 not_pending`. A failed job that still has its query can be answered too |
+| `GET /api/resolver/failed?limit=10` (max 50) | `{ jobs }` like `/pending`, failed jobs newest first; counts no attempt |
+| `POST /api/resolver/jobs/:id/requeue` | `{ query? }` → `{ status: "pending" }`; `400 bad_query`, `404` unless failed and still waited on |
 
-`takePendingJobs` and `submitResolution` are exported so the MCP endpoint can call the
+`takePendingJobs`, `submitResolution`, `listFailedJobs` and `requeueJob` are exported so the MCP endpoint can call the
 same logic.
 
 ## Result format

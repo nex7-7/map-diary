@@ -76,3 +76,42 @@ export async function expandShortLink(
   }
   return isFullMapsUrl(url) ? url.href : null;
 }
+
+/** A Zomato share link (zomato.onelink.me), which opens the app rather than a web page. */
+export function isZomatoOnelink(raw: string): boolean {
+  const url = parseHttps(raw.trim());
+  return url !== null && url.hostname.toLowerCase() === "zomato.onelink.me";
+}
+
+/** What a crawler is shown: Zomato answers it with the restaurant's name in the redirect. */
+const PREVIEW_AGENT = "facebookexternalhit/1.1";
+
+/**
+ * The restaurant's name behind a Zomato share link. The link itself only holds a token that
+ * the Zomato app turns into a restaurant; a browser lands on the "install the app" page. Asked
+ * the way a link preview is, Zomato redirects once with the name in `af_og_title`. That gives
+ * the name, not which branch, so the resolver searches it like a plain name. One request to
+ * zomato.onelink.me only; the redirect is read, never followed, and no body is read.
+ */
+export async function onelinkName(raw: string, doFetch: (r: Request) => Promise<Response>): Promise<string | null> {
+  if (!isZomatoOnelink(raw)) return null;
+  const url = parseHttps(raw.trim())!;
+  url.protocol = "https:";
+  let res: Response;
+  try {
+    res = await doFetch(new Request(url.href, { method: "GET", redirect: "manual", headers: { "User-Agent": PREVIEW_AGENT } }));
+  } catch {
+    return null;
+  }
+  await res.body?.cancel();
+  const location = res.headers.get("Location");
+  if (res.status < 300 || res.status >= 400 || !location) return null;
+  let next: URL;
+  try {
+    next = new URL(location, url);
+  } catch {
+    return null;
+  }
+  const name = (next.searchParams.get("af_og_title") ?? "").replace(/\s+/g, " ").trim();
+  return name && name.length <= 200 ? name : null;
+}

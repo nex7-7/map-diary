@@ -76,6 +76,7 @@ export {
   MUMBAI_BOUNDS,
   MAX_CANDIDATES,
   MAX_OUTLETS,
+  CORRECTION_WINDOW_MS,
   REPLY_PUBLIC_KEY_BYTES,
   parseResolution,
   parseOutsidePlace,

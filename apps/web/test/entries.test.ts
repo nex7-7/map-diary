@@ -5,6 +5,7 @@ import {
   addOpinions,
   addPlace,
   applyTag,
+  canChangeFacts,
   deletePlace,
   EntryError,
   findCataloguePlace,
@@ -417,5 +418,33 @@ describe("oneEmoji", () => {
     expect(oneEmoji("👩‍🍳")).toBe("👩‍🍳");
     expect(oneEmoji("🇮🇳")).toBe("🇮🇳");
     expect(oneEmoji("12")).toBe("");
+  });
+});
+
+describe("canChangeFacts", () => {
+  const now = 1_760_000_000_000;
+  const item = (over: Partial<StoredItem>): StoredItem => ({
+    id: "p",
+    type: "place",
+    authorId: "me",
+    placeId: null,
+    createdAt: now - 60_000,
+    updatedAt: now - 60_000,
+    boardIds: ["master"],
+    payload: {},
+    ...over,
+  });
+  const status = (authorId: string): StoredItem => item({ id: `s-${authorId}`, type: "status", placeId: "p", authorId });
+
+  it("lets the person who added a place correct it for a few days, while nobody else has touched it", () => {
+    expect(canChangeFacts([item({}), status("me")], "p", "me", false, now)).toBe(true);
+    expect(canChangeFacts([item({}), status("friend")], "p", "me", false, now)).toBe(false);
+    expect(canChangeFacts([item({ createdAt: now - 4 * 24 * 60 * 60 * 1000 })], "p", "me", false, now)).toBe(false);
+    expect(canChangeFacts([item({ authorId: "friend" })], "p", "me", false, now)).toBe(false);
+    expect(canChangeFacts([item({ type: "private_place" })], "p", "me", false, now)).toBe(false);
+  });
+
+  it("always lets the admin change a catalogue place", () => {
+    expect(canChangeFacts([item({ authorId: "friend" }), status("friend")], "p", "me", true, now)).toBe(true);
   });
 });

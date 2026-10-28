@@ -15,7 +15,9 @@ const PinPicker = dynamic(() => import("./pin-picker").then((m) => m.PinPicker),
 });
 
 interface Props {
-  facts: PlacePayload;
+  /** The place's facts as they are, or `start`, the form as it begins for a place not written yet. */
+  facts?: PlacePayload;
+  start?: FactsForm;
   onSave: (facts: PlacePayload) => Promise<void>;
   onCancel: () => void;
   /** For a catalogue place: finds or makes the chain for a typed chain name, and shows the field. */
@@ -23,8 +25,8 @@ interface Props {
 }
 
 /** Edits a place's facts: name, category, pin, address, cuisine, wallet bleeder and links. */
-export function FactsEditor({ facts, onSave, onCancel, chainFor }: Props) {
-  const [form, setForm] = useState<FactsForm>(() => formFromFacts(facts));
+export function FactsEditor({ facts, start, onSave, onCancel, chainFor }: Props) {
+  const [form, setForm] = useState<FactsForm>(() => start ?? formFromFacts(facts!));
   const [newLink, setNewLink] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);

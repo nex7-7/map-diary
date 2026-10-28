@@ -14,10 +14,11 @@ import { BoardBadge, buttonClass, Icon, useConfirm } from "@/lib/ui";
 import { onMap } from "@/lib/map/style";
 import { PlaceMap } from "./place-map";
 import p from "./place.module.css";
-import type { Diary } from "@/lib/device";
+import { defaultQuery, lookUpAgain, type Diary } from "@/lib/device";
 import {
   addComment,
   applyTag,
+  canChangeFacts,
   defineTag,
   deletePlace,
   editComment,
@@ -31,7 +32,7 @@ import { boardName, opinionBoards, tagFit } from "@/lib/places/boards";
 import { addressArea, chainFor, outletLabel, outletOf, viewOf } from "@/lib/places/chains";
 import { mergeTargets, resolvePlace } from "@/lib/places/merges";
 import { categoryStyle } from "@/lib/places/categories";
-import { readPayload } from "@/lib/places/payloads";
+import { readPayload, type PlacePayload } from "@/lib/places/payloads";
 import type { CommentOpinion, DiarySnapshot, Opinion, Outlet, PlaceView as Place, Status, StatusOpinion, TagOpinion } from "@/lib/places/types";
 
 /**
@@ -45,6 +46,8 @@ export function PlaceView({ diary, placeId: asked }: { diary: Diary; placeId: st
   // A merged duplicate opens the place it was merged into.
   const placeId = resolvePlace(mergeTargets(items), asked);
   const [editing, setEditing] = useState(false);
+  const [relooking, setRelooking] = useState(false);
+  const [relookQuery, setRelookQuery] = useState("");
   const [ask, confirmSheet] = useConfirm();
   const [notice, setNotice] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
@@ -84,8 +87,12 @@ export function PlaceView({ diary, placeId: asked }: { diary: Diary; placeId: st
 
   const style = categoryStyle(place.category);
   const isAuthor = item.authorId === me;
-  // A catalogue place's facts are the admin's to change once written; a dropped pin is its owner's.
-  const canEdit = item.type === "place" ? diary.device.isAdmin === true : isAuthor;
+  const isAdmin = diary.device.isAdmin === true;
+  // A catalogue place's facts are the admin's to change once written, apart from the person who
+  // added it putting a wrong match right; a dropped pin is its owner's.
+  const canEdit = item.type === "place" ? canChangeFacts(items, item.id, me, isAdmin) : isAuthor;
+  // Deleting a catalogue place drops other people's notes with it, so that stays the admin's.
+  const canDelete = item.type === "place" ? isAdmin : isAuthor;
   const of = <K extends Opinion["kind"]>(kind: K) => place.opinions.filter((o): o is Extract<Opinion, { kind: K }> => o.kind === kind);
   const myStatusOpinion = of("status").find((o) => o.authorId === me);
   const myStatus = myStatusOpinion?.status ?? null;
@@ -391,25 +398,67 @@ export function PlaceView({ diary, placeId: asked }: { diary: Diary; placeId: st
                   <Icon name="pencil" size="s" />
                   {focus ? `Edit ${outletLabel(place, focus)}` : "Edit details"}
                 </button>
-                <button
-                  type="button"
-                  className="chip soft text-seal-deep"
-                  onClick={async () => {
-                    const what = focus ? `the ${outletLabel(place, focus)} location of ${place.name}` : place.name;
-                    const body =
-                      item.type === "place" && place.opinions.some((o) => o.authorId !== me)
-                        ? "Your notes on it are deleted too. Other people's notes stay saved but stop showing. If it is a duplicate, merge it from Admin → Places instead."
-                        : "Your notes on it are deleted too.";
-                    if (!(await ask({ title: `Delete ${what}?`, body, confirmLabel: "Delete", danger: true }))) return;
+                {item.type === "place" && (
+                  <button
+                    type="button"
+                    className="chip soft"
+                    onClick={() => {
+                      setRelookQuery(defaultQuery(facts as PlacePayload));
+                      setRelooking(true);
+                    }}
+                  >
+                    <Icon name="search" size="s" />
+                    Look it up again
+                  </button>
+                )}
+                {canDelete && (
+                  <button
+                    type="button"
+                    className="chip soft text-seal-deep"
+                    onClick={async () => {
+                      const what = focus ? `the ${outletLabel(place, focus)} location of ${place.name}` : place.name;
+                      const body =
+                        item.type === "place" && place.opinions.some((o) => o.authorId !== me)
+                          ? "Your notes on it are deleted too. Other people's notes stay saved but stop showing. If it is a duplicate, merge it from Admin → Places instead."
+                          : "Your notes on it are deleted too.";
+                      if (!(await ask({ title: `Delete ${what}?`, body, confirmLabel: "Delete", danger: true }))) return;
+                      run(async () => {
+                        await deletePlace(diary, item.id);
+                        router.push("/");
+                      });
+                    }}
+                  >
+                    {focus ? "Delete this location" : "Delete place"}
+                  </button>
+                )}
+              </div>
+              {relooking && (
+                <form
+                  className="flex flex-col gap-2"
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    if (!relookQuery.trim()) return;
                     run(async () => {
-                      await deletePlace(diary, item.id);
-                      router.push("/");
+                      await lookUpAgain(diary, item.id, relookQuery, !isAdmin || relookQuery.trim() !== defaultQuery(facts as PlacePayload));
+                      setRelooking(false);
+                      setNotice("Looking it up. Pick the right match in your Inbox.");
                     });
                   }}
                 >
-                  {focus ? "Delete this location" : "Delete place"}
-                </button>
-              </div>
+                  <label className="flex flex-col gap-1">
+                    <span className="text-[12px] text-ink-2">The right Zomato or Google Maps link, or the name and area</span>
+                    <input className={styles.input} value={relookQuery} onChange={(e) => setRelookQuery(e.target.value)} autoFocus inputMode="url" />
+                  </label>
+                  <div className={styles.row}>
+                    <button type="submit" className={buttonClass({ size: "m" })} disabled={!relookQuery.trim()}>
+                      Look it up
+                    </button>
+                    <button type="button" className={styles.textbutton} onClick={() => setRelooking(false)}>
+                      Cancel
+                    </button>
+                  </div>
+                </form>
+              )}
             </section>
           )}
         </article>

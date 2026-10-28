@@ -11,7 +11,7 @@ import {
   type ResolverResult,
 } from "@map-diary/crypto";
 import { ApiError, NetworkError, type Api } from "@map-diary/sync";
-import { EntryError, addOpinions, addPlace, findCataloguePlace, type DiaryWriter } from "../entries/actions";
+import { EntryError, addOpinions, addPlace, findCataloguePlace, updateFacts, type DiaryWriter } from "../entries/actions";
 import { isFood } from "../entries/facts";
 import { branchOf, chainFor } from "../places/chains";
 import type { PlaceChain } from "../places/types";
@@ -149,10 +149,12 @@ export class PendingQueue {
       }
       const { candidates, chain } = result;
       // The result is on the device now; the one-time key is no longer needed. A chain always
-      // asks: every outlet, or only the one the link was for. New facts for a place always ask.
+      // asks: every outlet, or only the one the link was for. New facts for a place always ask,
+      // and so does a lone match for a plain name (or a Zomato share link, which only carries
+      // the name): a name can mean another place, so only a link for one place adds by itself.
       if (item.draft.refreshPlaceId) await this.save(item, { kind: "choose", candidates });
       else if (chain) await this.save(item, { kind: "choose", candidates, chain });
-      else if (candidates.length === 1) await this.write(item, candidates[0]!);
+      else if (candidates.length === 1 && pointsAtOnePlace(item.draft.link)) await this.write(item, candidates[0]!);
       else await this.save(item, { kind: "choose", candidates });
     }
     await this.forgetJob(state.jobId);
@@ -194,7 +196,7 @@ export class PendingQueue {
 
   private async write(item: PendingItem, candidate: ResolvedPlace, chain?: ResolvedChain): Promise<string | undefined> {
     if (item.draft.refreshPlaceId) {
-      const placeId = await refreshFacts(this.diary, item.draft.refreshPlaceId, candidate);
+      const placeId = await refreshFacts(this.diary, item.draft.refreshPlaceId, candidate, item.draft.correcting === true ? item.draft.link : false);
       await this.save(item, { kind: "added", placeId, name: candidate.name });
       return placeId;
     }
@@ -230,9 +232,66 @@ export class PendingQueue {
     return placeId;
   }
 
-  /** Saves a lookup of an existing catalogue place, whose answer becomes its new facts. */
-  async lookUpAgain(placeId: string, query: string, label: string): Promise<PendingItem> {
-    return this.add(query, { label, status: "want", tagIds: [], newTags: [], comment: "", refreshPlaceId: placeId });
+  /**
+   * Saves a lookup of an existing catalogue place, whose answer becomes its new facts. With
+   * `correcting` the place was the wrong match: its links and chain are replaced, not kept.
+   */
+  async lookUpAgain(placeId: string, query: string, label: string, correcting = false): Promise<PendingItem> {
+    const q = query.trim();
+    return this.add(q, {
+      label,
+      ...(correcting && isLink(q) ? { link: q } : {}),
+      status: "want",
+      tagIds: [],
+      newTags: [],
+      comment: "",
+      refreshPlaceId: placeId,
+      ...(correcting ? { correcting: true as const } : {}),
+    });
+  }
+
+  /**
+   * Looks the item up again with a better link or name, keeping its status, tags, note and
+   * boards. A wrong link is dropped, so it never becomes one of the place's source links.
+   */
+  async requery(id: string, query: string): Promise<void> {
+    const item = await this.store.get(id);
+    if (!item) throw new EntryError("That was already sorted out. Reload the Inbox.");
+    const q = query.trim().slice(0, MAX_QUERY_LENGTH);
+    if (!q) throw new EntryError("Type a link or a name to look up.");
+    const open = jobOf(item.state);
+    if (open) await this.forgetJob(open.jobId);
+    const { link: _old, ...rest } = item.draft;
+    // A label that was only the old query goes with it; one the person typed stays.
+    const label = rest.label && rest.label !== item.query && rest.label !== item.draft.link ? rest.label : "";
+    const draft: PendingDraft = { ...rest, label, ...(isLink(q) ? { link: q } : {}) };
+    const next: PendingItem = { ...item, query: q, draft, state: { kind: "unsent" }, updatedAt: this.now() };
+    await this.store.put(next);
+    this.emit();
+    await this.send(next);
+  }
+
+  /**
+   * The person typed the place's details in themselves: they go into the diary like a
+   * resolver's match, with the item's status, tags, note and boards. For a lookup of an
+   * existing place they become its facts.
+   */
+  async fillIn(id: string, facts: PlacePayload): Promise<string> {
+    const item = await this.store.get(id);
+    if (!item) throw new EntryError("That was already sorted out. Reload the Inbox.");
+    const open = jobOf(item.state);
+    let placeId: string;
+    if (item.draft.refreshPlaceId) {
+      const place = (await this.diary.listItems()).find((i) => i.id === item.draft.refreshPlaceId && i.type === "place");
+      if (!place) throw new EntryError("That place isn't on this device any more. It may have been deleted.");
+      await updateFacts(this.diary, place, facts);
+      placeId = place.id;
+    } else {
+      placeId = await writeFacts(this.diary, item.draft, facts);
+    }
+    if (open) await this.forgetJob(open.jobId);
+    await this.save(item, { kind: "added", placeId, name: facts.name });
+    return placeId;
   }
 
   /** Asks the resolver again, with a new job. */
@@ -255,6 +314,24 @@ export class PendingQueue {
   }
 }
 
+/** Whether text is a link rather than a name. */
+function isLink(text: string): boolean {
+  return /^https?:\/\/\S+$/i.test(text.trim());
+}
+
+/**
+ * A link for one place, whose lone match can be added without asking. A Zomato share link
+ * (zomato.onelink.me) only gives the resolver the restaurant's name, so it asks like a name.
+ */
+export function pointsAtOnePlace(link: string | undefined): boolean {
+  if (!link) return false;
+  try {
+    return new URL(link).hostname.toLowerCase() !== "zomato.onelink.me";
+  } catch {
+    return false;
+  }
+}
+
 /** The job still open on the server for an item, if any. */
 function jobOf(state: PendingState): WaitingJob | undefined {
   if (state.kind === "waiting") return state;
@@ -263,19 +340,24 @@ function jobOf(state: PendingState): WaitingJob | undefined {
 }
 
 /**
- * Rewrites a catalogue place's facts from a fresh lookup (the admin's device only). The place
- * keeps its chain, its merged duplicates and every link it had.
+ * Rewrites a catalogue place's facts from a fresh lookup (the admin's device, or the person who
+ * added it while they may still correct it). The place keeps its chain, its merged duplicates
+ * and every link it had, unless `correcting` (the link that found the right place, or
+ * undefined for a name) says the place was the wrong match: then the new facts start over.
  */
-export async function refreshFacts(w: DiaryWriter, placeId: string, c: ResolvedPlace): Promise<string> {
+export async function refreshFacts(w: DiaryWriter, placeId: string, c: ResolvedPlace, correcting: string | undefined | false = false): Promise<string> {
   const item = (await w.listItems()).find((i) => i.id === placeId && i.type === "place");
   const current = item && readPayload("place", item.payload);
   if (!item || !current) throw new EntryError("That place isn't on this device any more. It may have been deleted.");
-  const fresh = factsFromCandidate({ label: current.name, status: "want", tagIds: [], newTags: [], comment: "" }, c, current.chain);
-  const facts: PlacePayload = {
-    ...fresh,
-    sourceLinks: [...new Set([...current.sourceLinks, ...fresh.sourceLinks])],
-    ...(current.mergedFrom ? { mergedFrom: current.mergedFrom } : {}),
-  };
+  const base: PendingDraft = { label: current.name, status: "want", tagIds: [], newTags: [], comment: "" };
+  const kept = current.mergedFrom ? { mergedFrom: current.mergedFrom } : {};
+  let facts: PlacePayload;
+  if (correcting === false) {
+    const fresh = factsFromCandidate(base, c, current.chain);
+    facts = { ...fresh, sourceLinks: [...new Set([...current.sourceLinks, ...fresh.sourceLinks])], ...kept };
+  } else {
+    facts = { ...factsFromCandidate({ ...base, ...(correcting ? { link: correcting } : {}) }, c), ...kept };
+  }
   if (!readPayload("place", facts as unknown as JsonValue)) throw new EntryError("That match is missing a name or a location, so it can't be added. Try looking it up again.");
   await w.write({ type: "place", placeId: null, payload: facts as unknown as JsonValue, id: placeId });
   return placeId;
@@ -310,7 +392,14 @@ export function factsFromCandidate(draft: PendingDraft, c: ResolvedPlace, chain?
 export async function writeResolved(w: DiaryWriter, draft: PendingDraft, c: ResolvedPlace, chain?: PlaceChain, allOutlets = false): Promise<string> {
   const facts = factsFromCandidate(draft, c, chain);
   if (!readPayload("place", facts as unknown as JsonValue)) throw new EntryError("That match is missing a name or a location, so it can't be added. Try looking it up again.");
+  return writeFacts(w, draft, facts, allOutlets);
+}
 
+/**
+ * Writes a catalogue place from its facts with the draft's status, tags and note, or puts them
+ * on the place the catalogue already has with one of its links.
+ */
+export async function writeFacts(w: DiaryWriter, draft: PendingDraft, facts: PlacePayload, allOutlets = false): Promise<string> {
   const existing = await findCataloguePlace(w, facts.sourceLinks);
   if (!existing) {
     return addPlace(w, {

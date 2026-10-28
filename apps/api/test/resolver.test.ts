@@ -1,8 +1,8 @@
 import { env, exports } from "cloudflare:workers";
 import { describe, expect, it } from "vitest";
 import { fromBase64, generateReplyKeys, openResolverResult, ready, toBase64 } from "@map-diary/crypto";
-import { expandShortLink, isShortMapsLink } from "../src/expand";
-import { MAX_ATTEMPTS, takePendingJobs } from "../src/resolver";
+import { expandShortLink, isShortMapsLink, isZomatoOnelink, onelinkName } from "../src/expand";
+import { MAX_ATTEMPTS, listFailedJobs, requeueJob, takePendingJobs } from "../src/resolver";
 import { expireResolverJobs } from "../src/scheduled";
 
 await ready();
@@ -98,6 +98,9 @@ describe("resolver queue", () => {
     expect(await failed.json()).toEqual({ status: "failed" });
     expect(await (await fetchApi(`/api/resolver/jobs/${id}`)).json()).toMatchObject({ status: "failed" });
 
+    // Someone found it after all: a failed job the device still waits on can be answered once.
+    const found = await fetchApi(`/api/resolver/jobs/${id}/resolution`, json("POST", { candidates: [candidate] }, asResolver));
+    expect(await found.json()).toEqual({ status: "resolved" });
     const again = await fetchApi(`/api/resolver/jobs/${id}/resolution`, json("POST", { candidates: [candidate] }, asResolver));
     expect(again.status).toBe(409);
     const missing = await fetchApi(`/api/resolver/jobs/nope/resolution`, json("POST", { failed: true }, asResolver));
@@ -126,6 +129,74 @@ describe("resolver queue", () => {
 
     await expireResolverJobs(env.DB, now + 15 * 24 * 60 * 60 * 1000);
     expect((await fetchApi(`/api/resolver/jobs/${id}`)).status).toBe(404);
+  });
+
+  it("lists failed jobs, puts one back with a better query, and lets a failed job be answered", async () => {
+    const wrong = await submit("https://zomato.onelink.me/xqzv/abc123");
+    const later = await submit("Samai");
+    for (const id of [wrong.id, later.id]) {
+      const res = await fetchApi(`/api/resolver/jobs/${id}/resolution`, json("POST", { failed: true }, asResolver));
+      expect(res.status).toBe(200);
+    }
+    const now = Date.now();
+    const failed = await listFailedJobs(env.DB, 50, now, async () => new Response(null, { status: 404 }));
+    expect(failed.map((j) => j.id)).toEqual(expect.arrayContaining([wrong.id, later.id]));
+    expect((await fetchApi("/api/resolver/failed", {})).status).toBe(401);
+    expect((await fetchApi("/api/resolver/failed?limit=50", { headers: asResolver })).status).toBe(200);
+
+    // A better link goes back in the queue, with fresh attempts; the device's key is unchanged.
+    const better = "https://www.zomato.com/mumbai/samai-marathmola-jewanachi-mejwani-lower-parel";
+    expect(await requeueJob(env.DB, wrong.id, "  ", now)).toEqual({ ok: false, status: 400, error: "bad_query" });
+    const res = await fetchApi(`/api/resolver/jobs/${wrong.id}/requeue`, json("POST", { query: better }, asResolver));
+    expect(res.status).toBe(200);
+    expect((await pending()).find((j) => j.id === wrong.id)).toMatchObject({ query: better, attempts: 1 });
+    // Only failed jobs can be put back.
+    expect(await requeueJob(env.DB, wrong.id, undefined, now)).toMatchObject({ ok: false, status: 404 });
+    await fetchApi(`/api/resolver/jobs/${wrong.id}/resolution`, json("POST", { candidates: [candidate] }, asResolver));
+    const got = await (await fetchApi(`/api/resolver/jobs/${wrong.id}`)).json<{ status: string; sealedResult: string }>();
+    expect(got.status).toBe("resolved");
+    expect(openResolverResult(fromBase64(got.sealedResult), wrong.keys).candidates[0]!.name).toBe("Britannia & Co.");
+
+    // A failed job can be answered directly too, while the device still waits on it.
+    const direct = await fetchApi(`/api/resolver/jobs/${later.id}/resolution`, json("POST", { candidates: [candidate] }, asResolver));
+    expect(await direct.json()).toEqual({ status: "resolved" });
+    const again = await fetchApi(`/api/resolver/jobs/${later.id}/resolution`, json("POST", { candidates: [candidate] }, asResolver));
+    expect(again.status).toBe(409);
+  });
+});
+
+describe("Zomato share links", () => {
+  const link = "https://zomato.onelink.me/xqzv/lxa9ebfu";
+  const preview =
+    "https://zomato.onelink.me/af-preview/facebook?af_og_title=Samai%20Marathmola%20Jewanachi%20Mejwani" +
+    "&af_dp=zomato%3A%2F%2Fresolve_link%3Fid%3D152&url=https%3A%2F%2Fwww.zomato.com%2Fmobile";
+
+  it("reads the restaurant's name from the preview redirect, in one request", async () => {
+    const seen: Request[] = [];
+    const name = await onelinkName(link, async (r) => {
+      seen.push(r);
+      return new Response(null, { status: 301, headers: { Location: preview } });
+    });
+    expect(name).toBe("Samai Marathmola Jewanachi Mejwani");
+    expect(seen).toHaveLength(1);
+    expect(seen[0]!.headers.get("User-Agent")).toBe("facebookexternalhit/1.1");
+    expect(seen[0]!.redirect).toBe("manual");
+  });
+
+  it("gives up without a name, and never fetches other hosts", async () => {
+    let calls = 0;
+    const doFetch = async () => (calls++, new Response(null, { status: 301, headers: { Location: "https://www.zomato.com/mobile" } }));
+    expect(await onelinkName(link, doFetch)).toBeNull();
+    expect(await onelinkName("https://evil.example/x", doFetch)).toBeNull();
+    expect(calls).toBe(1);
+    expect(isZomatoOnelink(link)).toBe(true);
+    expect(isZomatoOnelink("https://www.zomato.com/mumbai/x")).toBe(false);
+  });
+
+  it("hands the resolver the name with the job", async () => {
+    const { id } = await submit(link);
+    const jobs = await takePendingJobs(env.DB, 50, Date.now(), async () => new Response(null, { status: 301, headers: { Location: preview } }));
+    expect(jobs.find((j) => j.id === id)).toMatchObject({ query: link, linkName: "Samai Marathmola Jewanachi Mejwani" });
   });
 });
 
