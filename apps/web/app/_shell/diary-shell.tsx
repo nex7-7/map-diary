@@ -4,6 +4,7 @@ import type { ReactNode } from "react";
 import type { Diary } from "@/lib/device";
 import { usePending } from "@/lib/pending";
 import { AppShell, type NavKey } from "@/lib/ui";
+import { ProximitySync } from "./proximity-sync";
 
 /**
  * The app frame for a signed-in screen: sidebar on desktop, tab bar on phones, with the
@@ -23,6 +24,7 @@ export function DiaryShell({ diary, current, who, children }: { diary: Diary; cu
       isAdmin={isAdmin}
       who={who ? `${who}${isAdmin ? " · admin" : ""}` : isAdmin ? "Admin" : undefined}
     >
+      <ProximitySync diary={diary} />
       {children}
     </AppShell>
   );
