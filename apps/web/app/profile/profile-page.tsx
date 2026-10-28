@@ -8,12 +8,14 @@ import { ProfileEditor } from "@/app/_account/profile-editor";
 import { sealDate } from "@/app/diary/places-list";
 import { Admin } from "@/app/admin/admin-page";
 import { Devices } from "@/app/devices/devices-page";
+import { proximity } from "@/lib/android/bridge";
 import { listDevices, type Diary } from "@/lib/device";
 import { useGroups } from "@/lib/groups";
 import { profilesOf } from "@/lib/places/items-source";
 import { EMPTY_FILTERS, filterPlaces } from "@/lib/places/filter";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Badge, Emoji, Icon } from "@/lib/ui";
+import { NearbyAlerts } from "./nearby-alerts";
 import y from "./you.module.css";
 
 /** `/profile`, the You tab: the inside cover of the diary, your stamps, and its contents. */
@@ -47,6 +49,7 @@ function You({ diary }: { diary: Diary }) {
   }, [diary]);
 
   const isAdmin = diary.device.isAdmin === true;
+  const inApp = proximity() !== null;
   const name = snapshot.me.name === "Me" ? "" : snapshot.me.name;
   const myPlaces = useMemo(() => filterPlaces(snapshot.places, EMPTY_FILTERS, me).filter((l) => l.mine), [snapshot, me]);
   const visited = myPlaces
@@ -67,7 +70,7 @@ function You({ diary }: { diary: Diary }) {
     { href: "/tags", title: "Tags", value: loaded ? String(mineTags) : "" },
   ];
   /** Which contents line is open: devices (and Claude, which is one of them), admin, or the profile. */
-  const [open, setOpen] = useState<"devices" | "admin" | "profile" | null>(null);
+  const [open, setOpen] = useState<"devices" | "alerts" | "admin" | "profile" | null>(null);
   const toggle = (k: NonNullable<typeof open>) => (o: boolean) => setOpen(o ? k : null);
 
   return (
@@ -171,6 +174,22 @@ function You({ diary }: { diary: Diary }) {
             <Devices diary={diary} />
           </CollapsibleContent>
         </Collapsible>
+        {inApp && (
+          <Collapsible open={open === "alerts"} onOpenChange={toggle("alerts")}>
+            <CollapsibleTrigger className={y.toc}>
+              <span>Nearby alerts</span>
+              <span className={y.lead} aria-hidden />
+              <span className={y.val} />
+              <span className={y.chev}>
+                <Icon name="chevronRight" size="m" />
+              </span>
+            </CollapsibleTrigger>
+            <CollapsibleContent className="rise grid gap-6 pb-4">
+              <p className="hand m-0 text-[15.5px] text-ink-2">This phone nudges you when you linger near a place you want to go to. Where you are never leaves the phone.</p>
+              <NearbyAlerts />
+            </CollapsibleContent>
+          </Collapsible>
+        )}
         {isAdmin && (
           <Collapsible open={open === "admin"} onOpenChange={toggle("admin")}>
             <CollapsibleTrigger className={y.toc}>
