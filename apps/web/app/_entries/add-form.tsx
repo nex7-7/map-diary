@@ -6,7 +6,8 @@ import { useEffect, useMemo, useState } from "react";
 import { api, type Diary } from "@/lib/device";
 import { addOpinions, addPlace, findCataloguePlace, findDuplicate } from "@/lib/entries/actions";
 import { buildFacts } from "@/lib/entries/facts";
-import { branchOf } from "@/lib/places/chains";
+import { STATUS_LABELS } from "@/lib/places/categories";
+import { branchOf, knownByName } from "@/lib/places/chains";
 import { userMessage } from "@/lib/errors";
 import { parseEntry, parseLink, type ParsedEntry } from "@/lib/entries/parse-input";
 import { getPendingQueue, MAX_QUERY_LENGTH, type PendingItem } from "@/lib/pending";
@@ -107,6 +108,11 @@ export function AddForm({ diary, initial, onSaved, onQueued, onCancel }: Props) 
   const match = useMemo(
     () => (kind === "place" && location && name.trim() && !duplicate ? branchOf(items, { name, location }) : undefined),
     [items, kind, location, name, duplicate],
+  );
+  // A name sent to be looked up may be a place already in the diary, maybe already on the list.
+  const known = useMemo(
+    () => (findLater && !duplicate && name.trim() ? knownByName(items, name, diary.device.accountId) : undefined),
+    [items, findLater, duplicate, name, diary.device.accountId],
   );
   const [joinBranch, setJoinBranch] = useState(true);
   const showPicker = adjusting || (location === null && !findLater && expansion.kind !== "loading");
@@ -237,6 +243,15 @@ export function AddForm({ diary, initial, onSaved, onQueued, onCancel }: Props) 
           <p className={styles.found}>
             {match.name} is already on the map here. Saving adds your notes to it.{" "}
             <Link href={`/place#${match.placeId}`} className={styles.textbutton}>
+              Open it
+            </Link>
+          </p>
+        )}
+        {known && (
+          <p className={styles.found}>
+            {known.status ? `You already have ${known.name} (${STATUS_LABELS[known.status]}).` : `${known.name} is already on the map.`} If
+            the lookup finds the same place, your notes go onto it.{" "}
+            <Link href={`/place#${known.placeId}`} className={styles.textbutton}>
               Open it
             </Link>
           </p>

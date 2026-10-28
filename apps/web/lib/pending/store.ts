@@ -67,7 +67,8 @@ export type PendingState =
    */
   | { kind: "failed"; reason: FailReason; job?: WaitingJob }
   /** Found and written to the diary; shown in the Inbox for a few days. */
-  | { kind: "added"; placeId: string; name: string };
+  /** `existing`: the place was in the diary already, so only the item's notes went onto it. */
+  | { kind: "added"; placeId: string; name: string; existing?: true };
 
 export type WaitingJob = Omit<Extract<PendingState, { kind: "waiting" }>, "kind">;
 

@@ -3,7 +3,7 @@ import { distanceMetres } from "./filter";
 import type { StoredItem } from "./items-source";
 import { mergeTargets, resolvePlace, withMerged } from "./merges";
 import { readPayload, type PlacePayload } from "./payloads";
-import type { LngLat, Opinion, Outlet, PlaceChain, PlaceView } from "./types";
+import type { LngLat, Opinion, Outlet, PlaceChain, PlaceView, Status } from "./types";
 
 /**
  * Chains: several catalogue places (outlets) that share one chain id in their facts. Each
@@ -113,6 +113,46 @@ export function chainFor(items: readonly StoredItem[], name: string, newId: () =
     if (facts && branchKey(facts.name) === branchKey(name)) return { id: i.id, name: facts.name };
   }
   return { id: newId(), name: name.trim() };
+}
+
+/** This person's status on the place (or any outlet of its chain), if they have one. */
+export function statusOf(items: readonly StoredItem[], placeId: string, accountId: string): Status | undefined {
+  const outlets = outletIds(items, placeId);
+  const mine = items.filter((i) => i.type === "status" && i.authorId === accountId && i.placeId !== null && outlets.includes(i.placeId));
+  const latest = mine.reduce<StoredItem | undefined>((a, b) => (!a || b.updatedAt > a.updatedAt ? b : a), undefined);
+  return latest ? readPayload("status", latest.payload)?.status : undefined;
+}
+
+/** A place already in the diary under a name, and this person's status on it if any. */
+export interface KnownPlace {
+  placeId: string;
+  name: string;
+  status?: Status;
+}
+
+/**
+ * The place a typed name already stands for in the diary (a catalogue place, an outlet of a
+ * chain of that name, or one of this person's dropped pins), so the Add sheet can say so
+ * before the name is sent to be looked up. One on this person's list wins.
+ */
+export function knownByName(items: readonly StoredItem[], name: string, accountId: string): KnownPlace | undefined {
+  const key = branchKey(name);
+  if (!key) return undefined;
+  const chains = chainsOf(items);
+  const targets = mergeTargets(items);
+  let found: KnownPlace | undefined;
+  for (const i of items) {
+    if ((i.type !== "place" && i.type !== "private_place") || targets.has(i.id)) continue;
+    if (i.type === "private_place" && i.authorId !== accountId) continue;
+    const facts = readPayload(i.type, i.payload);
+    if (!facts) continue;
+    const chain = chains.get(i.id);
+    if (branchKey(facts.name) !== key && !(chain && branchKey(chain.name) === key)) continue;
+    const status = statusOf(items, i.id, accountId);
+    if (status) return { placeId: i.id, name: chain?.name ?? facts.name, status };
+    found ??= { placeId: i.id, name: chain?.name ?? facts.name };
+  }
+  return found;
 }
 
 /** Every outlet of the place's chain, itself included; just the place when it is not a chain. */

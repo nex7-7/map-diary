@@ -188,9 +188,9 @@ export class PendingQueue {
     const { chain } = item.state;
     const match = item.state.candidates[0]!;
     const label = chainFor(await this.diary.listItems(), chain.name);
-    const placeId = await writeResolved(this.diary, item.draft, match, label, true);
+    const { placeId, existing } = await writeResolved(this.diary, item.draft, match, label, true);
     for (const outlet of chain.outlets) await writeOutlet(this.diary, item.draft, outlet, label);
-    await this.save(item, { kind: "added", placeId, name: chain.name });
+    await this.save(item, added(placeId, chain.name, existing));
     return placeId;
   }
 
@@ -202,21 +202,21 @@ export class PendingQueue {
     }
     const items = await this.diary.listItems();
     let label = chain ? chainFor(items, chain.name) : undefined;
-    let placeId: string;
+    let written: Written;
     // The resolver starts from nothing each time, so the catalogue on this device is what
     // knows a place by this name is already on the map.
     const match = label ? undefined : branchOf(items, candidate);
     if (match?.kind === "same") {
-      placeId = match.placeId;
-      await addDraftOpinions(this.diary, placeId, item.draft);
+      await addDraftOpinions(this.diary, match.placeId, item.draft);
+      written = { placeId: match.placeId, existing: true };
     } else if (match?.kind === "branch") {
       await this.save(item, { kind: "branch", candidate, chain: match.chain, ...(match.area ? { area: match.area } : {}) });
       return undefined;
     } else {
-      placeId = await writeResolved(this.diary, item.draft, candidate, label);
+      written = await writeResolved(this.diary, item.draft, candidate, label);
     }
-    await this.save(item, { kind: "added", placeId, name: candidate.name });
-    return placeId;
+    await this.save(item, added(written.placeId, candidate.name, written.existing));
+    return written.placeId;
   }
 
   /**
@@ -227,8 +227,8 @@ export class PendingQueue {
     const item = await this.store.get(id);
     if (!item || item.state.kind !== "branch") throw new EntryError("That was already sorted out. Reload the Inbox.");
     const { candidate, chain } = item.state;
-    const placeId = await writeResolved(this.diary, item.draft, candidate, isBranch ? chain : undefined);
-    await this.save(item, { kind: "added", placeId, name: candidate.name });
+    const { placeId, existing } = await writeResolved(this.diary, item.draft, candidate, isBranch ? chain : undefined);
+    await this.save(item, added(placeId, candidate.name, existing));
     return placeId;
   }
 
@@ -281,16 +281,19 @@ export class PendingQueue {
     if (!item) throw new EntryError("That was already sorted out. Reload the Inbox.");
     const open = jobOf(item.state);
     let placeId: string;
+    let existing = false;
     if (item.draft.refreshPlaceId) {
       const place = (await this.diary.listItems()).find((i) => i.id === item.draft.refreshPlaceId && i.type === "place");
       if (!place) throw new EntryError("That place isn't on this device any more. It may have been deleted.");
       await updateFacts(this.diary, place, facts);
       placeId = place.id;
     } else {
-      placeId = await writeFacts(this.diary, item.draft, facts);
+      const written = await writeFacts(this.diary, item.draft, facts);
+      placeId = written.placeId;
+      existing = written.existing;
     }
     if (open) await this.forgetJob(open.jobId);
-    await this.save(item, { kind: "added", placeId, name: facts.name });
+    await this.save(item, added(placeId, facts.name, existing));
     return placeId;
   }
 
@@ -389,7 +392,7 @@ export function factsFromCandidate(draft: PendingDraft, c: ResolvedPlace, chain?
  * place (same source link), the opinions go on it instead and its facts are left alone.
  * `chain` labels it as an outlet; `allOutlets` makes the note about every outlet.
  */
-export async function writeResolved(w: DiaryWriter, draft: PendingDraft, c: ResolvedPlace, chain?: PlaceChain, allOutlets = false): Promise<string> {
+export async function writeResolved(w: DiaryWriter, draft: PendingDraft, c: ResolvedPlace, chain?: PlaceChain, allOutlets = false): Promise<Written> {
   const facts = factsFromCandidate(draft, c, chain);
   if (!readPayload("place", facts as unknown as JsonValue)) throw new EntryError("That match is missing a name or a location, so it can't be added. Try looking it up again.");
   return writeFacts(w, draft, facts, allOutlets);
@@ -399,10 +402,10 @@ export async function writeResolved(w: DiaryWriter, draft: PendingDraft, c: Reso
  * Writes a catalogue place from its facts with the draft's status, tags and note, or puts them
  * on the place the catalogue already has with one of its links.
  */
-export async function writeFacts(w: DiaryWriter, draft: PendingDraft, facts: PlacePayload, allOutlets = false): Promise<string> {
+export async function writeFacts(w: DiaryWriter, draft: PendingDraft, facts: PlacePayload, allOutlets = false): Promise<Written> {
   const existing = await findCataloguePlace(w, facts.sourceLinks);
   if (!existing) {
-    return addPlace(w, {
+    const placeId = await addPlace(w, {
       kind: "place",
       facts,
       status: draft.status,
@@ -412,11 +415,21 @@ export async function writeFacts(w: DiaryWriter, draft: PendingDraft, facts: Pla
       ...(allOutlets ? { commentAllOutlets: true } : {}),
       ...boardsOf(draft),
     });
+    return { placeId, existing: false };
   }
 
   await addDraftOpinions(w, existing, draft, allOutlets);
-  return existing;
+  return { placeId: existing, existing: true };
 }
+
+/** Where a match went: a new place, or one already in the diary that got the draft's notes. */
+export interface Written {
+  placeId: string;
+  existing: boolean;
+}
+
+/** The Inbox state of a match written to the diary. */
+const added = (placeId: string, name: string, existing: boolean): PendingState => ({ kind: "added", placeId, name, ...(existing ? { existing: true as const } : {}) });
 
 /** Puts the draft's status, tags and note on a place already in the diary. */
 async function addDraftOpinions(w: DiaryWriter, placeId: string, draft: PendingDraft, allOutlets = false): Promise<void> {

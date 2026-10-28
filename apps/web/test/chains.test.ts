@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { JsonValue } from "@map-diary/crypto";
 import { addComment, applyTag, editComment, setStatus, unapplyTag } from "../lib/entries/actions";
 import { buildFacts, formFromFacts } from "../lib/entries/facts";
-import { addressArea, branchKey, chainFor, normaliseChainName, outletLabel, viewOf } from "../lib/places/chains";
+import { addressArea, branchKey, chainFor, knownByName, normaliseChainName, outletLabel, viewOf } from "../lib/places/chains";
 import { EMPTY_FILTERS, filterPlaces } from "../lib/places/filter";
 import { pinsCollection } from "../lib/map/style";
 import { readPayload, type PlacePayload } from "../lib/places/payloads";
@@ -121,5 +121,17 @@ describe("chains", () => {
     expect(cleared.ok && cleared.facts.chain).toBe(undefined);
     const moved = buildFacts({ ...formFromFacts(facts), chainName: "Theobroma" }, (name) => ({ id: "c2", name }));
     expect(moved.ok && moved.facts.chain).toEqual({ id: "c2", name: "Theobroma" });
+  });
+});
+
+describe("knownByName", () => {
+  it("finds a typed name already on the list, with its status, over one only on the map", async () => {
+    // A chain's status counts for every outlet, so any of them stands for it.
+    const { diary, bandra } = await twoOutlets();
+    const other = await diary.write({ type: "place", placeId: null, payload: { ...outlet("Colaba", 18.92), chain: undefined, name: "Gajalee" } as unknown as JsonValue });
+    expect(knownByName([...diary.items.values()], "Gajalee (Colaba)", "acct-me")).toEqual({ placeId: other.id, name: "Gajalee" });
+    await setStatus(diary, bandra, "visited");
+    expect(knownByName([...diary.items.values()], "the bombay cartel", "acct-me")).toMatchObject({ name: "The Bombay Cartel", status: "visited" });
+    expect(knownByName([...diary.items.values()], "Bastian", "acct-me")).toBeUndefined();
   });
 });

@@ -16,7 +16,8 @@ import { DeviceGate, type Diary } from "@/lib/device";
 import { choicesOf, usePending, type FailReason, type PendingItem, type PendingQueue } from "@/lib/pending";
 import { canChangeFacts } from "@/lib/entries/actions";
 import { categoryStyle, STATUS_LABELS } from "@/lib/places/categories";
-import type { CommentOpinion, DiarySnapshot, StatusOpinion } from "@/lib/places/types";
+import { statusOf } from "@/lib/places/chains";
+import type { CommentOpinion, DiarySnapshot, Status, StatusOpinion } from "@/lib/places/types";
 
 /** While the Inbox is open it checks for results this often. */
 const INBOX_POLL_MS = 15_000;
@@ -176,6 +177,8 @@ function Inbox({ diary }: { diary: Diary }) {
                 item={i}
                 placeId={i.state.placeId}
                 name={i.state.name}
+                existing={i.state.existing === true}
+                status={i.state.existing ? statusOf(diaryItems, i.state.placeId, diary.device.accountId) : undefined}
                 canFix={!i.draft.refreshPlaceId && canChangeFacts(diaryItems, i.state.placeId, diary.device.accountId, diary.device.isAdmin === true)}
                 queue={queue}
                 run={run}
@@ -416,7 +419,17 @@ function Correct({
 }
 
 /** A place the resolver found and the diary added; while it is still the person's to correct, it can be put right. */
-function FoundRow({ item, placeId, name, canFix, queue, run, style }: LetterProps & { placeId: string; name: string; canFix: boolean }) {
+function FoundRow({
+  item,
+  placeId,
+  name,
+  existing,
+  status,
+  canFix,
+  queue,
+  run,
+  style,
+}: LetterProps & { placeId: string; name: string; existing: boolean; status: Status | undefined; canFix: boolean }) {
   const [fixing, setFixing] = useState(false);
   return (
     <div className="rise flex flex-col gap-2" style={style}>
@@ -434,6 +447,11 @@ function FoundRow({ item, placeId, name, canFix, queue, run, style }: LetterProp
           Clear
         </button>
       </div>
+      {existing && !fixing && (
+        <p className="text-[12.5px] text-ink-3">
+          {status ? `Already on your list as ${STATUS_LABELS[status]}` : "Already on the map"}, so your notes went onto it.
+        </p>
+      )}
       {fixing && (
         <Correct
           start={item.query}
