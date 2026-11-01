@@ -203,7 +203,7 @@ The resolver interface is generic, so another AI or a script could replace Claud
 
 ## Android app and proximity alerts
 
-The sideloaded Android app is the only place proximity alerts exist, and the server is never involved.
+The sideloaded Android app is the only place proximity alerts exist, and the server is never involved. Build and install steps are in docs/android.md.
 
 - **Shell:** Capacitor wrapping the same web app, pointed at the live site so web changes ship instantly. The APK is rebuilt only when native code changes.
 - **Geofencing:** a small custom plugin (about 150 lines of Kotlin) around Android's `GeofencingClient`. No paid background-location plugin.

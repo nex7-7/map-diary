@@ -1,0 +1,81 @@
+name: Android
+
+# Builds the Android app. The app opens the live site, so only native changes need a new APK.
+# With the signing secrets set, every build is a signed release APK that installs over the last
+# one; without them it is a debug APK. A push to master also publishes it as a GitHub release.
+
+on:
+  pull_request:
+    paths: ["apps/android/**", ".github/workflows/android.yml"]
+  push:
+    branches: [master]
+    paths: ["apps/android/**", ".github/workflows/android.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # the release on master
+    env:
+      # Above anything installed before CI numbered the builds.
+      VERSION_CODE: ${{ github.run_number }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+      - uses: gradle/actions/setup-gradle@v4
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @map-diary/android sync
+
+      - name: Signing key
+        id: key
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        run: |
+          if [ -n "$KEYSTORE_BASE64" ]; then
+            echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/release.jks"
+            echo "path=$RUNNER_TEMP/release.jks" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Build
+        working-directory: apps/android/android
+        env:
+          ANDROID_KEYSTORE_PATH: ${{ steps.key.outputs.path }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          chmod +x gradlew
+          if [ -n "$ANDROID_KEYSTORE_PATH" ]; then task=assembleRelease; dir=release; name=app-release.apk
+          else task=assembleDebug; dir=debug; name=app-debug.apk; fi
+          ./gradlew --no-daemon "$task" -PversionCode="$VERSION_CODE"
+          mkdir -p "$RUNNER_TEMP/apk"
+          cp "app/build/outputs/apk/$dir/$name" "$RUNNER_TEMP/apk/places-diary-$VERSION_CODE.apk"
+          rm -f "$RUNNER_TEMP/release.jks"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: places-diary-${{ env.VERSION_CODE }}
+          path: ${{ runner.temp }}/apk/*.apk
+          retention-days: 30
+
+      - name: Release
+        if: github.event_name == 'push' && steps.key.outputs.path != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "android-$VERSION_CODE" "$RUNNER_TEMP"/apk/*.apk \
+            --title "Android app $VERSION_CODE" \
+            --notes "Install on the phone: download the APK below and open it." \
+            --target "$GITHUB_SHA" --latest

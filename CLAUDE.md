@@ -35,4 +35,4 @@ Places hold shared facts (written once; only admin edits). People attach opinion
 
 ## Current phase
 
-Phase 6 — Claude assistant: a `claude` device on the owner's account that holds only the master and Personal board keys (never account or group keys), Connect Claude on the Devices screen, its own MCP connector whose keys unlock only with the connector secret, read and write tools, revocation. Phases 1–5 are merged; groups, friends' opinions and master key rotation on member removal (PR #23) are waiting to be deployed.
+Phase 7 — Android app (`apps/android`, see docs/android.md): Capacitor shell around the live site, native share target, and on-device nearby alerts through a Kotlin geofencing plugin. Phases 1–6 are live. GitHub Actions builds the APK.
