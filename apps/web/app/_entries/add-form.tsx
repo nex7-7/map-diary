@@ -183,7 +183,9 @@ export function AddForm({ diary, initial, onSaved, onQueued, onCancel }: Props) 
     }
     setSaving(true);
     try {
-      const opinions = { status, tagIds: [...selected], newTags, comment, boards: pickedBoards, ...ownBoards };
+      // An Inbox item placed by hand keeps the day it was added as its Visited day.
+      const addedAt = initial?.pending && status === "visited" ? { visitedAt: initial.pending.createdAt } : {};
+      const opinions = { status, ...addedAt, tagIds: [...selected], newTags, comment, boards: pickedBoards, ...ownBoards };
       // Someone may have put it in the catalogue already: add to theirs rather than a copy.
       const existing =
         kind === "place" ? ((await findCataloguePlace(diary, result.facts.sourceLinks)) ?? (match?.kind === "same" ? match.placeId : undefined)) : undefined;

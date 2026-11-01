@@ -155,6 +155,22 @@ describe("the Claude assistant's MCP tools", () => {
     expect(statuses[0]).toMatchObject({ boardIds: [masterBoardOf(owner)!.id], payload: { status: "visited" } });
   });
 
+  it("sets the day of a visit, and keeps it when the status is written again", async () => {
+    const dated = await call("set_status", { placeId: cafeId, status: "visited", visitedOn: "2026-10-05" });
+    expect(dated.value).toMatchObject({ status: "visited", visitedOn: "2026-10-05", boards: ["public"] });
+    const visitedAt = Date.UTC(2026, 9, 5, 6, 30);
+    expect((await call("set_status", { placeId: cafeId, status: "visited" })).isError).toBe(false);
+    await ownerDiary.sync();
+    const [status] = (await ownerDiary.listItems()).filter((i) => i.type === "status" && i.placeId === cafeId);
+    expect(status?.payload).toEqual({ status: "visited", visitedAt });
+    const got = await call("get_place", { placeId: cafeId });
+    expect((got.value.opinions as { kind: string; visitedAt?: string }[]).find((o) => o.kind === "status")?.visitedAt).toBe(new Date(visitedAt).toISOString());
+
+    expect((await call("set_status", { placeId: cafeId, status: "visited", visitedOn: "2999-01-01" })).isError).toBe(true);
+    expect((await call("set_status", { placeId: cafeId, status: "visited", visitedOn: "5 Oct" })).isError).toBe(true);
+    expect((await call("set_status", { placeId: cafeId, status: "want", visitedOn: "2026-10-05" })).isError).toBe(true);
+  });
+
   it("tags with a new or existing tag, and widens the owner's own tag to the board asked for", async () => {
     const made = await call("add_tag", { placeId: cafeId, newTag: { name: "Breakfast", emoji: "🍳" } });
     expect(made.isError).toBe(false);
@@ -281,7 +297,8 @@ describe("the Claude assistant's MCP tools", () => {
     const ids = [fort.value.placeId, bandra.value.placeId];
     const statuses = items.filter((i) => i.type === "status" && ids.includes(i.placeId));
     expect(statuses).toHaveLength(1);
-    expect(statuses[0]!.payload).toEqual({ status: "visited" });
+    // Combining keeps the day it was stamped Visited.
+    expect(statuses[0]!.payload).toMatchObject({ status: "visited", visitedAt: expect.any(Number) });
     expect(new Set(statuses[0]!.boardIds)).toEqual(new Set([owner.personalBoardId, masterBoardOf(owner)!.id]));
 
     const found = await call("search_places", { query: "burma" });

@@ -11,7 +11,9 @@ import { Devices } from "@/app/devices/devices-page";
 import { listDevices, type Diary } from "@/lib/device";
 import { useGroups } from "@/lib/groups";
 import { profilesOf } from "@/lib/places/items-source";
+import type { StatusOpinion } from "@/lib/places/types";
 import { EMPTY_FILTERS, filterPlaces } from "@/lib/places/filter";
+import { visitedOn } from "@/lib/places/visited";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Badge, Emoji, Icon } from "@/lib/ui";
 import y from "./you.module.css";
@@ -51,7 +53,10 @@ function You({ diary }: { diary: Diary }) {
   const myPlaces = useMemo(() => filterPlaces(snapshot.places, EMPTY_FILTERS, me).filter((l) => l.mine), [snapshot, me]);
   const visited = myPlaces
     .filter((l) => l.status === "visited")
-    .map((l) => ({ l, at: l.place.opinions.find((o) => o.kind === "status" && o.authorId === me)?.updatedAt ?? l.addedAt }))
+    .map((l) => {
+      const own = l.place.opinions.find((o): o is StatusOpinion => o.kind === "status" && o.authorId === me);
+      return { l, at: own ? visitedOn(own) : l.addedAt };
+    })
     .sort((a, b) => b.at.localeCompare(a.at));
   const toGo = myPlaces.length - visited.length;
   const mineTags = snapshot.tags.filter((t) => t.authorId === me).length;

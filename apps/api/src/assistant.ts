@@ -188,10 +188,16 @@ const TOOLS = [
   {
     name: "set_status",
     title: "Set Visited or Want to",
-    description: "Marks a place Visited or Want to on the owner's list, changing their existing status if they have one.",
+    description:
+      "Marks a place Visited or Want to on the owner's list, changing their existing status if they have one. A place that stays Visited keeps its visit date unless visitedOn gives a new one.",
     inputSchema: {
       type: "object",
-      properties: { placeId: placeIdSchema, status: statusSchema, boards: boardsSchema },
+      properties: {
+        placeId: placeIdSchema,
+        status: statusSchema,
+        boards: boardsSchema,
+        visitedOn: { type: "string", description: "With status visited: the day the owner went, as YYYY-MM-DD (India time). Leave out to keep the date it has, or today for a new Visited." },
+      },
       required: ["placeId", "status"],
       additionalProperties: false,
     },
@@ -333,6 +339,23 @@ const readStatus = (payload: JsonValue): Status | undefined => {
   const s = obj(payload)?.status;
   return s === "visited" || s === "want" ? s : undefined;
 };
+/** The visit day the owner gave a Visited status, in milliseconds, if any. */
+const readVisitedAt = (payload: JsonValue): number | undefined => {
+  const at = obj(payload)?.visitedAt;
+  return typeof at === "number" && Number.isFinite(at) && at > 0 ? Math.round(at) : undefined;
+};
+
+/**
+ * A status payload written over `prev`, as the app writes it: a place that stays Visited keeps
+ * its visit day (the one given, else when it was stamped), so re-writing it does not move it.
+ */
+function statusPayload(status: Status, prev?: Item, visitedAt?: number): JsonValue {
+  if (status !== "visited") return { status };
+  if (visitedAt !== undefined) return { status, visitedAt };
+  if (prev && readStatus(prev.payload) === "visited") return { status, visitedAt: readVisitedAt(prev.payload) ?? prev.updatedAt };
+  return { status };
+}
+
 const readTagId = (payload: JsonValue) => str(obj(payload)?.tagId);
 const readText = (payload: JsonValue) => str(obj(payload)?.text);
 function readTagDef(payload: JsonValue): TagDef | undefined {
@@ -365,6 +388,18 @@ function argString(args: JsonObject, name: string, max: number, required = false
   }
   if (typeof v !== "string" || v.length > max) throw new ToolError(`${name} must be text of at most ${max} characters.`);
   return v.trim();
+}
+
+/** `visitedOn` as noon India time of that day; refused for a day after today or before 1950. */
+function argVisitedOn(args: JsonObject, status: Status, now = Date.now()): number | undefined {
+  const v = args.visitedOn;
+  if (v === undefined || v === "") return undefined;
+  if (status !== "visited") throw new ToolError("visitedOn only goes with status visited.");
+  const m = typeof v === "string" ? /^(\d{4})-(\d{2})-(\d{2})$/.exec(v) : null;
+  const ms = m ? Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3]), 6, 30) : NaN;
+  if (!m || Number.isNaN(ms) || new Date(ms).getUTCDate() !== Number(m[3])) throw new ToolError("visitedOn must be a date as YYYY-MM-DD.");
+  if (ms < Date.UTC(1950, 0, 1) || ms > now + 14 * 3_600_000) throw new ToolError("visitedOn must be a day that has already happened.");
+  return ms;
 }
 
 function argStatus(args: JsonObject, fallback?: Status): Status {
@@ -603,7 +638,20 @@ class Tools {
     ]);
     const tagById = new Map(tags.items.map((t) => [t.id, readTagDef(t.payload)]));
 
-    type Opinion = { id: string; author: string; mine: boolean; viaClaude: boolean; boards: string[]; updatedAt: string; kind: string; status?: Status; tagId?: string; tag?: string; text?: string };
+    type Opinion = {
+      id: string;
+      author: string;
+      mine: boolean;
+      viaClaude: boolean;
+      boards: string[];
+      updatedAt: string;
+      kind: string;
+      status?: Status;
+      visitedAt?: string;
+      tagId?: string;
+      tag?: string;
+      text?: string;
+    };
     const view = opinions.flatMap((o): Opinion[] => {
       const base = {
         id: o.id,
@@ -617,7 +665,8 @@ class Tools {
       };
       if (o.type === "status") {
         const status = readStatus(o.payload);
-        return status ? [{ ...base, kind: "status", status }] : [];
+        const visitedAt = status === "visited" ? readVisitedAt(o.payload) : undefined;
+        return status ? [{ ...base, kind: "status", status, ...(visitedAt !== undefined ? { visitedAt: new Date(visitedAt).toISOString() } : {}) }] : [];
       }
       if (o.type === "tag") {
         const tagId = readTagId(o.payload);
@@ -761,7 +810,7 @@ class Tools {
     const boards = [...new Set(mine.flatMap((s) => s.boardIds))];
     if (boards.length > keep.boardIds.length) {
       await writeItems(this.db, this.session, [
-        { type: "status", placeId: keep.placeId, payload: { status: myStatus! }, boardIds: boards, id: keep.id, createdAt: keep.createdAt },
+        { type: "status", placeId: keep.placeId, payload: statusPayload(myStatus!, keep), boardIds: boards, id: keep.id, createdAt: keep.createdAt },
       ]);
     }
     await removeItems(this.db, this.session, mine.filter((s) => s !== keep).map((s) => s.id));
@@ -811,6 +860,7 @@ class Tools {
   async setStatus(args: JsonObject): Promise<ToolResult> {
     const place = await this.place(argString(args, "placeId", 64, true));
     const status = argStatus(args);
+    const visitedAt = argVisitedOn(args, status);
     const outletIds = await this.opinionPlaceIds(place);
     const mine = await this.myItems("status", outletIds);
     const latest = mine[0];
@@ -823,11 +873,23 @@ class Tools {
     await writeItems(this.db, this.session, [
       // A chain has one status per person, kept on the outlet it was first set on (a merged
       // duplicate's status included).
-      { type: "status", placeId: latest?.placeId ?? place.id, payload: { status }, boardIds: boards, ...(latest ? { id: latest.id, createdAt: latest.createdAt } : {}) },
+      {
+        type: "status",
+        placeId: latest?.placeId ?? place.id,
+        payload: statusPayload(status, latest, visitedAt),
+        boardIds: boards,
+        ...(latest ? { id: latest.id, createdAt: latest.createdAt } : {}),
+      },
     ]);
     // A sync race can leave two; keep one.
     await removeItems(this.db, this.session, mine.slice(1).map((s) => s.id));
-    return toolText({ placeId: place.id, name: place.facts.name, status, boards: boards.map((b) => this.boardName(b)) });
+    return toolText({
+      placeId: place.id,
+      name: place.facts.name,
+      status,
+      ...(visitedAt !== undefined ? { visitedOn: new Date(visitedAt).toISOString().slice(0, 10) } : {}),
+      boards: boards.map((b) => this.boardName(b)),
+    });
   }
 
   async addTag(args: JsonObject): Promise<ToolResult> {

@@ -93,6 +93,8 @@ interface OpinionBase {
 export interface StatusOpinion extends OpinionBase {
   kind: "status";
   status: Status;
+  /** Visited only: the day of the visit when it is not `updatedAt`. Read it with `visitedOn`. */
+  visitedAt?: string;
 }
 
 export interface TagOpinion extends OpinionBase {

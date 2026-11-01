@@ -188,8 +188,8 @@ export class PendingQueue {
     const { chain } = item.state;
     const match = item.state.candidates[0]!;
     const label = chainFor(await this.diary.listItems(), chain.name);
-    const { placeId, existing } = await writeResolved(this.diary, item.draft, match, label, true);
-    for (const outlet of chain.outlets) await writeOutlet(this.diary, item.draft, outlet, label);
+    const { placeId, existing } = await writeResolved(this.diary, draftOf(item), match, label, true);
+    for (const outlet of chain.outlets) await writeOutlet(this.diary, draftOf(item), outlet, label);
     await this.save(item, added(placeId, chain.name, existing));
     return placeId;
   }
@@ -207,13 +207,13 @@ export class PendingQueue {
     // knows a place by this name is already on the map.
     const match = label ? undefined : branchOf(items, candidate);
     if (match?.kind === "same") {
-      await addDraftOpinions(this.diary, match.placeId, item.draft);
+      await addDraftOpinions(this.diary, match.placeId, draftOf(item));
       written = { placeId: match.placeId, existing: true };
     } else if (match?.kind === "branch") {
       await this.save(item, { kind: "branch", candidate, chain: match.chain, ...(match.area ? { area: match.area } : {}) });
       return undefined;
     } else {
-      written = await writeResolved(this.diary, item.draft, candidate, label);
+      written = await writeResolved(this.diary, draftOf(item), candidate, label);
     }
     await this.save(item, added(written.placeId, candidate.name, written.existing));
     return written.placeId;
@@ -227,7 +227,7 @@ export class PendingQueue {
     const item = await this.store.get(id);
     if (!item || item.state.kind !== "branch") throw new EntryError("That was already sorted out. Reload the Inbox.");
     const { candidate, chain } = item.state;
-    const { placeId, existing } = await writeResolved(this.diary, item.draft, candidate, isBranch ? chain : undefined);
+    const { placeId, existing } = await writeResolved(this.diary, draftOf(item), candidate, isBranch ? chain : undefined);
     await this.save(item, added(placeId, candidate.name, existing));
     return placeId;
   }
@@ -288,7 +288,7 @@ export class PendingQueue {
       await updateFacts(this.diary, place, facts);
       placeId = place.id;
     } else {
-      const written = await writeFacts(this.diary, item.draft, facts);
+      const written = await writeFacts(this.diary, draftOf(item), facts);
       placeId = written.placeId;
       existing = written.existing;
     }
@@ -413,7 +413,7 @@ export async function writeFacts(w: DiaryWriter, draft: PendingDraft, facts: Pla
       newTags: draft.newTags,
       comment: draft.comment,
       ...(allOutlets ? { commentAllOutlets: true } : {}),
-      ...boardsOf(draft),
+      ...optionsOf(draft),
     });
     return { placeId, existing: false };
   }
@@ -439,7 +439,7 @@ async function addDraftOpinions(w: DiaryWriter, placeId: string, draft: PendingD
     newTags: draft.newTags,
     comment: draft.comment,
     ...(allOutlets ? { commentAllOutlets: true } : {}),
-    ...boardsOf(draft),
+    ...optionsOf(draft),
   });
 }
 
@@ -457,7 +457,14 @@ export async function writeOutlet(w: DiaryWriter, draft: PendingDraft, c: Resolv
   return (await w.write({ type: "place", placeId: null, payload: facts as unknown as JsonValue })).id;
 }
 
-const boardsOf = (draft: PendingDraft) => ({
+/** The item's draft, with when it was added. */
+const draftOf = (item: PendingItem): PendingDraft => ({ ...item.draft, addedAt: item.createdAt });
+
+/** A Visited place is stamped with the day it was added, not the day it was found. */
+const visitedAtOf = (draft: PendingDraft) => (draft.status === "visited" && draft.addedAt !== undefined ? { visitedAt: draft.addedAt } : {});
+
+const optionsOf = (draft: PendingDraft) => ({
+  ...visitedAtOf(draft),
   ...(draft.boards ? { boards: draft.boards } : {}),
   ...(draft.tagBoards ? { tagBoards: draft.tagBoards } : {}),
   ...(draft.commentBoards ? { commentBoards: draft.commentBoards } : {}),
