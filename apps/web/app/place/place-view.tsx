@@ -13,6 +13,7 @@ import { toastError } from "@/lib/errors";
 import { BoardBadge, buttonClass, Icon, useConfirm } from "@/lib/ui";
 import { onMap } from "@/lib/map/style";
 import { PlaceMap } from "./place-map";
+import { RedateSheet } from "./redate-sheet";
 import p from "./place.module.css";
 import { defaultQuery, lookUpAgain, type Diary } from "@/lib/device";
 import {
@@ -34,7 +35,7 @@ import { addressArea, chainFor, outletLabel, outletOf, viewOf } from "@/lib/plac
 import { mergeTargets, resolvePlace } from "@/lib/places/merges";
 import { categoryStyle } from "@/lib/places/categories";
 import { readPayload, type PlacePayload } from "@/lib/places/payloads";
-import { dayToMs, msToDay, visitedOn } from "@/lib/places/visited";
+import { visitedOn } from "@/lib/places/visited";
 import type { CommentOpinion, DiarySnapshot, Opinion, Outlet, PlaceView as Place, Status, StatusOpinion, TagOpinion } from "@/lib/places/types";
 
 /**
@@ -48,6 +49,9 @@ export function PlaceView({ diary, placeId: asked }: { diary: Diary; placeId: st
   // A merged duplicate opens the place it was merged into.
   const placeId = resolvePlace(mergeTargets(items), asked);
   const [editing, setEditing] = useState(false);
+  /** The Visited seal's date sheet is open; once a date is saved the new seal lands at once. */
+  const [redating, setRedating] = useState(false);
+  const [redated, setRedated] = useState(false);
   const [relooking, setRelooking] = useState(false);
   const [relookQuery, setRelookQuery] = useState("");
   const [ask, confirmSheet] = useConfirm();
@@ -228,11 +232,19 @@ export function PlaceView({ diary, placeId: asked }: { diary: Diary; placeId: st
               )
             )}
             {myStatus === "visited" && myStatusOpinion && (
-              <div className={`seal slam ${p.stamp} flex-col gap-[3px] [--r:-12deg]`} style={{ animationDelay: "0.35s" }} aria-label={`Visited ${sealDate(visitedOn(myStatusOpinion))}`}>
+              <button
+                type="button"
+                key={visitedOn(myStatusOpinion)}
+                className={`seal slam ${p.stamp} ${p.stampTap} flex-col gap-[3px] [--r:-12deg]`}
+                style={{ animationDelay: redated ? "0s" : "0.35s" }}
+                onClick={() => setRedating(true)}
+                aria-label={`Visited ${sealDate(visitedOn(myStatusOpinion))} ${new Date(visitedOn(myStatusOpinion)).getFullYear()}. Change the day`}
+                title="Tap to change the day"
+              >
                 <span className="text-[9.5px] tracking-[0.18em]">Visited</span>
                 <span className="text-[24px]">{sealDate(visitedOn(myStatusOpinion))}</span>
                 <span className="text-[9.5px] tracking-[0.18em]">{new Date(visitedOn(myStatusOpinion)).getFullYear()}</span>
-              </div>
+              </button>
             )}
             {myStatus === "want" && (
               <div className={`slot pop ${p.stamp} flex-col gap-0.5 text-[10.5px] font-bold tracking-[0.14em] uppercase`}>
@@ -245,10 +257,15 @@ export function PlaceView({ diary, placeId: asked }: { diary: Diary; placeId: st
           <StatusToggle label="Your status" value={myStatus} onChange={(s: Status) => run(() => setStatus(diary, place.id, s, boards))} />
           {myStatus === null && <p className="hand -mt-2 text-[16px] text-ink-2">Stamp it Want to or Visited to put it on your list.</p>}
           {myStatus === "visited" && myStatusOpinion && (
-            <VisitedDate
-              key={visitedOn(myStatusOpinion)}
+            <RedateSheet
+              open={redating}
               at={visitedOn(myStatusOpinion)}
-              onChange={(ms) => run(() => setVisitedDate(diary, place.id, ms))}
+              onClose={() => setRedating(false)}
+              onSave={(ms) => {
+                setRedating(false);
+                setRedated(true);
+                run(() => setVisitedDate(diary, place.id, ms));
+              }}
             />
           )}
 
@@ -607,29 +624,4 @@ function hostOf(url: string): string {
   } catch {
     return url;
   }
-}
-
-/** The day of the visit, which the person can change (a place stamped late, or a past visit). */
-function VisitedDate({ at, onChange }: { at: string; onChange: (ms: number) => void }) {
-  const current = msToDay(Date.parse(at));
-  const [day, setDay] = useState(current);
-  const ms = dayToMs(day);
-  return (
-    <div className={`${styles.row} -mt-2`}>
-      <label className={styles.row}>
-        <span className={styles.label}>Visited on</span>
-        <input type="date" className={`${styles.input} w-auto`} value={day} max={msToDay(Date.now())} onChange={(e) => setDay(e.target.value)} />
-      </label>
-      {day !== current && (
-        <>
-          <button type="button" className={buttonClass({ size: "m" })} disabled={ms === undefined} onClick={() => ms !== undefined && onChange(ms)}>
-            Save date
-          </button>
-          <button type="button" className={buttonClass({ variant: "ghost", size: "m" })} onClick={() => setDay(current)}>
-            Cancel
-          </button>
-        </>
-      )}
-    </div>
-  );
 }

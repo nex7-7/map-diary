@@ -98,6 +98,25 @@
   height: 104px;
 }
 
+/* The Visited seal is a button: it lifts a little to say it can be picked up and re-inked. */
+.stampTap {
+  cursor: var(--cursor-press);
+  transition: filter 0.15s;
+}
+
+.stampTap:hover {
+  filter: drop-shadow(0 3px 0 color-mix(in srgb, var(--seal) 25%, transparent));
+}
+
+.stampTap:active {
+  scale: 0.94;
+}
+
+.stampTap:focus-visible {
+  outline: 2px solid var(--indigo);
+  outline-offset: 4px;
+}
+
 .stampbtn {
   flex: 1;
   height: 58px;
