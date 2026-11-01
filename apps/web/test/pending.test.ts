@@ -115,6 +115,28 @@ describe("PendingQueue", () => {
     expect((await queue.list())[0]!.state).toEqual({ kind: "added", placeId: place!.id, name: "Kyani & Co." });
   });
 
+  it("stamps a Visited place found later with the day it was added, not the day it was found", async () => {
+    const { api, diary, queue, clock } = setup();
+    const addedAt = clock.now();
+    await queue.add(KYANI, draft({ link: KYANI, status: "visited" }));
+    clock.advance(3 * 24 * 3_600_000);
+    api.answer([kyani]);
+    await queue.poll();
+
+    const status = [...diary.items.values()].find((i) => i.type === "status")!;
+    expect(readPayload("status", status.payload)).toEqual({ status: "visited", visitedAt: addedAt });
+    expect(diary.snapshot().places[0]!.opinions.find((o) => o.kind === "status")).toMatchObject({ visitedAt: new Date(addedAt).toISOString() });
+  });
+
+  it("gives a Want to place found later no visit date", async () => {
+    const { api, diary, queue } = setup();
+    await queue.add(KYANI, draft({ link: KYANI }));
+    api.answer([kyani]);
+    await queue.poll();
+    const status = [...diary.items.values()].find((i) => i.type === "status")!;
+    expect(status.payload).toEqual({ status: "want" });
+  });
+
   it("keeps several matches for the person to pick, and writes the one picked", async () => {
     const { api, diary, queue } = setup();
     const item = await queue.add("Bastian", draft({ label: "Bastian" }));

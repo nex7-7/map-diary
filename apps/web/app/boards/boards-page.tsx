@@ -10,6 +10,7 @@ import { DeviceGate, type Diary } from "@/lib/device";
 import { EMPTY_FILTERS, filterPlaces } from "@/lib/places/filter";
 import { categoryStyle } from "@/lib/places/categories";
 import type { Board, DiarySnapshot, Person, PlaceView, StatusOpinion } from "@/lib/places/types";
+import { visitedOn } from "@/lib/places/visited";
 import { boardTint, Emoji, Glyph, Icon, Notebook, type NotebookTab } from "@/lib/ui";
 import { cn } from "@/lib/utils";
 import k from "./boards.module.css";
@@ -183,7 +184,7 @@ function BoardPage({ board, snapshot, me }: { board: Board; snapshot: DiarySnaps
                     {o.status === "visited" && (
                       <span className="seal slam absolute top-1.5 right-1.5 size-11 gap-px bg-page text-[6px] tracking-[0.12em] [--r:-12deg]" style={{ animationDelay: `${500 + i * 80}ms` }}>
                         <span>Visited</span>
-                        <span className="text-[10.5px] tracking-normal">{sealDate(o.updatedAt)}</span>
+                        <span className="text-[10.5px] tracking-normal">{sealDate(visitedOn(o))}</span>
                       </span>
                     )}
                   </span>

@@ -32,6 +32,11 @@ export const CHAIN_NAME_MAX = 200;
 
 export interface StatusPayload {
   status: Status;
+  /**
+   * Visited only: the day of the visit, in milliseconds since the epoch, when it is not the
+   * time the status was written (the person changed it, or the place was found later).
+   */
+  visitedAt?: number;
 }
 
 export interface TagDefPayload {
@@ -151,7 +156,12 @@ function readPlace(p: JsonObject): PlacePayload | undefined {
 const readers: { [T in EnvelopeType]: (p: JsonObject) => PayloadByType[T] | undefined } = {
   place: readPlace,
   private_place: readPlace,
-  status: (p) => (p.status === "visited" || p.status === "want" ? { status: p.status } : undefined),
+  status: (p) => {
+    if (p.status === "want") return { status: "want" };
+    if (p.status !== "visited") return undefined;
+    const at = num(p.visitedAt);
+    return at !== undefined && at > 0 ? { status: "visited", visitedAt: Math.round(at) } : { status: "visited" };
+  },
   tag_def: (p) => {
     const name = str(p.name)?.trim();
     return name ? { name, emoji: str(p.emoji) ?? "", description: str(p.description) ?? "" } : undefined;

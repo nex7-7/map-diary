@@ -3,6 +3,7 @@ import { applyBoardRules } from "./boards";
 import { chainsOf, foldChains, outletIds } from "./chains";
 import { mergeTargets, resolvePlace } from "./merges";
 import { readPayload, type ProfilePayload } from "./payloads";
+import { nextStatusPayload } from "./visited";
 import type { Board, BoardKind, DiarySnapshot, DiarySource, Opinion, Person, PlaceView, Status, StatusOpinion, TagDefinition } from "./types";
 
 /** A decrypted item as the device store keeps it (the shape of `DiaryItem` in `@map-diary/sync`). */
@@ -88,7 +89,7 @@ export function createItemsSource(store: ItemStore): DiarySource {
       const outlets = outletIds(items, placeId);
       const own = latestStatus(items.filter((i) => i.type === "status" && i.placeId !== null && outlets.includes(i.placeId) && i.authorId === accountId));
       // The store posts new items to the Personal board; an edit keeps the item's id and place.
-      await store.write({ type: "status", placeId: own?.placeId ?? placeId, payload: { status }, ...(own ? { id: own.id } : {}) });
+      await store.write({ type: "status", placeId: own?.placeId ?? placeId, payload: nextStatusPayload(status, own), ...(own ? { id: own.id } : {}) });
       return load();
     },
   };
@@ -139,7 +140,10 @@ export function snapshotFromItems(
       }
       case "status": {
         const s = readPayload("status", item.payload);
-        if (s && item.placeId) opinions.push({ placeId: item.placeId, opinion: { ...base, kind: "status", status: s.status } });
+        if (s && item.placeId) {
+          const visitedAt = s.visitedAt !== undefined ? { visitedAt: iso(s.visitedAt) } : {};
+          opinions.push({ placeId: item.placeId, opinion: { ...base, kind: "status", status: s.status, ...visitedAt } });
+        }
         break;
       }
       case "tag": {

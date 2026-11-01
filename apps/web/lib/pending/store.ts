@@ -45,6 +45,11 @@ export interface PendingDraft {
    * new facts start over, instead of adding to them.
    */
   correcting?: true;
+  /**
+   * When the person added it (the item's `createdAt`), filled in as the place is written: a
+   * Visited place found later is stamped with that day, not the day it was found.
+   */
+  addedAt?: number;
 }
 
 export type PendingState =

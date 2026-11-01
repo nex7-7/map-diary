@@ -18,6 +18,7 @@ import { canChangeFacts } from "@/lib/entries/actions";
 import { categoryStyle, STATUS_LABELS } from "@/lib/places/categories";
 import { statusOf } from "@/lib/places/chains";
 import type { CommentOpinion, DiarySnapshot, Status, StatusOpinion } from "@/lib/places/types";
+import { visitedOn } from "@/lib/places/visited";
 
 /** While the Inbox is open it checks for results this often. */
 const INBOX_POLL_MS = 15_000;
@@ -560,7 +561,7 @@ function FriendNote({ news, snapshot, index }: { news: FriendNews; snapshot: Dia
       {o.kind === "status" && o.status === "visited" && (
         <span className="seal size-10 shrink-0 gap-px text-[6px] tracking-[0.12em] [transform:rotate(10deg)]">
           <span>Visited</span>
-          <span className="text-[9.5px] tracking-normal">{sealDate(o.updatedAt)}</span>
+          <span className="text-[9.5px] tracking-normal">{sealDate(visitedOn(o))}</span>
         </span>
       )}
     </Link>

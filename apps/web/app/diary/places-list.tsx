@@ -4,6 +4,7 @@ import { useRef, useState, type CSSProperties, type PointerEvent } from "react";
 import { categoryStyle, STATUS_LABELS } from "@/lib/places/categories";
 import { formatDistance, type ListedPlace } from "@/lib/places/filter";
 import type { DiarySnapshot, Status } from "@/lib/places/types";
+import { visitedOn } from "@/lib/places/visited";
 import { MarkVisited, PlaceRow, Seal, StatusDot } from "@/lib/ui";
 
 interface Props {
@@ -139,7 +140,7 @@ function SwipeRow({
           onOpen={() => onSelect(place.id)}
           action={
             visitedByMe ? (
-              <Seal date={sealDate(myStatus?.updatedAt ?? item.addedAt)} tilt={TILTS[index % TILTS.length] ?? "-8deg"} />
+              <Seal date={sealDate(myStatus?.kind === "status" ? visitedOn(myStatus) : item.addedAt)} tilt={TILTS[index % TILTS.length] ?? "-8deg"} />
             ) : (
               <MarkVisited placeName={place.name} onClick={() => onSetStatus(place.id, "visited")} />
             )

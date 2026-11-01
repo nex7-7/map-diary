@@ -25,6 +25,7 @@ import {
   EntryError,
   removeOpinion,
   setStatus,
+  setVisitedDate,
   unapplyTag,
   updateFacts,
 } from "@/lib/entries/actions";
@@ -33,6 +34,7 @@ import { addressArea, chainFor, outletLabel, outletOf, viewOf } from "@/lib/plac
 import { mergeTargets, resolvePlace } from "@/lib/places/merges";
 import { categoryStyle } from "@/lib/places/categories";
 import { readPayload, type PlacePayload } from "@/lib/places/payloads";
+import { dayToMs, msToDay, visitedOn } from "@/lib/places/visited";
 import type { CommentOpinion, DiarySnapshot, Opinion, Outlet, PlaceView as Place, Status, StatusOpinion, TagOpinion } from "@/lib/places/types";
 
 /**
@@ -226,10 +228,10 @@ export function PlaceView({ diary, placeId: asked }: { diary: Diary; placeId: st
               )
             )}
             {myStatus === "visited" && myStatusOpinion && (
-              <div className={`seal slam ${p.stamp} flex-col gap-[3px] [--r:-12deg]`} style={{ animationDelay: "0.35s" }} aria-label={`Visited ${sealDate(myStatusOpinion.updatedAt)}`}>
+              <div className={`seal slam ${p.stamp} flex-col gap-[3px] [--r:-12deg]`} style={{ animationDelay: "0.35s" }} aria-label={`Visited ${sealDate(visitedOn(myStatusOpinion))}`}>
                 <span className="text-[9.5px] tracking-[0.18em]">Visited</span>
-                <span className="text-[24px]">{sealDate(myStatusOpinion.updatedAt)}</span>
-                <span className="text-[9.5px] tracking-[0.18em]">{new Date(myStatusOpinion.updatedAt).getFullYear()}</span>
+                <span className="text-[24px]">{sealDate(visitedOn(myStatusOpinion))}</span>
+                <span className="text-[9.5px] tracking-[0.18em]">{new Date(visitedOn(myStatusOpinion)).getFullYear()}</span>
               </div>
             )}
             {myStatus === "want" && (
@@ -242,6 +244,13 @@ export function PlaceView({ diary, placeId: asked }: { diary: Diary; placeId: st
 
           <StatusToggle label="Your status" value={myStatus} onChange={(s: Status) => run(() => setStatus(diary, place.id, s, boards))} />
           {myStatus === null && <p className="hand -mt-2 text-[16px] text-ink-2">Stamp it Want to or Visited to put it on your list.</p>}
+          {myStatus === "visited" && myStatusOpinion && (
+            <VisitedDate
+              key={visitedOn(myStatusOpinion)}
+              at={visitedOn(myStatusOpinion)}
+              onChange={(ms) => run(() => setVisitedDate(diary, place.id, ms))}
+            />
+          )}
 
           <div className={p.narrowOnly}>{bleeder}</div>
           {!outlets && links(place)}
@@ -598,4 +607,29 @@ function hostOf(url: string): string {
   } catch {
     return url;
   }
+}
+
+/** The day of the visit, which the person can change (a place stamped late, or a past visit). */
+function VisitedDate({ at, onChange }: { at: string; onChange: (ms: number) => void }) {
+  const current = msToDay(Date.parse(at));
+  const [day, setDay] = useState(current);
+  const ms = dayToMs(day);
+  return (
+    <div className={`${styles.row} -mt-2`}>
+      <label className={styles.row}>
+        <span className={styles.label}>Visited on</span>
+        <input type="date" className={`${styles.input} w-auto`} value={day} max={msToDay(Date.now())} onChange={(e) => setDay(e.target.value)} />
+      </label>
+      {day !== current && (
+        <>
+          <button type="button" className={buttonClass({ size: "m" })} disabled={ms === undefined} onClick={() => ms !== undefined && onChange(ms)}>
+            Save date
+          </button>
+          <button type="button" className={buttonClass({ variant: "ghost", size: "m" })} onClick={() => setDay(current)}>
+            Cancel
+          </button>
+        </>
+      )}
+    </div>
+  );
 }

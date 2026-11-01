@@ -4,6 +4,7 @@ import { mergeTargets, resolvePlace } from "../places/merges";
 import type { StoredItem } from "../places/items-source";
 import { cleanDisplayName, readAvatar, readPayload, type AvatarPayload, type CommentPayload, type PlacePayload, type ProfilePayload, type TagDefPayload } from "../places/payloads";
 import type { Status } from "../places/types";
+import { nextStatusPayload } from "../places/visited";
 import { oneEmoji } from "./emoji";
 import { normaliseLink } from "./parse-input";
 
@@ -37,6 +38,8 @@ export interface NewPlace {
   kind: "place" | "private_place";
   facts: PlacePayload;
   status: Status;
+  /** Visited only: when the visit was, if not now (a place found later keeps the day it was added). */
+  visitedAt?: number;
   /** Existing tag definitions to apply. */
   tagIds: string[];
   /** Tags made in the sheet: defined, then applied. */
@@ -66,7 +69,7 @@ export async function addPlace(w: DiaryWriter, input: NewPlace): Promise<string>
   const pinBoards = input.kind === "private_place" ? [...new Set([...(boards ?? []), ...(tagBoards ?? []), ...(commentBoards ?? [])])] : undefined;
   const place = await w.write({ type: input.kind, placeId: null, payload: json(input.facts), ...on(pinBoards) });
   // The status goes first: tags and comments need one.
-  await w.write({ type: "status", placeId: place.id, payload: { status: input.status }, ...on(boards) });
+  await w.write({ type: "status", placeId: place.id, payload: nextStatusPayload(input.status, undefined, input.visitedAt), ...on(boards) });
   for (const tagId of new Set([...input.tagIds, ...defined])) await applyTag(w, place.id, tagId, tagBoards);
   const text = input.comment.trim();
   if (text) await w.write({ type: "comment", placeId: place.id, payload: { text, ...(input.commentAllOutlets ? { allOutlets: true } : {}) }, ...on(commentBoards) });
@@ -80,7 +83,7 @@ export async function addPlace(w: DiaryWriter, input: NewPlace): Promise<string>
 export async function addOpinions(w: DiaryWriter, placeId: string, input: Omit<NewPlace, "kind" | "facts">): Promise<void> {
   const { boards, tagBoards = boards, commentBoards = boards } = input;
   const hasStatus = own(w, await w.listItems(), "status", placeId).length > 0;
-  if (!hasStatus) await setStatus(w, placeId, input.status, boards);
+  if (!hasStatus) await setStatus(w, placeId, input.status, boards, input.visitedAt);
   const defined: string[] = [];
   for (const def of input.newTags) defined.push(await defineTag(w, def, tagBoards));
   for (const tagId of new Set([...input.tagIds, ...defined])) await applyTag(w, placeId, tagId, tagBoards);
@@ -136,14 +139,33 @@ async function requireStatus(w: DiaryWriter, placeId: string): Promise<StoredIte
 /**
  * Sets this person's status, editing their existing status item if there is one. Given
  * boards, the status moves to them; otherwise it keeps its own (Personal if new). A chain
- * has one status per person, kept on the outlet it was first set on.
+ * has one status per person, kept on the outlet it was first set on. A place that stays
+ * Visited keeps its visit date unless `visitedAt` gives a new one.
  */
-export async function setStatus(w: DiaryWriter, placeId: string, status: Status, boards?: Boards): Promise<void> {
+export async function setStatus(w: DiaryWriter, placeId: string, status: Status, boards?: Boards, visitedAt?: number): Promise<void> {
   const mine = own(w, await w.listItems(), "status", placeId);
   const latest = mine.reduce<StoredItem | undefined>((a, b) => (!a || b.updatedAt > a.updatedAt ? b : a), undefined);
-  await w.write({ type: "status", placeId: latest?.placeId ?? placeId, payload: { status }, ...(latest ? { id: latest.id } : {}), ...on(boards) });
+  const payload = nextStatusPayload(status, latest, visitedAt);
+  await w.write({ type: "status", placeId: latest?.placeId ?? placeId, payload, ...(latest ? { id: latest.id } : {}), ...on(boards) });
   // A sync race can leave two; keep one.
   for (const extra of mine) if (extra !== latest) await w.remove(extra.id);
+}
+
+/** Earliest visit date accepted. */
+const VISITED_FROM = Date.UTC(1950, 0, 1);
+
+/**
+ * Changes the day this person visited the place. Their status must already be Visited; it
+ * keeps its boards. A day in the future is refused.
+ */
+export async function setVisitedDate(w: DiaryWriter, placeId: string, visitedAt: number, now: number = Date.now()): Promise<void> {
+  if (!Number.isFinite(visitedAt) || visitedAt < VISITED_FROM) throw new EntryError("Pick the day you went.");
+  // A day later than today, wherever the person is: allow for time zones ahead of the device.
+  if (visitedAt > now + 14 * 3_600_000) throw new EntryError("That day hasn't happened yet. Pick the day you went.");
+  const mine = own(w, await w.listItems(), "status", placeId);
+  const latest = mine.reduce<StoredItem | undefined>((a, b) => (!a || b.updatedAt > a.updatedAt ? b : a), undefined);
+  if (!latest || readPayload("status", latest.payload)?.status !== "visited") throw new EntryError("Mark it Visited first.");
+  await setStatus(w, placeId, "visited", undefined, Math.round(visitedAt));
 }
 
 /**

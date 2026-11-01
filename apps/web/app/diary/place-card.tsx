@@ -4,6 +4,7 @@ import Link from "next/link";
 import { categoryStyle } from "@/lib/places/categories";
 import { formatDistance, type ListedPlace } from "@/lib/places/filter";
 import type { DiarySnapshot, Status } from "@/lib/places/types";
+import { visitedOn } from "@/lib/places/visited";
 import { BoardBadge, CloseButton, Icon, StatusChips } from "@/lib/ui";
 import { sealDate } from "./places-list";
 
@@ -39,9 +40,9 @@ export function PlaceCard({ item, snapshot, onClose, onSetStatus }: Props) {
             <span className="text-[12.5px] text-ink-3">{[area, distanceM !== undefined ? formatDistance(distanceM) : undefined].filter(Boolean).join(" · ")}</span>
           </Link>
           {myStatus?.kind === "status" && myStatus.status === "visited" && (
-            <span key={myStatus.updatedAt} className="seal slam mt-1 size-[54px] shrink-0 flex-col gap-px [--r:-10deg]" aria-label={`Visited ${sealDate(myStatus.updatedAt)}`}>
+            <span key={visitedOn(myStatus)} className="seal slam mt-1 size-[54px] shrink-0 flex-col gap-px [--r:-10deg]" aria-label={`Visited ${sealDate(visitedOn(myStatus))}`}>
               <span className="text-[6.5px] tracking-[0.14em]">Visited</span>
-              <span className="text-[12.5px]">{sealDate(myStatus.updatedAt)}</span>
+              <span className="text-[12.5px]">{sealDate(visitedOn(myStatus))}</span>
             </span>
           )}
           <CloseButton onClick={onClose} />
