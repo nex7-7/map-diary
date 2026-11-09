@@ -141,7 +141,14 @@ export function DiaryView({ source, view }: { source: DiarySource; view: DiaryVi
   ].map((t) => (t.id === board ? { ...t, count: listed.length } : t));
 
   const nearMeChip = (
-    <button type="button" className="chip h-9 bg-page" aria-pressed={locate.kind === "on"} onClick={nearMe} disabled={locate.kind === "locating"}>
+    // bg-page only while off: the utility would override the pressed chip's ink fill and hide its text.
+    <button
+      type="button"
+      className={locate.kind === "on" ? "chip h-9" : "chip h-9 bg-page"}
+      aria-pressed={locate.kind === "on"}
+      onClick={nearMe}
+      disabled={locate.kind === "locating"}
+    >
       <Icon name="locate" size="s" />
       {locate.kind === "locating" ? "Finding you…" : "Near me"}
     </button>
