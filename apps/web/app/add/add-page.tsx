@@ -79,7 +79,12 @@ export function AddPage() {
                       <AddForm
                         diary={diary}
                         initial={{ ...initial, ...(pending ? { pending } : {}) }}
-                        onSaved={(id, s) => setSaved({ id, ...s })}
+                        onSaved={(id, s) => {
+                          // The shared text is used up: coming back to the app or reloading must
+                          // not open the Add sheet with it again.
+                          history.replaceState(null, "", "/add");
+                          setSaved({ id, ...s });
+                        }}
                         onQueued={() => router.push("/inbox")}
                         onCancel={() => close(pending !== null)}
                       />
