@@ -19,9 +19,36 @@ import {
 } from "../lib/entries/actions";
 import { oneEmoji } from "../lib/entries/emoji";
 import { buildFacts, customCategory, type FactsForm } from "../lib/entries/facts";
-import { normaliseLink, parseCoordinates, parseEntry } from "../lib/entries/parse-input";
+import { googlePlaceKey, normaliseLink, parseCoordinates, parseEntry } from "../lib/entries/parse-input";
 import { snapshotFromItems, type StoredItem } from "../lib/places/items-source";
 import { FakeDiary } from "./fake-diary";
+
+describe("googlePlaceKey", () => {
+  const cid = BigInt("0x9e8f7a6b5c4d3e2f").toString();
+  it("reads the same Google place from cid, ftid and the data part", () => {
+    const key = `g:${cid}`;
+    expect(googlePlaceKey(`https://maps.google.com/?cid=${cid}`)).toBe(key);
+    expect(googlePlaceKey("https://maps.google.com/?q=Era,+Andheri&ftid=0x3be7b7c0a1b2c3d4:0x9e8f7a6b5c4d3e2f")).toBe(key);
+    expect(googlePlaceKey("https://www.google.com/maps/place/Era/data=!4m2!3m1!1s0x3be7b7c0a1b2c3d4:0x9e8f7a6b5c4d3e2f?entry=gps")).toBe(key);
+    expect(googlePlaceKey("https://www.google.co.in/maps/place/Era/data=!4m2!3m1!1s0x3be7b7c0a1b2c3d4%3A0x9e8f7a6b5c4d3e2f")).toBe(key);
+  });
+  it("has nothing for links without a place id", () => {
+    expect(googlePlaceKey("https://maps.app.goo.gl/AbC")).toBeUndefined();
+    expect(googlePlaceKey("https://www.zomato.com/mumbai/era?cid=1")).toBeUndefined();
+    expect(googlePlaceKey("https://www.google.com/maps/@19.1,72.8,15z")).toBeUndefined();
+    expect(googlePlaceKey("not a link")).toBeUndefined();
+  });
+  it("finds the place in the diary by another link to the same Google place", async () => {
+    const d = new FakeDiary();
+    const { id } = await d.write({
+      type: "place",
+      placeId: null,
+      payload: { name: "Era", category: "restaurant", location: { lat: 19.13, lng: 72.83 }, sourceLinks: [`https://maps.google.com/?cid=${cid}`] },
+    });
+    expect(findDuplicate(await d.listItems(), "https://www.google.com/maps/place/Era/data=!4m2!3m1!1s0x1:0x9e8f7a6b5c4d3e2f")?.id).toBe(id);
+    expect(findDuplicate(await d.listItems(), "https://www.google.com/maps/place/Era/data=!4m2!3m1!1s0x1:0x1234")).toBeUndefined();
+  });
+});
 
 describe("parseEntry", () => {
   it("takes the place pin from a full Google Maps link over the viewport", () => {

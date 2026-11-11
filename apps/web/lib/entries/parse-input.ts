@@ -140,6 +140,30 @@ export function parseGoogleMapsUrl(url: URL): Pick<ParsedEntry, "name" | "locati
   return out;
 }
 
+/**
+ * The Google place a Maps link is for, as one key, so two different links (a friend's short
+ * link and the one already in the diary) can be told to be the same place. Google writes the
+ * same id three ways: `cid=` (decimal), `ftid=0x…:0x…`, and `!1s0x…:0x…` in the data part; the
+ * second hex number of the last two is the cid. Read on the device; nothing is sent.
+ */
+export function googlePlaceKey(raw: string): string | undefined {
+  let url: URL;
+  try {
+    url = new URL(raw.trim());
+  } catch {
+    return undefined;
+  }
+  const host = url.hostname.toLowerCase().replace(/^www\./, "");
+  if (!isGoogleMapsUrl(host, url.pathname) && !/^google\.[a-z.]+$/.test(host)) return undefined;
+  const cid = url.searchParams.get("cid") ?? url.searchParams.get("ludocid");
+  if (cid && /^\d{1,20}$/.test(cid)) return `g:${BigInt(cid).toString()}`;
+  const ftid = url.searchParams.get("ftid") ?? /!1s(0x[0-9a-f]+:0x[0-9a-f]+)/i.exec(url.href.replace(/%3A/gi, ":"))?.[1];
+  const hex = ftid ? /^0x[0-9a-f]{1,16}:(0x[0-9a-f]{1,16})$/i.exec(ftid)?.[1] : undefined;
+  if (!hex) return undefined;
+  const id = BigInt(hex);
+  return id === 0n ? undefined : `g:${id.toString()}`;
+}
+
 function parseGeoUri(raw: string): Pick<ParsedEntry, "name" | "location"> {
   // geo:19.07,72.87?q=19.07,72.87(Name)  or  geo:0,0?q=Some+Place
   const body = raw.slice(4);

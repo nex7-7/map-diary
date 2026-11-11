@@ -11,15 +11,17 @@ import {
   type ResolverResult,
 } from "@map-diary/crypto";
 import { ApiError, NetworkError, type Api } from "@map-diary/sync";
-import { EntryError, addOpinions, addPlace, findCataloguePlace, updateFacts, type DiaryWriter } from "../entries/actions";
+import { EntryError, addOpinions, addPlace, findCataloguePlace, findLocalPlace, updateFacts, type DiaryWriter } from "../entries/actions";
+import { parseLink } from "../entries/parse-input";
 import { isFood } from "../entries/facts";
-import { branchOf, chainFor } from "../places/chains";
+import { branchOf, chainFor, knownByName, type KnownPlace } from "../places/chains";
 import type { PlaceChain } from "../places/types";
+import type { StoredItem } from "../places/items-source";
 import { readPayload, type PlacePayload } from "../places/payloads";
 import type { PendingDraft, PendingItem, PendingState, PendingStore, WaitingJob } from "./store";
 
 /** The resolver calls this needs; they are never signed, so no account is tied to a job. */
-export type ResolverApi = Pick<Api, "submitResolverJob" | "getResolverJob" | "deleteResolverJob">;
+export type ResolverApi = Pick<Api, "submitResolverJob" | "getResolverJob" | "deleteResolverJob" | "expandMapsLink">;
 
 /** The longest query the queue accepts. */
 export const MAX_QUERY_LENGTH = 1000;
@@ -100,6 +102,7 @@ export class PendingQueue {
   private async pollOnce(): Promise<void> {
     for (const item of await this.store.list()) {
       try {
+        if ((item.state.kind === "unsent" || item.state.kind === "waiting") && (await this.settleOnDevice(item))) continue;
         if (item.state.kind === "unsent") await this.send(item);
         else if (item.state.kind === "waiting") await this.check(item, item.state);
         else if (item.state.kind === "failed" && item.state.job) await this.check(item, item.state.job);
@@ -112,6 +115,70 @@ export class PendingQueue {
         if (!(err instanceof NetworkError)) throw err;
       }
     }
+  }
+
+  /**
+   * Finds the place without the resolver when this device can: the link is for a place already
+   * in the diary (the same link, or another link to the same Google place), or the short Google
+   * Maps link turns out to carry the pin after all. Only the link goes to the Worker, to expand
+   * it, as when it was added; the diary is searched on the device. Returns whether it settled.
+   */
+  private async settleOnDevice(item: PendingItem): Promise<boolean> {
+    const { draft } = item;
+    if (draft.refreshPlaceId || !draft.link) return false;
+    let current = item;
+    if (draft.expandedUrl === undefined && parseLink(draft.link).shortLink) {
+      let expanded: string | null;
+      try {
+        expanded = (await this.api.expandMapsLink(draft.link)).url;
+      } catch (err) {
+        // Offline or busy: try on a later pass. Anything else: the resolver has it.
+        if (err instanceof NetworkError || (err instanceof ApiError && (err.status >= 500 || err.status === 429))) return false;
+        expanded = null;
+      }
+      current = { ...item, draft: { ...draft, expandedUrl: expanded } };
+      if (!(await this.store.get(item.id))) return true;
+      await this.store.put(current);
+    }
+    const links = [current.draft.link, current.draft.expandedUrl ?? undefined];
+    const items = await this.diary.listItems();
+    const known = findLocalPlace(items, links);
+    if (known) {
+      await this.putOnPlace(current, known.id);
+      return true;
+    }
+    const full = current.draft.expandedUrl ? parseLink(current.draft.expandedUrl) : undefined;
+    if (!full?.location || !full.name) return false;
+    const open = jobOf(current.state);
+    await this.write(current, {
+      name: full.name,
+      category: "restaurant",
+      location: full.location,
+      sourceLinks: [current.draft.expandedUrl!],
+    });
+    if (open) await this.forgetJob(open.jobId);
+    return true;
+  }
+
+  /** The person says the item is this place already in the diary: their notes go onto it, with no lookup. */
+  async useKnown(id: string, placeId: string): Promise<string> {
+    const item = await this.store.get(id);
+    if (!item || item.draft.refreshPlaceId || item.state.kind === "added") throw new EntryError("That was already sorted out. Reload the Inbox.");
+    const exists = (await this.diary.listItems()).some((i) => i.id === placeId && (i.type === "place" || i.type === "private_place"));
+    if (!exists) throw new EntryError("That place isn't on this device any more. It may have been deleted.");
+    await this.putOnPlace(item, placeId);
+    return placeId;
+  }
+
+  /** Puts the item's status, tags and note on a place already in the diary, and closes its job. */
+  private async putOnPlace(item: PendingItem, placeId: string): Promise<void> {
+    const items = await this.diary.listItems();
+    const place = items.find((i) => i.id === placeId);
+    const name = place && (place.type === "place" || place.type === "private_place") ? readPayload(place.type, place.payload)?.name : undefined;
+    await addDraftOpinions(this.diary, placeId, draftOf(item));
+    const open = jobOf(item.state);
+    if (open) await this.forgetJob(open.jobId);
+    await this.save(item, added(placeId, name ?? item.draft.label, true));
   }
 
   /** Checks a job that is waiting, or failed but still on the server (the admin may retry it). */
@@ -315,6 +382,22 @@ export class PendingQueue {
     await this.store.delete(id);
     this.emit();
   }
+}
+
+/**
+ * A place already in the diary by the item's name (typed, or read off its expanded link), for the
+ * Inbox to ask "Is it this one?". Only what the device holds is searched, so nothing is sent and
+ * nothing the person cannot see is revealed.
+ */
+export function knownForItem(items: readonly StoredItem[], item: PendingItem, accountId: string): KnownPlace | undefined {
+  if (item.draft.refreshPlaceId) return undefined;
+  const names = [item.draft.label, item.draft.expandedUrl ? parseLink(item.draft.expandedUrl).name : undefined];
+  for (const name of names) {
+    if (!name || /^https?:/i.test(name)) continue;
+    const found = knownByName(items, name, accountId) ?? (name.includes(",") ? knownByName(items, name.split(",")[0]!, accountId) : undefined);
+    if (found) return found;
+  }
+  return undefined;
 }
 
 /** Whether text is a link rather than a name. */

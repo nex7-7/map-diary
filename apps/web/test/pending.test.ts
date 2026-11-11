@@ -4,7 +4,7 @@ import { ApiError, NetworkError, type ResolverJobResponse } from "@map-diary/syn
 import { readPayload } from "../lib/places/payloads";
 import { setStatus } from "../lib/entries/actions";
 import { unwrittenChains } from "../lib/places/chains";
-import { ADDED_KEEP_MS, PendingQueue, type ResolverApi } from "../lib/pending/queue";
+import { ADDED_KEEP_MS, PendingQueue, knownForItem, type ResolverApi } from "../lib/pending/queue";
 import { MemoryPendingStore, type PendingDraft } from "../lib/pending/store";
 import { FakeDiary } from "./fake-diary";
 
@@ -33,6 +33,17 @@ class FakeResolver implements ResolverApi {
   async deleteResolverJob(id: string): Promise<undefined> {
     this.jobs.delete(id);
     return undefined;
+  }
+
+  /** Short links the Worker can expand, and how often it was asked. */
+  expansions = new Map<string, string>();
+  expanded = 0;
+  async expandMapsLink(url: string): Promise<{ url: string }> {
+    if (this.offline) throw new NetworkError();
+    this.expanded++;
+    const full = this.expansions.get(url);
+    if (!full) throw new ApiError(422, "not_expanded");
+    return { url: full };
   }
 
   only(): [string, Job] {
@@ -531,6 +542,81 @@ describe("PendingQueue", () => {
       const placeId = await queue.choose(item.id, 0);
       expect(readPayload("place", diary.items.get(placeId!)!.payload)!.chain?.id).toBe(first.id);
       expect(diary.snapshot().places).toHaveLength(1);
+    });
+  });
+
+  describe("finding a place on the device, without the resolver", () => {
+    const era = { name: "Era", category: "restaurant", location: { lat: 19.136125, lng: 72.833576 }, address: "Dream Works, Andheri West" };
+    const SHORT = "https://maps.app.goo.gl/AbCdEf123";
+    // Google's share links often expand to the place's id with no pin.
+    const NO_PIN = "https://www.google.com/maps/place/Era/data=!4m2!3m1!1s0x3be7b7c0a1b2c3d4:0x9e8f7a6b5c4d3e2f?utm_source=mstt_1&entry=gps";
+    const SAME_CID = `https://maps.google.com/?cid=${BigInt("0x9e8f7a6b5c4d3e2f").toString()}`;
+
+    it("puts a friend's short link onto the place someone added under another link to the same Google place", async () => {
+      const { api, diary, queue } = setup();
+      const first = await diary.write({ type: "place", placeId: null, payload: { ...era, sourceLinks: [SAME_CID] } });
+      api.expansions.set(SHORT, NO_PIN);
+      await queue.add(`Era ${SHORT}`, draft({ label: "Era", link: SHORT, status: "visited", comment: "Loud" }));
+      await queue.poll();
+
+      expect(places(diary)).toHaveLength(1);
+      expect((await queue.list())[0]!.state).toEqual({ kind: "added", placeId: first.id, name: "Era", existing: true });
+      // The job is closed, so the resolver never sees it.
+      expect(api.jobs.size).toBe(0);
+      const snap = diary.snapshot().places[0]!;
+      expect(snap.opinions.filter((o) => o.kind === "status")).toMatchObject([{ status: "visited" }]);
+      expect(snap.opinions.some((o) => o.kind === "comment")).toBe(true);
+    });
+
+    it("expands a short link once, and writes the place itself when the full link has the pin", async () => {
+      const { api, diary, queue } = setup();
+      api.expansions.set(SHORT, "https://www.google.com/maps/place/Era/@19.13,72.83,17z/data=!3m1!4b1!4m6!3m5!1s0x1:0x2!8m2!3d19.136125!4d72.833576");
+      await queue.add(SHORT, draft({ label: SHORT, link: SHORT }));
+      await queue.poll();
+      await queue.poll();
+
+      expect(api.expanded).toBe(1);
+      const [place] = places(diary);
+      expect(readPayload("place", place!.payload)).toMatchObject({ name: "Era", location: { lat: 19.136125, lng: 72.833576 } });
+      expect(api.jobs.size).toBe(0);
+    });
+
+    it("leaves it to the resolver when the device can't find the place, asking the Worker only once", async () => {
+      const { api, diary, queue } = setup();
+      await queue.add(SHORT, draft({ label: SHORT, link: SHORT }));
+      await queue.poll();
+      await queue.poll();
+      expect(api.expanded).toBe(1);
+      expect(places(diary)).toHaveLength(0);
+      expect((await queue.list())[0]!.state.kind).toBe("waiting");
+      expect((await queue.list())[0]!.draft.expandedUrl).toBeNull();
+    });
+
+    it("tries the expansion again later when offline", async () => {
+      const { api, queue } = setup();
+      api.offline = true;
+      await queue.add(SHORT, draft({ label: SHORT, link: SHORT }));
+      await queue.poll();
+      expect((await queue.list())[0]!.draft.expandedUrl).toBeUndefined();
+    });
+
+    it("offers a place already in the diary by name, and adds the notes to it on a yes", async () => {
+      const { api, diary, queue } = setup();
+      const first = await diary.write({ type: "place", placeId: null, payload: { ...era, sourceLinks: ["https://www.zomato.com/mumbai/era-veera-desai-area"] } });
+      api.expansions.set(SHORT, "https://maps.google.com/?q=Era,+Dream+Works,+Andheri+West&ftid=0x1:0x5");
+      const item = await queue.add(SHORT, draft({ label: SHORT, link: SHORT, comment: "Sushi" }));
+      await queue.poll();
+
+      // A name may mean another place, so it asks rather than adding by itself.
+      const waiting = (await queue.list())[0]!;
+      expect(waiting.state.kind).toBe("waiting");
+      const known = knownForItem(await diary.listItems(), waiting, diary.device.accountId);
+      expect(known).toEqual({ placeId: first.id, name: "Era" });
+
+      await queue.useKnown(item.id, first.id);
+      expect((await queue.list())[0]!.state).toEqual({ kind: "added", placeId: first.id, name: "Era", existing: true });
+      expect(api.jobs.size).toBe(0);
+      expect(places(diary)).toHaveLength(1);
     });
   });
 });

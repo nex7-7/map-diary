@@ -149,7 +149,8 @@ Adding saves instantly on the device; everything slow happens afterwards.
 2. The Add sheet shows category, status, tag chips, description and a board picker. Defaults: Want to, Personal board. Only the save tap is required.
 3. The item is encrypted on the device and synced immediately.
 4. Google Maps links resolve on the device (coordinates are in the expanded URL). Dropped pins need no resolution.
-5. Zomato, District and plain names go to the resolver queue and show as pending in the Inbox until resolved. A plain name (or a Zomato share link, which only gives the name) always asks "Is this it?" before adding. A failed or wrong lookup can be looked up again with a better link or name, or filled in by hand.
+5. Before anything goes to the resolver, the device checks the places it already holds: a link for a place already in the diary (the same link, or another Google Maps link to the same Google place, read from its `cid`/`ftid`) adds straight onto it, a short Google link whose full link carries the pin is placed on the device, and a name that matches a place on the map asks "Is it this one?" in the Add sheet and the Inbox. Only places the device can already read are searched, so nobody's group or Personal notes are touched.
+6. Zomato, District and plain names go to the resolver queue and show as pending in the Inbox until resolved. A plain name (or a Zomato share link, which only gives the name) always asks "Is this it?" before adding. A failed or wrong lookup can be looked up again with a better link or name, or filled in by hand.
 
 **Manage**
 

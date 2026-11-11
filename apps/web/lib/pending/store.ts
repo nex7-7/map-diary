@@ -23,6 +23,11 @@ export interface PendingDraft {
   label: string;
   /** The link as given, kept as a source link. */
   link?: string;
+  /**
+   * The full Google Maps URL behind a short `link`, read on this device to find the place in the
+   * diary without the resolver; null once expanding it failed, so it is not asked again.
+   */
+  expandedUrl?: string | null;
   /** Only when the person picked one; otherwise the resolver's category is used. */
   category?: Category;
   status: Status;

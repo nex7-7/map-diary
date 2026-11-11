@@ -6,7 +6,7 @@ import { cleanDisplayName, readAvatar, readPayload, type AvatarPayload, type Com
 import type { Status } from "../places/types";
 import { nextStatusPayload } from "../places/visited";
 import { oneEmoji } from "./emoji";
-import { normaliseLink } from "./parse-input";
+import { googlePlaceKey, normaliseLink } from "./parse-input";
 
 /**
  * Writes for the Add sheet and the place page, over the device's diary. Each opinion goes to
@@ -112,14 +112,37 @@ export async function findCataloguePlace(w: DiaryWriter, links: readonly string[
   return found && resolvePlace(targets, found);
 }
 
-/** A place already in the diary with the same source link, if any. */
+/**
+ * A place already in the diary with the same source link, if any. Two Google Maps links for the
+ * same Google place count as the same link, whatever their form (short link expanded, `cid=`,
+ * `ftid=`), so a friend's own share link finds the place someone else added.
+ */
 export function findDuplicate(items: readonly StoredItem[], link: string): StoredItem | undefined {
   const key = normaliseLink(link);
+  const google = googlePlaceKey(link);
   return items.find((i) => {
     if (i.type !== "place" && i.type !== "private_place") return false;
     const p = readPayload(i.type, i.payload);
-    return p?.sourceLinks.some((l) => normaliseLink(l) === key) ?? false;
+    return p?.sourceLinks.some((l) => normaliseLink(l) === key || (google !== undefined && googlePlaceKey(l) === google)) ?? false;
   });
+}
+
+/**
+ * The place on this device that one of these links is for, with merged duplicates followed to
+ * the place they were merged into. Only what this device can already read is searched, so it
+ * never reveals anything the person could not see: someone's opinions on a group board stay
+ * out of reach, and a dropped pin on a board they are not in is not on the device at all.
+ */
+export function findLocalPlace(items: readonly StoredItem[], links: readonly (string | undefined)[]): StoredItem | undefined {
+  const targets = mergeTargets(items);
+  for (const link of links) {
+    if (!link) continue;
+    const found = findDuplicate(items, link);
+    if (!found) continue;
+    const id = resolvePlace(targets, found.id);
+    return items.find((i) => i.id === id) ?? found;
+  }
+  return undefined;
 }
 
 /** This person's items of a type on the place, or on any outlet of its chain. */
