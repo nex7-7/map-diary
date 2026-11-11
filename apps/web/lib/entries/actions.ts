@@ -174,6 +174,51 @@ export async function setStatus(w: DiaryWriter, placeId: string, status: Status,
   for (const extra of mine) if (extra !== latest) await w.remove(extra.id);
 }
 
+/**
+ * Moves this person's status to new boards, and takes along their tags and comments on the
+ * place that were on the same boards as the status (they followed it). A tag or comment they
+ * gave boards of its own stays where it is, and so does a tag whose definition can't be read
+ * on the new boards and isn't theirs to widen. Returns how many were left behind that way.
+ */
+export async function moveStamp(
+  w: DiaryWriter,
+  placeId: string,
+  status: Status,
+  boards: readonly string[],
+  /** Whether a tag's definition can be read on a board; defaults to "is posted there". See `tagFit`. */
+  tagVisibleOn?: (tagId: string, boardId: string) => boolean,
+): Promise<number> {
+  const items = await w.listItems();
+  const mine = own(w, items, "status", placeId);
+  const latest = mine.reduce<StoredItem | undefined>((a, b) => (!a || b.updatedAt > a.updatedAt ? b : a), undefined);
+  const before = latest?.boardIds ?? [];
+  await setStatus(w, placeId, status, boards);
+  if (!latest || sameBoards(before, boards)) return 0;
+
+  let kept = 0;
+  for (const item of [...own(w, items, "tag", placeId), ...own(w, items, "comment", placeId)]) {
+    if (!sameBoards(item.boardIds, before)) continue;
+    if (item.type === "tag") {
+      const tagId = readPayload("tag", item.payload)?.tagId;
+      const def = items.find((i) => i.id === tagId && i.type === "tag_def");
+      if (def && tagId) {
+        const missing = boards.filter((b) => !(tagVisibleOn ? tagVisibleOn(tagId, b) : def.boardIds.includes(b)));
+        if (missing.length > 0) {
+          if (def.authorId !== w.device.accountId) {
+            kept++;
+            continue;
+          }
+          await w.write({ type: "tag_def", placeId: null, payload: def.payload, id: def.id, boards: [...def.boardIds, ...missing] });
+        }
+      }
+    }
+    await w.write({ type: item.type, placeId: item.placeId, payload: item.payload, id: item.id, boards });
+  }
+  return kept;
+}
+
+const sameBoards = (a: readonly string[], b: readonly string[]) => a.length === b.length && a.every((id) => b.includes(id));
+
 /** Earliest visit date accepted. */
 const VISITED_FROM = Date.UTC(1950, 0, 1);
 

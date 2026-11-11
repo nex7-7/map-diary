@@ -24,6 +24,7 @@ import {
   deletePlace,
   editComment,
   EntryError,
+  moveStamp,
   removeOpinion,
   setStatus,
   setVisitedDate,
@@ -309,8 +310,18 @@ export function PlaceView({ diary, placeId: asked }: { diary: Diary; placeId: st
               noPublic={place.isPrivate}
               onChange={(next) => {
                 setBoardEdit(next);
-                // Moving the status moves the place on the person's list for those boards too.
-                if (myStatus !== null) run(() => setStatus(diary, place.id, myStatus, next));
+                // Moving the status moves the place on the person's list for those boards too,
+                // and takes along their tags and comments that were with it.
+                if (myStatus !== null) {
+                  run(async () => {
+                    const visible = (tagId: string, boardId: string) => {
+                      const def = snapshot.tags.find((t) => t.id === tagId);
+                      return def ? tagFit(def, [boardId], snapshot).fits.length > 0 : false;
+                    };
+                    const kept = await moveStamp(diary, place.id, myStatus, next, visible);
+                    if (kept > 0) setNotice(`${kept === 1 ? "One tag stayed" : `${kept} tags stayed`} where ${kept === 1 ? "it was" : "they were"}: someone else's tag can't be shown on ${next.map((id) => boardName(snapshot, id)).join(", ")}.`);
+                  });
+                }
               }}
             />
           </section>
