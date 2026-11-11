@@ -17,6 +17,8 @@ import { googlePlaceKey, normaliseLink } from "./parse-input";
 /** The parts of the device's `Diary` these writes need. */
 export interface DiaryWriter {
   readonly device: { readonly accountId: string };
+  /** The boards the account is in, with group members; lets a tag fit a board its readers can all read it on. */
+  readonly boards?: readonly { readonly id: string; readonly kind: "personal" | "master" | "group"; readonly memberIds?: readonly string[] }[];
   listItems(): Promise<StoredItem[]>;
   write(input: {
     type: EnvelopeType;
@@ -185,7 +187,7 @@ export async function moveStamp(
   placeId: string,
   status: Status,
   boards: readonly string[],
-  /** Whether a tag's definition can be read on a board; defaults to "is posted there". See `tagFit`. */
+  /** Whether a tag's definition can be read on a board, beyond what the diary's own boards show. See `tagFit`. */
   tagVisibleOn?: (tagId: string, boardId: string) => boolean,
 ): Promise<number> {
   const items = await w.listItems();
@@ -202,7 +204,7 @@ export async function moveStamp(
       const tagId = readPayload("tag", item.payload)?.tagId;
       const def = items.find((i) => i.id === tagId && i.type === "tag_def");
       if (def && tagId) {
-        const missing = boards.filter((b) => !(tagVisibleOn ? tagVisibleOn(tagId, b) : def.boardIds.includes(b)));
+        const missing = boards.filter((b) => !readableOn(w, def.boardIds, b) && !tagVisibleOn?.(tagId, b));
         if (missing.length > 0) {
           if (def.authorId !== w.device.accountId) {
             kept++;
@@ -215,6 +217,23 @@ export async function moveStamp(
     await w.write({ type: item.type, placeId: item.placeId, payload: item.payload, id: item.id, boards });
   }
   return kept;
+}
+
+/**
+ * Whether something posted to `postedTo` can be read by everyone on `boardId`: posted there,
+ * posted Public, or every member of that board can read one of the boards it is on. The same
+ * rule as `tagFit` on the place page, from the diary's own board list.
+ */
+function readableOn(w: DiaryWriter, postedTo: readonly string[], boardId: string): boolean {
+  if (postedTo.includes(boardId)) return true;
+  const ring = w.boards ?? [];
+  const reached = ring.filter((b) => postedTo.includes(b.id));
+  if (reached.some((b) => b.kind === "master")) return true;
+  const target = ring.find((b) => b.id === boardId);
+  if (!target || target.kind === "master") return false;
+  const readers = (b: (typeof ring)[number]) => (b.kind === "personal" ? [w.device.accountId] : (b.memberIds ?? []));
+  const members = readers(target);
+  return members.length > 0 && members.every((m) => reached.some((b) => readers(b).includes(m)));
 }
 
 const sameBoards = (a: readonly string[], b: readonly string[]) => a.length === b.length && a.every((id) => b.includes(id));
@@ -246,14 +265,14 @@ export async function applyTag(
   placeId: string,
   tagId: string,
   boards?: Boards,
-  /** Whether the definition can be read on a board; defaults to "is posted there". See `tagFit`. */
+  /** Whether the definition can be read on a board, beyond what the diary's own boards show. See `tagFit`. */
   visibleOn?: (boardId: string) => boolean,
 ): Promise<void> {
   const items = await requireStatus(w, placeId);
   const def = items.find((i) => i.id === tagId && i.type === "tag_def");
   const wanted = boards && boards.length > 0 ? boards : undefined;
   if (def && wanted) {
-    const missing = wanted.filter((b) => !(visibleOn ? visibleOn(b) : def.boardIds.includes(b)));
+    const missing = wanted.filter((b) => !readableOn(w, def.boardIds, b) && !visibleOn?.(b));
     if (missing.length > 0) {
       if (def.authorId !== w.device.accountId) throw new EntryError("That tag isn't shared on the boards you picked. Widen the tag's boards first.");
       await w.write({ type: "tag_def", placeId: null, payload: def.payload, id: def.id, boards: [...def.boardIds, ...missing] });

@@ -136,7 +136,10 @@ export function PlaceView({ diary, placeId: asked }: { diary: Diary; placeId: st
     await applyTag(diary, place.id, tagId, fit.fits, visibleOn);
     setNotice(`Tagged on ${fit.fits.map((id) => boardName(snapshot, id)).join(", ")} only: “${def.name}” isn't visible on ${where}.`);
   };
-  const myTagIds = new Set(of("tag").filter((o) => o.authorId === me).map((o) => o.tagId));
+  const myTags = of("tag").filter((o) => o.authorId === me);
+  const myTagIds = new Set(myTags.map((o) => o.tagId));
+  // Where each of the person's own tags is posted, stamped on its chip like everyone else's.
+  const myTagStamps = new Map(myTags.map((o) => [o.tagId, <Badges key={o.id} snapshot={snapshot} ids={o.boards} />]));
   const othersTags = of("tag").filter((o) => o.authorId !== me);
   const comments = of("comment").sort((a, b) => a.createdAt.localeCompare(b.createdAt));
   const at = focus ?? place;
@@ -357,11 +360,12 @@ export function PlaceView({ diary, placeId: asked }: { diary: Diary; placeId: st
               tags={snapshot.tags}
               selected={myTagIds}
               disabled={myStatus === null}
+              stamps={myTagStamps}
               onToggle={(tagId) => run(() => (myTagIds.has(tagId) ? unapplyTag(diary, place.id, tagId) : tag(tagId)))}
               onCreate={(def) => run(async () => applyTag(diary, place.id, await defineTag(diary, def, tagBoards), tagBoards))}
             />
             {myStatus !== null && (
-              <FollowBoards what="Tags" boards={choices} statusBoards={boards} value={tagBoardEdit && tagBoards} onChange={setTagBoardEdit} noPublic={place.isPrivate} />
+              <FollowBoards what="New tags" boards={choices} statusBoards={boards} value={tagBoardEdit && tagBoards} onChange={setTagBoardEdit} noPublic={place.isPrivate} />
             )}
           </section>
 

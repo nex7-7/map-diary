@@ -519,3 +519,23 @@ describe("moving the stamp", () => {
 function readText(i: StoredItem): string {
   return (i.payload as { text?: string }).text ?? "";
 }
+
+describe("tags on boards the definition reaches", () => {
+  it("fits a Public tag on a group when the diary knows its boards, as the place page does", async () => {
+    const d = Object.assign(new FakeDiary(), {
+      boards: [
+        { id: "board-personal", kind: "personal" as const },
+        { id: "board-master", kind: "master" as const },
+        { id: "board-duo", kind: "group" as const, memberIds: ["acct-me", "acct-friend"] },
+      ],
+    });
+    d.items.set("t-friend", {
+      id: "t-friend", type: "tag_def", authorId: "acct-friend", placeId: null, createdAt: 1, updatedAt: 1,
+      boardIds: ["board-master"], payload: { name: "Sunset", emoji: "", description: "" },
+    });
+    const id = await addPlace(d, { kind: "place", facts: facts(), status: "want", tagIds: ["t-friend"], newTags: [], comment: "", boards: ["board-duo"] });
+    expect([...d.items.values()].find((i) => i.type === "tag" && i.placeId === id)?.boardIds).toEqual(["board-duo"]);
+    // The friend's definition is left as it was.
+    expect(d.items.get("t-friend")?.boardIds).toEqual(["board-master"]);
+  });
+});
