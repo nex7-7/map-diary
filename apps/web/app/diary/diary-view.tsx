@@ -165,7 +165,7 @@ export function DiaryView({ source, view }: { source: DiarySource; view: DiaryVi
       <section className={cn("flex min-h-0 w-full flex-col min-[900px]:flex min-[900px]:w-[440px] min-[900px]:shrink-0", view === "list" ? "flex" : "hidden")} aria-label={`${whose} places`}>
         <header className="flex flex-col gap-3 px-4 pt-[max(16px,env(safe-area-inset-top))] pb-3.5">
           <div className="flex items-center justify-between gap-2">
-            <p className="kicker rise">{snapshot.me.name && snapshot.me.name !== "Me" ? `${snapshot.me.name}'s diary · Mumbai` : "Your diary · Mumbai"}</p>
+            <p className="kicker rise min-w-0">{snapshot.me.name && snapshot.me.name !== "Me" ? `${snapshot.me.name}'s diary · Mumbai` : "Your diary · Mumbai"}</p>
             <div className="flex items-center gap-2">
               <button type="button" className="chip soft size-8 justify-center p-0" onClick={() => setTake((n) => n + 1)} aria-label="Replay the animations">
                 <Icon name="refresh" size="s" />

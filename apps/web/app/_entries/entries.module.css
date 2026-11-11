@@ -505,6 +505,8 @@
   display: inline-flex;
   align-items: center;
   gap: 8px;
+  max-width: 100%;
+  overflow-wrap: anywhere;
   padding: 8px 12px;
   border-radius: 10px;
   border: 1.5px dashed var(--ink-3);

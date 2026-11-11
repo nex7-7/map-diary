@@ -81,12 +81,18 @@
 .head {
   position: relative;
   display: grid;
+  /* minmax(0, …) so a long place name wraps instead of pushing past the page. */
+  grid-template-columns: minmax(0, 1fr);
   gap: 8px;
   padding-right: 96px;
 }
 
 .head p {
   margin: 0;
+}
+
+.head h1 {
+  overflow-wrap: anywhere;
 }
 
 /* The Visited seal or Want to slot, pressed on the corner of the title. */

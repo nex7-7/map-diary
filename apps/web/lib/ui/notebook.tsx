@@ -40,7 +40,7 @@ export function Notebook({
   const list = useRef<HTMLDivElement>(null);
   useScrollHint(list);
   return (
-    <Tabs value={current?.id ?? ""} onValueChange={onValueChange} className={cn("nb min-h-0", className)} style={{ "--tint": current?.tint } as CSSProperties}>
+    <Tabs value={current?.id ?? ""} onValueChange={onValueChange} className={cn("nb min-h-0 min-w-0", className)} style={{ "--tint": current?.tint } as CSSProperties}>
       <div className="nb-cover" aria-hidden />
       <TabsList ref={list} variant="notebook" aria-label={label} className="scroll-hint">
         {tabs.map((t) => (
