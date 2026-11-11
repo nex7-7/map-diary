@@ -5,6 +5,8 @@
   margin: 0 auto;
   padding: max(16px, env(safe-area-inset-top)) 20px 40px;
   display: grid;
+  /* minmax(0, …) so a long name or link wraps instead of widening the page on phones. */
+  grid-template-columns: minmax(0, 1fr);
   gap: 20px;
   align-content: start;
 }

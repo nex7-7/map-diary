@@ -60,7 +60,7 @@ function Inbox({ diary }: { diary: Diary }) {
     <div className={b.page}>
       <header className="flex flex-col gap-2.5">
         <div className="flex items-center justify-between">
-          <p className="kicker rise">{me?.name && me.name !== "Me" ? `Post for ${me.name}` : "Your post"}</p>
+          <p className="kicker rise min-w-0">{me?.name && me.name !== "Me" ? `Post for ${me.name}` : "Your post"}</p>
           {me && <MeLink me={me} />}
         </div>
         <div className="flex items-baseline justify-between gap-3">
@@ -241,7 +241,7 @@ function Letter({ postage, style, children }: { postage?: ReactNode; style?: CSS
 function ItemHead({ item }: { item: PendingItem }) {
   return (
     <div className="flex min-w-0 flex-col gap-0.5">
-      <span className="font-serif text-[21px] leading-tight">{item.draft.label || item.query}</span>
+      <span className="font-serif text-[21px] leading-tight [overflow-wrap:anywhere]">{item.draft.label || item.query}</span>
       <span className="text-[12px] text-ink-3">{item.draft.refreshPlaceId ? "New details for a place" : STATUS_LABELS[item.draft.status]}</span>
       {item.draft.link && item.draft.link !== item.draft.label && <span className={`text-[12px] text-ink-3 ${b.link}`}>{item.draft.link}</span>}
     </div>
@@ -258,7 +258,7 @@ function ChooseLetter({ item, queue, run, style }: LetterProps) {
     <Letter style={style}>
       <div className="flex flex-col gap-0.5">
         <span className="text-[13px] text-ink-2">{refresh ? "New details for" : "You typed"}</span>
-        <span className="font-serif text-[21px]">“{item.draft.label || item.query}”</span>
+        <span className="font-serif text-[21px] [overflow-wrap:anywhere]">“{item.draft.label || item.query}”</span>
         <span className="hand text-[15px] text-ink-2">
           {refresh
             ? item.draft.correcting

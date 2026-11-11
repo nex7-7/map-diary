@@ -86,8 +86,8 @@ function You({ diary }: { diary: Diary }) {
         <div className="flex items-start gap-3.5">
           <div className="flex min-w-0 flex-1 flex-col gap-0.5">
             <span className="kicker">This diary belongs to</span>
-            <span className="relative self-start">
-              <span className="hand pop inline-block text-[44px] leading-[1.15] [--r:-2deg]" style={{ animationDelay: "0.1s" }}>
+            <span className="relative max-w-full self-start">
+              <span className="hand pop inline-block max-w-full text-[44px] leading-[1.15] [overflow-wrap:anywhere] [--r:-2deg]" style={{ animationDelay: "0.1s" }}>
                 {name || "You"}
               </span>
               <svg viewBox="0 0 140 12" className="absolute -bottom-1 left-0 h-2.5 w-full" preserveAspectRatio="none" aria-hidden>
