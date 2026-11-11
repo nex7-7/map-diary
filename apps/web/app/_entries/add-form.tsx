@@ -4,14 +4,14 @@ import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { api, type Diary } from "@/lib/device";
-import { addOpinions, addPlace, findCataloguePlace, findDuplicate } from "@/lib/entries/actions";
+import { addOpinions, addPlace, findCataloguePlace, findLocalPlace } from "@/lib/entries/actions";
 import { buildFacts } from "@/lib/entries/facts";
 import { STATUS_LABELS } from "@/lib/places/categories";
 import { branchOf, knownByName } from "@/lib/places/chains";
 import { userMessage } from "@/lib/errors";
 import { parseEntry, parseLink, type ParsedEntry } from "@/lib/entries/parse-input";
 import { getPendingQueue, MAX_QUERY_LENGTH, type PendingItem } from "@/lib/pending";
-import type { TagDefPayload } from "@/lib/places/payloads";
+import { readPayload, type TagDefPayload } from "@/lib/places/payloads";
 import type { Category, LngLat, Status } from "@/lib/places/types";
 import { BoardPicker, boardChoices, CategoryPicker, FollowBoards, StatusToggle, TagPicker, type TagChoice } from "./fields";
 import { Icon } from "@/lib/ui";
@@ -80,16 +80,25 @@ export function AddForm({ diary, initial, onSaved, onQueued, onCancel }: Props) 
   const parsed: ParsedEntry =
     expansion.kind === "done"
       ? { ...typed, location: expansion.location, source: "google-maps", shortLink: false, ...(typed.name || expansion.name ? { name: typed.name ?? expansion.name } : {}) }
-      : typed;
+      : expansion.kind === "partial" && !typed.name && expansion.name
+        ? { ...typed, name: expansion.name }
+        : typed;
+  const expandedUrl = expansion.kind === "done" || expansion.kind === "partial" ? expansion.url : undefined;
+  // The link may be for a place already in the diary: the same link, or another link to the same
+  // Google place (a friend's own share link). Then it needs no lookup, wherever the pin came from.
+  const duplicate = useMemo(() => findLocalPlace(items, [parsed.link, expandedUrl]), [items, parsed.link, expandedUrl]);
+  const duplicateFacts = duplicate && (duplicate.type === "place" || duplicate.type === "private_place") ? readPayload(duplicate.type, duplicate.payload) : undefined;
+  // Saved onto the place already there, with no pin of its own and nothing to look up.
+  const onto = !pinned && !parsed.location && duplicate && duplicateFacts ? { id: duplicate.id, name: duplicateFacts.name, isPrivate: duplicate.type === "private_place" } : undefined;
   const location = pinned ?? parsed.location ?? null;
   // No location yet, but something the resolver can look up: save now, find it later.
-  const findLater = location === null && expansion.kind !== "loading" && (parsed.link !== undefined || !!parsed.name);
+  const findLater = location === null && !onto && expansion.kind !== "loading" && (parsed.link !== undefined || !!parsed.name);
   // A place is catalogue-bound only when a Google Maps link located it; anything placed by
   // hand is a dropped pin, which stays private.
   const fromLink = !pinned && parsed.location !== undefined && parsed.source === "google-maps";
   const kind = fromLink ? "place" : "private_place";
   const choices = boardChoices(snapshot.boards.filter((b) => diary.boards.some((k) => k.id === b.id)));
-  const noPublic = kind === "private_place" && !findLater;
+  const noPublic = onto ? onto.isPrivate : kind === "private_place" && !findLater;
   // A dropped pin's opinions stay off the Public board, as the pin itself does.
   const usable = (ids: readonly string[]) => {
     const kept = noPublic ? ids.filter((id) => choices.find((b) => b.id === id)?.kind !== "master") : [...ids];
@@ -103,7 +112,6 @@ export function AddForm({ diary, initial, onSaved, onQueued, onCancel }: Props) 
   const hasLinkOrCoords = parsed.link !== undefined || (parsed.location !== undefined && !parsed.name) || (pinned !== null && !parsed.name);
   const name = nameEdit ?? parsed.name ?? "";
   const category = categoryEdit ?? guessCategory(parsed);
-  const duplicate = useMemo(() => (parsed.link ? findDuplicate(items, parsed.link) : undefined), [items, parsed.link]);
   // The same name elsewhere on the map is probably another branch; here, the same place.
   const match = useMemo(
     () => (kind === "place" && location && name.trim() && !duplicate ? branchOf(items, { name, location }) : undefined),
@@ -111,11 +119,14 @@ export function AddForm({ diary, initial, onSaved, onQueued, onCancel }: Props) 
   );
   // A name sent to be looked up may be a place already in the diary, maybe already on the list.
   const known = useMemo(
-    () => (findLater && !duplicate && name.trim() ? knownByName(items, name, diary.device.accountId) : undefined),
+    () =>
+      findLater && !duplicate && name.trim()
+        ? (knownByName(items, name, diary.device.accountId) ?? (name.includes(",") ? knownByName(items, name.split(",")[0]!, diary.device.accountId) : undefined))
+        : undefined,
     [items, findLater, duplicate, name, diary.device.accountId],
   );
   const [joinBranch, setJoinBranch] = useState(true);
-  const showPicker = adjusting || (location === null && !findLater && expansion.kind !== "loading");
+  const showPicker = adjusting || (location === null && !findLater && !onto && expansion.kind !== "loading");
 
   const tagChoices: TagChoice[] = [
     ...snapshot.tags.map((t) => ({ id: t.id, name: t.name, emoji: t.emoji, description: t.description })),
@@ -149,6 +160,7 @@ export function AddForm({ diary, initial, onSaved, onQueued, onCancel }: Props) 
       await q.add(query, {
         label,
         ...(parsed.link ? { link: parsed.link } : {}),
+        ...(expansion.kind === "partial" ? { expandedUrl: expansion.url } : {}),
         ...(categoryEdit ? { category: categoryEdit } : {}),
         status,
         tagIds: [...selected],
@@ -164,8 +176,39 @@ export function AddForm({ diary, initial, onSaved, onQueued, onCancel }: Props) 
     }
   };
 
+  /** Puts the status, tags and note on a place already in the diary, with no lookup. */
+  const saveOnto = async (placeId: string, placeName: string, isPrivate: boolean) => {
+    setError(null);
+    setSaving(true);
+    try {
+      const addedAt = initial?.pending && status === "visited" ? { visitedAt: initial.pending.createdAt } : {};
+      // Notes on a dropped pin stay off the Public board, as the pin does.
+      const keep = (ids: readonly string[]) => (isPrivate ? usableOff(ids) : [...ids]);
+      await addOpinions(diary, placeId, {
+        status,
+        ...addedAt,
+        tagIds: [...selected],
+        newTags,
+        comment,
+        boards: keep(pickedBoards),
+        ...(tagBoards ? { tagBoards: keep(tagBoards) } : {}),
+        ...(noteBoards ? { commentBoards: keep(noteBoards) } : {}),
+      });
+      if (initial?.pending) await (await getPendingQueue(diary)).dismiss(initial.pending.id);
+      onSaved(placeId, { name: placeName, status });
+    } catch (err) {
+      setError(userMessage(err));
+      setSaving(false);
+    }
+  };
+  const usableOff = (ids: readonly string[]) => {
+    const kept = ids.filter((id) => choices.find((b) => b.id === id)?.kind !== "master");
+    return kept.length > 0 ? kept : [diary.device.personalBoardId];
+  };
+
   const save = async () => {
     setError(null);
+    if (onto) return saveOnto(onto.id, onto.name, onto.isPrivate);
     if (findLater) return queue();
     const result = buildFacts({
       name: name || (location && !parsed.link ? "Dropped pin" : ""),
@@ -235,7 +278,7 @@ export function AddForm({ diary, initial, onSaved, onQueued, onCancel }: Props) 
         <InputSummary parsed={parsed} pinned={pinned} expansion={expansion.kind} findLater={findLater && !adjusting} />
         {duplicate && (
           <p className={styles.found}>
-            Already on the map. Saving adds your notes to it.{" "}
+            {duplicateFacts ? `${duplicateFacts.name} is already on the map.` : "Already on the map."} Saving adds your notes to it, no lookup needed.{" "}
             <Link href={`/place#${duplicate.id}`} className={styles.textbutton}>
               Open it
             </Link>
@@ -255,7 +298,15 @@ export function AddForm({ diary, initial, onSaved, onQueued, onCancel }: Props) 
             the lookup finds the same place, your notes go onto it.{" "}
             <Link href={`/place#${known.placeId}`} className={styles.textbutton}>
               Open it
-            </Link>
+            </Link>{" "}
+            <button
+              type="button"
+              className={styles.textbutton}
+              disabled={saving}
+              onClick={() => void saveOnto(known.placeId, known.name, items.find((i) => i.id === known.placeId)?.type === "private_place")}
+            >
+              It&apos;s this one, add to it
+            </button>
           </p>
         )}
         {match?.kind === "branch" && (
@@ -308,6 +359,8 @@ export function AddForm({ diary, initial, onSaved, onQueued, onCancel }: Props) 
               {location ? "Pin dropped. A pin you place stays private." : "Move the map until the pin sits on the place."}
             </p>
           </>
+        ) : onto ? (
+          <p className={styles.note}>On the map already, at {onto.name}&apos;s pin.</p>
         ) : findLater ? (
           <p className={styles.note}>It waits in your Inbox until it&apos;s found. Only the {parsed.link ? (nameEdit?.trim() ? "name and link" : "link") : "name"} is sent to look it up.</p>
         ) : (
@@ -371,9 +424,9 @@ export function AddForm({ diary, initial, onSaved, onQueued, onCancel }: Props) 
               Cancel
             </button>
           )}
-          <button type="submit" className={`${styles.primary} ${styles.grow}`} disabled={saving || (!location && !findLater)}>
-            {saving ? "Saving…" : location ? "Save it" : findLater ? "Save and find it" : expansion.kind === "loading" ? "Opening the link…" : "Drop a pin to save"}
-            {!saving && (location || findLater) && <Icon name="check" size="m" />}
+          <button type="submit" className={`${styles.primary} ${styles.grow}`} disabled={saving || (!location && !findLater && !onto)}>
+            {saving ? "Saving…" : location || onto ? "Save it" : findLater ? "Save and find it" : expansion.kind === "loading" ? "Opening the link…" : "Drop a pin to save"}
+            {!saving && (location || findLater || onto) && <Icon name="check" size="m" />}
           </button>
         </div>
       </div>
@@ -392,6 +445,7 @@ function InputSummary({ parsed, pinned, expansion, findLater }: SummaryProps) {
   if (expansion === "loading") return <p className={styles.note}>Opening the short link…</p>;
   if (parsed.source === "google-maps" && parsed.location) return <p className={styles.note}>Found the place on the link.</p>;
   if (pinned || !findLater) return null;
+  if (expansion === "partial") return <p className={styles.note}>The link doesn&apos;t carry a pin, so it will be looked up.</p>;
   if (parsed.shortLink) return <p className={styles.note}>Couldn&apos;t open the short link here, so it will be looked up.</p>;
   if (parsed.source === "zomato" || parsed.source === "district") {
     return <p className={styles.note}>Saved as a source link. The place and its signature dish get looked up.</p>;
@@ -399,7 +453,13 @@ function InputSummary({ parsed, pinned, expansion, findLater }: SummaryProps) {
   return null;
 }
 
-type Expansion = { kind: "none" } | { kind: "loading" } | { kind: "failed" } | { kind: "done"; url: string; location: LngLat; name?: string };
+type Expansion =
+  | { kind: "none" }
+  | { kind: "loading" }
+  | { kind: "failed" }
+  /** Expanded, but the full link has no pin (Google's share links often don't): kept to match the place by. */
+  | { kind: "partial"; url: string; name?: string }
+  | { kind: "done"; url: string; location: LngLat; name?: string };
 
 /**
  * Short Google Maps links carry the place only in their redirect, which a web page can't
@@ -416,7 +476,7 @@ function useExpandedLink(parsed: ParsedEntry): Expansion {
         const full = parseLink(url);
         const expansion: Expansion = full.location
           ? { kind: "done", url, location: full.location, ...(full.name ? { name: full.name } : {}) }
-          : { kind: "failed" };
+          : { kind: "partial", url, ...(full.name ? { name: full.name } : {}) };
         if (live) setResult({ link, expansion });
       },
       () => {

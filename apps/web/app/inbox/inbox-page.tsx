@@ -13,7 +13,7 @@ import { BoardBadge, Button, Glyph, Icon } from "@/lib/ui";
 import { toastError } from "@/lib/errors";
 import b from "./inbox.module.css";
 import { DeviceGate, type Diary } from "@/lib/device";
-import { choicesOf, usePending, type FailReason, type PendingItem, type PendingQueue } from "@/lib/pending";
+import { choicesOf, knownForItem, usePending, type FailReason, type PendingItem, type PendingQueue } from "@/lib/pending";
 import { canChangeFacts } from "@/lib/entries/actions";
 import { categoryStyle, STATUS_LABELS } from "@/lib/places/categories";
 import { statusOf } from "@/lib/places/chains";
@@ -98,6 +98,7 @@ function Inbox({ diary }: { diary: Diary }) {
                 )}
                 <ItemHead item={i} />
               </div>
+              <KnownPrompt item={i} diaryItems={diaryItems} accountId={diary.device.accountId} queue={queue} run={run} />
               <div className="flex items-center gap-2">
                 <span className={b.dots} aria-hidden>
                   <span />
@@ -145,6 +146,7 @@ function Inbox({ diary }: { diary: Diary }) {
                 <ItemHead item={i} />
               </div>
               <p className="hand m-0 text-[15px] text-seal-deep">{failText(i.state.kind === "failed" ? i.state.reason : "not_found")}</p>
+              <KnownPrompt item={i} diaryItems={diaryItems} accountId={diary.device.accountId} queue={queue} run={run} />
               <Correct
                 start={i.query}
                 onLookUp={(q) => run(() => queue.requery(i.id, q))}
@@ -244,6 +246,43 @@ function ItemHead({ item }: { item: PendingItem }) {
       <span className="font-serif text-[21px] leading-tight">{item.draft.label || item.query}</span>
       <span className="text-[12px] text-ink-3">{item.draft.refreshPlaceId ? "New details for a place" : STATUS_LABELS[item.draft.status]}</span>
       {item.draft.link && item.draft.link !== item.draft.label && <span className={`text-[12px] text-ink-3 ${b.link}`}>{item.draft.link}</span>}
+    </div>
+  );
+}
+
+/**
+ * "Is it this one?" for a place waiting to be looked up whose name is already in the diary: one
+ * tap puts the notes on it, with no wait for the lookup. Only places this device can already
+ * read are offered, so nobody's hidden notes or boards show here.
+ */
+function KnownPrompt({
+  item,
+  diaryItems,
+  accountId,
+  queue,
+  run,
+}: {
+  item: PendingItem;
+  diaryItems: Parameters<typeof knownForItem>[0];
+  accountId: string;
+  queue: PendingQueue;
+  run: (a: () => Promise<unknown>) => void;
+}) {
+  const known = useMemo(() => knownForItem(diaryItems, item, accountId), [diaryItems, item, accountId]);
+  if (!known) return null;
+  return (
+    <div className="flex flex-col gap-1.5">
+      <span className="hand text-[15px] leading-snug text-ink-2">
+        {known.status ? `You already have ${known.name} (${STATUS_LABELS[known.status]}).` : `${known.name} is already on the map.`} Is it this one?
+      </span>
+      <div className={styles.row}>
+        <Button size="m" onClick={() => run(() => queue.useKnown(item.id, known.placeId))}>
+          Yes, add my notes to it
+        </Button>
+        <Link href={`/place#${known.placeId}`} className={styles.textbutton}>
+          Open it
+        </Link>
+      </div>
     </div>
   );
 }
