@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type CSSProperties } from "react";
+import { useState, type CSSProperties, type ReactNode } from "react";
 import { oneEmoji } from "@/lib/entries/emoji";
 import { customCategory } from "@/lib/entries/facts";
 import { pickBoard } from "@/lib/places/boards";
@@ -93,10 +93,12 @@ interface TagPickerProps {
   onToggle: (id: string) => void;
   onCreate: (def: TagDefPayload) => void;
   disabled?: boolean;
+  /** Shown inside a picked chip: where that tag of the person's is posted. */
+  stamps?: ReadonlyMap<string, ReactNode>;
 }
 
 /** Tag chips (the description shows on hover and long-press) and a form for a new tag. */
-export function TagPicker({ tags, selected, onToggle, onCreate, disabled }: TagPickerProps) {
+export function TagPicker({ tags, selected, onToggle, onCreate, disabled, stamps }: TagPickerProps) {
   const [creating, setCreating] = useState(false);
   const [def, setDef] = useState<TagDefPayload>({ name: "", emoji: "", description: "" });
 
@@ -122,6 +124,7 @@ export function TagPicker({ tags, selected, onToggle, onCreate, disabled }: TagP
           >
             {t.emoji ? `${t.emoji} ` : ""}
             {t.name}
+            {selected.has(t.id) && stamps?.get(t.id)}
           </button>
         ))}
         {!creating && (

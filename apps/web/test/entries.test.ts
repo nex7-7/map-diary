@@ -13,6 +13,7 @@ import {
   defineTag,
   setDisplayName,
   setProfile,
+  moveStamp,
   setStatus,
   unapplyTag,
   type DiaryWriter,
@@ -473,5 +474,68 @@ describe("canChangeFacts", () => {
 
   it("always lets the admin change a catalogue place", () => {
     expect(canChangeFacts([item({ authorId: "friend" }), status("friend")], "p", "me", true, now)).toBe(true);
+  });
+});
+
+describe("moving the stamp", () => {
+  const MASTER = "board-master";
+  const GROUP = "board-group";
+
+  it("takes along the tags and comments that were with the status, and leaves ones with their own boards", async () => {
+    const d = new FakeDiary();
+    const mineTag = await defineTag(d, { name: "Date", emoji: "", description: "" }, [MASTER]);
+    const id = await addPlace(d, { kind: "place", facts: facts(), status: "visited", tagIds: [mineTag], newTags: [], comment: "Loud music", boards: [MASTER] });
+    await addComment(d, id, "Just for me", ["board-personal"]);
+
+    expect(await moveStamp(d, id, "visited", [GROUP])).toBe(0);
+    const all = [...d.items.values()];
+    const on = (pred: (i: StoredItem) => boolean) => all.find(pred)?.boardIds;
+    expect(on((i) => i.type === "status")).toEqual([GROUP]);
+    expect(on((i) => i.type === "tag")).toEqual([GROUP]);
+    expect(on((i) => i.type === "comment" && readText(i) === "Loud music")).toEqual([GROUP]);
+    expect(on((i) => i.type === "comment" && readText(i) === "Just for me")).toEqual(["board-personal"]);
+    // The status stays Visited.
+    expect(all.find((i) => i.type === "status")?.payload).toMatchObject({ status: "visited" });
+  });
+
+  it("widens one's own tag to go along, and leaves someone else's that can't be read there", async () => {
+    const d = new FakeDiary();
+    d.items.set("t-friend", {
+      id: "t-friend", type: "tag_def", authorId: "acct-friend", placeId: null, createdAt: 1, updatedAt: 1,
+      boardIds: [GROUP], payload: { name: "Sunset", emoji: "", description: "" },
+    });
+    const own = await defineTag(d, { name: "Cheap", emoji: "", description: "" }, [GROUP]);
+    const id = await addPlace(d, { kind: "place", facts: facts(), status: "want", tagIds: [own, "t-friend"], newTags: [], comment: "", boards: [GROUP] });
+
+    expect(await moveStamp(d, id, "want", [MASTER])).toBe(1);
+    const tags = [...d.items.values()].filter((i) => i.type === "tag");
+    const tagOn = (tagId: string) => tags.find((i) => (i.payload as { tagId: string }).tagId === tagId)?.boardIds;
+    expect(tagOn(own)).toEqual([MASTER]);
+    expect(d.items.get(own)?.boardIds).toEqual([GROUP, MASTER]);
+    expect(tagOn("t-friend")).toEqual([GROUP]);
+  });
+});
+
+function readText(i: StoredItem): string {
+  return (i.payload as { text?: string }).text ?? "";
+}
+
+describe("tags on boards the definition reaches", () => {
+  it("fits a Public tag on a group when the diary knows its boards, as the place page does", async () => {
+    const d = Object.assign(new FakeDiary(), {
+      boards: [
+        { id: "board-personal", kind: "personal" as const },
+        { id: "board-master", kind: "master" as const },
+        { id: "board-duo", kind: "group" as const, memberIds: ["acct-me", "acct-friend"] },
+      ],
+    });
+    d.items.set("t-friend", {
+      id: "t-friend", type: "tag_def", authorId: "acct-friend", placeId: null, createdAt: 1, updatedAt: 1,
+      boardIds: ["board-master"], payload: { name: "Sunset", emoji: "", description: "" },
+    });
+    const id = await addPlace(d, { kind: "place", facts: facts(), status: "want", tagIds: ["t-friend"], newTags: [], comment: "", boards: ["board-duo"] });
+    expect([...d.items.values()].find((i) => i.type === "tag" && i.placeId === id)?.boardIds).toEqual(["board-duo"]);
+    // The friend's definition is left as it was.
+    expect(d.items.get("t-friend")?.boardIds).toEqual(["board-master"]);
   });
 });
