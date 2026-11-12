@@ -7,6 +7,7 @@ export { currentDeviceKind } from "./kind";
 export { addDevice, choosePassphrase, connectClaudeDevice, listDevices, removeDevice, renameDevice, type AccountOverview, type ListedDevice } from "./devices";
 export {
   allDevices,
+  attachNotes,
   exportSql,
   defaultQuery,
   lookUpAgain,

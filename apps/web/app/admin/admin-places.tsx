@@ -3,13 +3,13 @@
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import { accountStyles as s, day } from "@/app/_account/parts";
-import { lookUpAgain, mergePlaces, useDiaryItems, type Diary } from "@/lib/device";
+import { attachNotes, lookUpAgain, mergePlaces, useDiaryItems, type Diary } from "@/lib/device";
 import { deletePlace } from "@/lib/entries/actions";
 import { userMessage } from "@/lib/errors";
 import { categoryStyle } from "@/lib/places/categories";
 import { normaliseChainName } from "@/lib/places/chains";
 import { profilesOf } from "@/lib/places/items-source";
-import { mergeTargets, withMerged } from "@/lib/places/merges";
+import { mergeTargets, orphanedOpinions, withMerged } from "@/lib/places/merges";
 import { readPayload, type PlacePayload } from "@/lib/places/payloads";
 import { Badge, Button, CloseButton, Glyph, MoreMenu, Sheet, useConfirm } from "@/lib/ui";
 
@@ -28,6 +28,16 @@ interface Row {
   opinions: number;
 }
 
+/** Notes still saved on a place that was deleted, which the admin can attach to a live place. */
+interface Orphan {
+  goneId: string;
+  authors: string[];
+  statuses: number;
+  tags: number;
+  comments: string[];
+  latest: number;
+}
+
 /**
  * Every catalogue place, with the admin's tools: open it to edit its details, look it up
  * again, merge a duplicate into the right one, or delete it. Nobody's opinions are touched.
@@ -36,6 +46,7 @@ export function AdminPlaces({ diary }: { diary: Diary }) {
   const items = useDiaryItems(diary);
   const [query, setQuery] = useState("");
   const [merging, setMerging] = useState<Row | null>(null);
+  const [attaching, setAttaching] = useState<Orphan | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [ask, confirmSheet] = useConfirm();
@@ -57,6 +68,19 @@ export function AdminPlaces({ diary }: { diary: Diary }) {
       })
       .sort((a, b) => a.facts.name.localeCompare(b.facts.name));
   }, [items]);
+
+  const orphans = useMemo(
+    () =>
+      [...orphanedOpinions(items)].map(([goneId, ops]): Orphan => ({
+        goneId,
+        authors: [...new Set(ops.map((o) => o.authorId))],
+        statuses: ops.filter((o) => o.type === "status").length,
+        tags: ops.filter((o) => o.type === "tag").length,
+        comments: ops.flatMap((o) => (o.type === "comment" ? [readPayload("comment", o.payload)?.text ?? ""] : [])).filter(Boolean),
+        latest: Math.max(...ops.map((o) => o.updatedAt)),
+      })),
+    [items],
+  );
 
   // Same name, not outlets of one chain: probably added twice.
   const duplicates = useMemo(() => {
@@ -81,10 +105,10 @@ export function AdminPlaces({ diary }: { diary: Diary }) {
   };
 
   const remove = async (r: Row) => {
-    const others = r.opinions > 0 ? ` ${r.opinions} ${r.opinions === 1 ? "note" : "notes"} on it stay saved but stop showing.` : "";
+    const others = r.opinions > 0 ? ` ${r.opinions} ${r.opinions === 1 ? "note" : "notes"} on it stay saved but stop showing until you attach them to a place again.` : "";
     const ok = await ask({
       title: `Delete ${r.facts.name}?`,
-      body: `It leaves everyone's diary.${others} If it's a duplicate, merge it instead so the notes move to the right place.`,
+      body: `It leaves everyone's diary.${others} If it's a duplicate, merge it instead so the notes move to the right place. To drop only your own notes, use Take off my list on the place.`,
       confirmLabel: "Delete",
       danger: true,
     });
@@ -109,6 +133,42 @@ export function AdminPlaces({ diary }: { diary: Diary }) {
         <p className={s.okText} role="status">
           {notice}
         </p>
+      )}
+
+      {orphans.length > 0 && (
+        <section className={s.card}>
+          <h2 className="heading-s">Notes on deleted places · {orphans.length}</h2>
+          <p className="sub" style={{ margin: 0 }}>
+            These notes hang on a place that was deleted, so nobody sees them. Add the place again if it&apos;s gone, then attach them to it.
+          </p>
+          <ul className={s.list}>
+            {orphans.map((o) => (
+              <li key={o.goneId} className={s.row} style={{ padding: "10px 0" }}>
+                <span className={s.rowText}>
+                  <span className={s.rowTitle}>{o.authors.map(nameOf).join(", ")}</span>
+                  <span className="sub">
+                    {[
+                      o.statuses > 0 ? `${o.statuses} ${o.statuses === 1 ? "stamp" : "stamps"}` : "",
+                      o.tags > 0 ? `${o.tags} ${o.tags === 1 ? "tag" : "tags"}` : "",
+                      o.comments.length > 0 ? `${o.comments.length} ${o.comments.length === 1 ? "comment" : "comments"}` : "",
+                    ]
+                      .filter(Boolean)
+                      .join(" · ")}{" "}
+                    · last {day(o.latest)}
+                  </span>
+                  {o.comments.slice(0, 2).map((c, i) => (
+                    <span key={i} className="sub">
+                      “{c.length > 80 ? `${c.slice(0, 80)}…` : c}”
+                    </span>
+                  ))}
+                </span>
+                <Button size="m" variant="ghost" onClick={() => setAttaching(o)}>
+                  Attach to…
+                </Button>
+              </li>
+            ))}
+          </ul>
+        </section>
       )}
 
       {duplicates.length > 0 && (
@@ -161,6 +221,23 @@ export function AdminPlaces({ diary }: { diary: Diary }) {
           />
         )}
       </Sheet>
+      <Sheet open={attaching !== null} onClose={() => setAttaching(null)} label="Attach notes to a place">
+        {attaching && (
+          <PickPlace
+            title="Attach these notes to…"
+            body={`They show on the place you pick, as if they were left there. Nobody's notes are changed.`}
+            start=""
+            rows={rows}
+            action="Attach to"
+            onCancel={() => setAttaching(null)}
+            onPick={(kept) => {
+              const gone = attaching;
+              setAttaching(null);
+              run(() => attachNotes(diary, kept.id, gone.goneId), `Notes attached to ${kept.facts.name}.`);
+            }}
+          />
+        )}
+      </Sheet>
       {confirmSheet}
     </div>
   );
@@ -192,23 +269,44 @@ function PlaceRow({ row: r, by, menu }: { row: Row; by: string; menu: React.Reac
 
 /** Picks the place a duplicate merges into. */
 function MergeInto({ duplicate, rows, onCancel, onPick }: { duplicate: Row; rows: Row[]; onCancel: () => void; onPick: (kept: Row) => void }) {
-  const [query, setQuery] = useState(duplicate.facts.name);
+  return (
+    <PickPlace
+      title={`Merge ${duplicate.facts.name} into…`}
+      body={`${duplicate.facts.name} disappears and its ${duplicate.opinions} ${duplicate.opinions === 1 ? "note shows" : "notes show"} on the place you pick, which also gets its links. Nobody's notes are changed.`}
+      start={duplicate.facts.name}
+      rows={rows.filter((r) => r.id !== duplicate.id)}
+      action="Merge into"
+      onCancel={onCancel}
+      onPick={onPick}
+    />
+  );
+}
+
+interface PickPlaceProps {
+  title: string;
+  body: string;
+  start: string;
+  rows: Row[];
+  action: string;
+  onCancel: () => void;
+  onPick: (kept: Row) => void;
+}
+
+/** Picks one catalogue place, found by name or address. */
+function PickPlace({ title, body, start, rows, action, onCancel, onPick }: PickPlaceProps) {
+  const [query, setQuery] = useState(start);
   const [picked, setPicked] = useState<Row | null>(null);
-  const options = rows
-    .filter((r) => r.id !== duplicate.id)
-    .filter((r) => matches(query, [r.facts.name, r.facts.address]))
-    .slice(0, 20);
+  const options = rows.filter((r) => matches(query, [r.facts.name, r.facts.address])).slice(0, 20);
   return (
     <div style={{ display: "grid", gap: 14 }}>
       <div className={s.sheetTop}>
-        <h2 className="heading-m">Merge {duplicate.facts.name} into…</h2>
+        <h2 className="heading-m">{title}</h2>
         <CloseButton onClick={onCancel} />
       </div>
       <p className="sub" style={{ margin: 0 }}>
-        {duplicate.facts.name} disappears and its {duplicate.opinions} {duplicate.opinions === 1 ? "note shows" : "notes show"} on the place you pick, which also gets
-        its links. Nobody&apos;s notes are changed.
+        {body}
       </p>
-      <input className={s.input} type="search" aria-label="Find the place to keep" value={query} onChange={(e) => setQuery(e.target.value)} />
+      <input className={s.input} type="search" aria-label="Find the place" placeholder="Find by name or area" value={query} onChange={(e) => setQuery(e.target.value)} />
       <ul className={s.list}>
         {options.map((r) => (
           <li key={r.id} className={s.row}>
@@ -221,10 +319,10 @@ function MergeInto({ duplicate, rows, onCancel, onPick }: { duplicate: Row; rows
             </label>
           </li>
         ))}
-        {options.length === 0 && <li className="sub">No other place matches.</li>}
+        {options.length === 0 && <li className="sub">No place matches.</li>}
       </ul>
       <Button block disabled={!picked} onClick={() => picked && onPick(picked)}>
-        {picked ? `Merge into ${picked.facts.name}` : "Pick the place to keep"}
+        {picked ? `${action} ${picked.facts.name}` : "Pick the place"}
       </Button>
       <Button variant="ghost" block onClick={onCancel}>
         Cancel

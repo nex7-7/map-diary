@@ -7,6 +7,7 @@ import {
   applyTag,
   canChangeFacts,
   deletePlace,
+  removeFromList,
   EntryError,
   findCataloguePlace,
   findDuplicate,
@@ -270,6 +271,18 @@ describe("opinions", () => {
     const id = await addPlace(d, { kind: "place", facts: facts(), status: "want", tagIds: [], newTags: [], comment: "Hi" });
     await deletePlace(d, id);
     expect(d.items.size).toBe(0);
+  });
+
+  it("takes a place off my list without touching the place or a friend's notes", async () => {
+    const d = new FakeDiary();
+    const id = await addPlace(d, { kind: "place", facts: facts(), status: "want", tagIds: [], newTags: [], comment: "Hi" });
+    const theirs: StoredItem = {
+      id: "s-friend", type: "status", authorId: "acct-friend", placeId: id, createdAt: 1, updatedAt: 1,
+      boardIds: ["board-duo"], payload: { status: "want" },
+    };
+    d.items.set(theirs.id, theirs);
+    await removeFromList(d, id);
+    expect([...d.items.values()].map((i) => i.id).sort()).toEqual([id, theirs.id].sort());
   });
 });
 

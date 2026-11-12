@@ -347,6 +347,20 @@ export function canChangeFacts(items: readonly StoredItem[], placeId: string, me
 }
 
 /**
+ * Takes a place off this person's list: deletes their own status, tags and comments on it (on
+ * every outlet of its chain, and on duplicates merged into it). The place and everyone else's
+ * notes stay.
+ */
+export async function removeFromList(w: DiaryWriter, placeId: string): Promise<void> {
+  const items = await w.listItems();
+  const outlets = outletIds(items, placeId);
+  for (const i of items) {
+    if (i.authorId !== w.device.accountId || i.placeId === null || !outlets.includes(i.placeId)) continue;
+    if (i.type === "status" || i.type === "tag" || i.type === "comment") await w.remove(i.id);
+  }
+}
+
+/**
  * Deletes a place this person wrote, with their own opinions on it. Other people's opinions
  * are never touched: there is no moderation.
  */

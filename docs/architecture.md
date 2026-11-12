@@ -169,7 +169,7 @@ The map uses a Mumbai map file (PMTiles) stored in R2 and cached on the device, 
 
 I am the only admin. The panel is a hidden route in the same app, unlocked by my admin device key, and the Worker checks my signature on every admin action.
 
-- **Places:** edit facts, re-run the resolver on a place, merge duplicates, delete a place.
+- **Places:** edit facts, re-run the resolver on a place, merge duplicates, delete a place, and attach notes left on a deleted place to a live one (a place page offers "Take off my list" to drop only your own notes; deleting a place others have notes on is only in the admin panel).
 - **Resolver:** see the queue and failed jobs, retry them.
 - **Members:** invite people to the app, remove them (rotates the master key), and see which groups exist.
 - **Devices:** list every device, including the Claude connector, and revoke any one.
