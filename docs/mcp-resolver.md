@@ -95,8 +95,13 @@ connector. Use no other connector, and do not save anything about these places t
    Zomato for linkName in Mumbai and use its page; if several branches carry that name, give
    each one as a candidate. Search the web for anything else. A plain name means a place in
    Mumbai.
-   A new outlet often isn't on Zomato or District yet, and Zomato, Instagram and Google
-   share links refuse automated reads. Don't stop at those: also search Justdial, magicpin,
+   Use the built-in browser whenever you have it: open links, Google searches, Zomato,
+   District and Google Maps pages there, not with a web fetch or the code sandbox, which
+   these sites refuse. Short links (share.google, link.district.in, maps.app.goo.gl) open
+   to the real page in the browser. A Google search for "<name> <area> zomato" finds a
+   branch's Zomato page even when it is new. District pages carry the pin as "latitude" and
+   "longitude" in the page source, and a Google Maps page carries it in its URL.
+   A new outlet may not be on Zomato or District yet: then also search Justdial, magicpin,
    Swiggy, EazyDiner and the brand's own site or store locator for the outlet's address
    (search "<name> <area> address" and "<name> <area> Mumbai"), and read its coordinates off
    a Google Maps result or OpenStreetMap for that address. An address at building or street
