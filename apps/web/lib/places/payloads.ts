@@ -100,9 +100,11 @@ export interface PayloadByType {
   profile: ProfilePayload;
   group: GroupPayload;
   device_name: DeviceNamePayload;
+  /** Read and checked by lib/pending (see `readPendingItem`). */
+  pending: JsonObject;
 }
 
-type JsonObject = { [key: string]: JsonValue };
+export type JsonObject = { [key: string]: JsonValue };
 
 const isObject = (v: JsonValue | undefined): v is JsonObject => typeof v === "object" && v !== null && !Array.isArray(v);
 const str = (v: JsonValue | undefined): string | undefined => (typeof v === "string" ? v : undefined);
@@ -190,6 +192,7 @@ const readers: { [T in EnvelopeType]: (p: JsonObject) => PayloadByType[T] | unde
     const name = cleanDeviceName(str(p.name) ?? "");
     return deviceId && name ? { deviceId, name } : undefined;
   },
+  pending: (p) => p,
 };
 
 /** Trims a display name, drops control characters and caps its length. */

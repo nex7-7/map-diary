@@ -12,9 +12,11 @@ import type { TagDefPayload } from "../places/payloads";
 import type { Category, PlaceChain, Status } from "../places/types";
 
 /**
- * Places saved without a location, waiting for the resolver. They live on this device only:
- * each holds the one-time secret key that opens its job's result, which never leaves the
- * device. Once a place is found it is written to the diary like any other place.
+ * Places saved without a location, waiting for the resolver. Each holds the one-time secret key
+ * that opens its job's result. They are kept as sealed items on the person's own Personal board
+ * (lib/pending/synced.ts), so any of their devices can finish one; the browser store below only
+ * holds items saved before that, until they are moved over. Once a place is found it is written
+ * to the diary like any other place.
  */
 
 /** Everything the Add sheet had besides the location, applied once the place is found. */
@@ -97,13 +99,29 @@ export interface PendingItem {
 export interface PendingStore {
   list(): Promise<PendingItem[]>;
   get(id: string): Promise<PendingItem | undefined>;
+  /** Saves a new item and gives it its id. */
+  create(item: Omit<PendingItem, "id">): Promise<PendingItem>;
   put(item: PendingItem): Promise<void>;
   delete(id: string): Promise<void>;
   clear(): Promise<void>;
+  /**
+   * Whether this device wrote the item last. A store shared by several devices says no for
+   * items another device is working on; a store on one device always says yes.
+   */
+  wroteHere?(id: string): Promise<boolean>;
+  /** Brings the items up to date with the other devices before a pass. */
+  refresh?(): Promise<void>;
+  /** Calls `listener` when items change other than through this store (another device). */
+  subscribe?(listener: () => void): () => void;
 }
 
 export class MemoryPendingStore implements PendingStore {
   private items = new Map<string, PendingItem>();
+  async create(item: Omit<PendingItem, "id">) {
+    const saved = { ...item, id: crypto.randomUUID() };
+    await this.put(saved);
+    return saved;
+  }
   async list() {
     return [...this.items.values()].map((i) => structuredClone(i));
   }
@@ -161,6 +179,12 @@ export class IdbPendingStore implements PendingStore {
       if (!isAtRestSealed(item)) await store.put(item as PendingItem);
     }
     return store;
+  }
+
+  async create(item: Omit<PendingItem, "id">) {
+    const saved = { ...item, id: crypto.randomUUID() };
+    await this.put(saved);
+    return saved;
   }
 
   private store(mode: IDBTransactionMode): IDBObjectStore {

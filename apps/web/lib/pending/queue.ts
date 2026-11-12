@@ -21,14 +21,24 @@ import { readPayload, type PlacePayload } from "../places/payloads";
 import type { PendingDraft, PendingItem, PendingState, PendingStore, WaitingJob } from "./store";
 
 /** The resolver calls this needs; they are never signed, so no account is tied to a job. */
-export type ResolverApi = Pick<Api, "submitResolverJob" | "getResolverJob" | "deleteResolverJob" | "expandMapsLink">;
+export type ResolverApi = Pick<Api, "submitResolverJob" | "getResolverJob" | "takeResolverJob" | "deleteResolverJob" | "expandMapsLink">;
 
 /** The longest query the queue accepts. */
 export const MAX_QUERY_LENGTH = 1000;
 /** Found places stay in the Inbox this long, so the person sees what came in. */
 export const ADDED_KEEP_MS = 3 * 24 * 60 * 60 * 1000;
 
-const newId = () => crypto.randomUUID();
+/**
+ * An unsent item another device saved is left to that device this long before this one sends
+ * it, so two open devices do not both send a job for it.
+ */
+export const UNSENT_GRACE_MS = 5 * 60 * 1000;
+/**
+ * A job that is gone from the server before it expires was most likely taken by another of the
+ * person's devices, whose answer reaches this one by sync. Only after this long without it does
+ * the item count as failed.
+ */
+export const GONE_GRACE_MS = 10 * 60 * 1000;
 
 /**
  * Places waiting for the resolver, on this device. `add` saves first and sends after, so a
@@ -38,6 +48,8 @@ const newId = () => crypto.randomUUID();
 export class PendingQueue {
   private readonly listeners = new Set<() => void>();
   private polling: Promise<void> | null = null;
+  /** Jobs this device found gone from the server, and when it first did. */
+  private readonly gone = new Map<string, number>();
 
   constructor(
     private readonly store: PendingStore,
@@ -48,7 +60,11 @@ export class PendingQueue {
 
   subscribe(listener: () => void): () => void {
     this.listeners.add(listener);
-    return () => this.listeners.delete(listener);
+    const off = this.store.subscribe?.(listener);
+    return () => {
+      this.listeners.delete(listener);
+      off?.();
+    };
   }
 
   private emit(): void {
@@ -73,8 +89,7 @@ export class PendingQueue {
     const q = query.trim().slice(0, MAX_QUERY_LENGTH);
     if (!q) throw new EntryError("Type a link or a name to look up.");
     const at = this.now();
-    const item: PendingItem = { id: newId(), query: q, draft, createdAt: at, updatedAt: at, state: { kind: "unsent" } };
-    await this.store.put(item);
+    const item = await this.store.create({ query: q, draft, createdAt: at, updatedAt: at, state: { kind: "unsent" } });
     this.emit();
     return this.send(item);
   }
@@ -100,10 +115,16 @@ export class PendingQueue {
   }
 
   private async pollOnce(): Promise<void> {
+    await this.store.refresh?.();
     for (const item of await this.store.list()) {
       try {
-        if ((item.state.kind === "unsent" || item.state.kind === "waiting") && (await this.settleOnDevice(item))) continue;
-        if (item.state.kind === "unsent") await this.send(item);
+        // Another open device is working on it: settling and sending are left to that device,
+        // so its notes are not added twice; an answer is taken by one device only.
+        const here = (await this.store.wroteHere?.(item.id)) ?? true;
+        if (here && (item.state.kind === "unsent" || item.state.kind === "waiting") && (await this.settleOnDevice(item))) continue;
+        if (item.state.kind === "unsent") {
+          if (here || this.now() - item.updatedAt > UNSENT_GRACE_MS) await this.send(item);
+        }
         else if (item.state.kind === "waiting") await this.check(item, item.state);
         else if (item.state.kind === "failed" && item.state.job) await this.check(item, item.state.job);
         else if (item.state.kind === "added" && this.now() - item.updatedAt > ADDED_KEEP_MS) {
@@ -188,12 +209,10 @@ export class PendingQueue {
     try {
       job = await this.api.getResolverJob(state.jobId);
     } catch (err) {
-      if (err instanceof ApiError && err.status === 404) {
-        await this.save(item, { kind: "failed", reason: failedBefore && item.state.kind === "failed" ? item.state.reason : "expired" });
-        return;
-      }
+      if (err instanceof ApiError && err.status === 404) return this.goneFromServer(item, state);
       throw err;
     }
+    this.gone.delete(state.jobId);
     if (job.status === "pending") {
       // Back in the queue after the admin retried it.
       if (failedBefore) await this.save(item, { kind: "waiting", ...state });
@@ -205,13 +224,20 @@ export class PendingQueue {
       if (!failedBefore) await this.save(item, { kind: "failed", reason: "not_found", job: state });
       return;
     } else {
+      // Taking the answer drops the job, so of several open devices only one writes the place.
+      let sealed: string;
+      try {
+        sealed = (await this.api.takeResolverJob(state.jobId)).sealedResult;
+      } catch (err) {
+        if (err instanceof ApiError && err.status === 404) return this.goneFromServer(item, state);
+        throw err;
+      }
       let result: ResolverResult;
       try {
-        result = openResolverResult(fromBase64(job.sealedResult), { publicKey: state.publicKey, secretKey: state.secretKey });
+        result = openResolverResult(fromBase64(sealed), { publicKey: state.publicKey, secretKey: state.secretKey });
       } catch (err) {
         if (!(err instanceof CryptoError)) throw err;
         await this.save(item, { kind: "failed", reason: "bad_result" });
-        await this.forgetJob(state.jobId);
         return;
       }
       const { candidates, chain } = result;
@@ -224,7 +250,21 @@ export class PendingQueue {
       else if (candidates.length === 1 && pointsAtOnePlace(item.draft.link)) await this.write(item, candidates[0]!);
       else await this.save(item, { kind: "choose", candidates });
     }
-    await this.forgetJob(state.jobId);
+  }
+
+  /**
+   * The job is not on the server. Before it expires that most likely means another of the
+   * person's devices took the answer and its copy of the item is on the way, so this device
+   * waits a while before calling it failed rather than overwrite that copy.
+   */
+  private async goneFromServer(item: PendingItem, state: WaitingJob): Promise<void> {
+    const at = this.now();
+    const since = this.gone.get(state.jobId) ?? at;
+    this.gone.set(state.jobId, since);
+    const shared = this.store.wroteHere !== undefined;
+    if (shared && at < state.expiresAt && at - since < GONE_GRACE_MS) return;
+    this.gone.delete(state.jobId);
+    await this.save(item, { kind: "failed", reason: item.state.kind === "failed" ? item.state.reason : "expired" });
   }
 
   private async forgetJob(jobId: string): Promise<void> {

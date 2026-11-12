@@ -74,6 +74,25 @@ describe("resolver queue", () => {
     expect((await fetchApi(`/api/resolver/jobs/${id}`, { method: "DELETE" })).status).toBe(404);
   });
 
+  it("hands a resolved result over once, to whichever device takes it first", async () => {
+    const { id, keys } = await submit("Kyani and Co");
+    // Nothing to take before the answer is in.
+    expect((await fetchApi(`/api/resolver/jobs/${id}/take`, { method: "POST" })).status).toBe(404);
+    expect((await fetchApi(`/api/resolver/jobs/${id}`)).status).toBe(200);
+
+    await fetchApi(`/api/resolver/jobs/${id}/resolution`, json("POST", { candidates: [candidate] }, asResolver));
+    const [first, second] = await Promise.all([
+      fetchApi(`/api/resolver/jobs/${id}/take`, { method: "POST" }),
+      fetchApi(`/api/resolver/jobs/${id}/take`, { method: "POST" }),
+    ]);
+    const statuses = [first.status, second.status].sort();
+    expect(statuses).toEqual([200, 404]);
+    const winner = first.status === 200 ? first : second;
+    const { sealedResult } = await winner.json<{ sealedResult: string }>();
+    expect(openResolverResult(fromBase64(sealedResult), keys).candidates[0]).toMatchObject({ name: "Britannia & Co." });
+    expect((await fetchApi(`/api/resolver/jobs/${id}`)).status).toBe(404);
+  });
+
   it("refuses bad submissions", async () => {
     const key = toBase64(generateReplyKeys().publicKey);
     for (const body of [

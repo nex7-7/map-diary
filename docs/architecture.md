@@ -186,7 +186,7 @@ Claude has two separate roles: a resolver that only ever sees a name or link, an
 1. The device submits an anonymous job: the link or name plus a one-time public key. No account is attached.
 2. A Claude scheduled task calls `get_pending_jobs` and `submit_resolution` on the Worker's resolver endpoint. It returns name, coordinates, category, cuisine, the signature dish and its menu price.
 3. The Worker validates the result (coordinates inside Mumbai, a plausible ₹ price), encrypts it to the job's key, and deletes the job.
-4. My device picks it up on the next sync and writes the place facts.
+4. Whichever of my devices is open first takes the result (once; the Worker then drops the job) and writes the place facts. The pending item, with the job's one-time key, is a sealed item on my Personal board, so every device of mine holds it; the server still sees no link between the job and my account.
 
 The resolver interface is generic, so another AI or a script could replace Claude.
 
@@ -198,7 +198,7 @@ The resolver interface is generic, so another AI or a script could replace Claud
 - **Per call:** the connector sends the secret; the Worker finds the device by its hash, unlocks its keys, decrypts what the tool needs, answers, and keeps nothing. While a call runs, the Worker and Anthropic see that plaintext. Signatures are checked when envelopes are pushed, so reads only decrypt.
 - **Keeping up with rotations:** when the master or my Personal key rotates (a revoke, a member removed), whichever of my devices syncs next wraps the new version to the Claude device. Until then Claude reads only older items and refuses writes with a plain "open the app once" message.
 - **Guardrails on the Worker:** a `claude` device is refused account keys, group board keys, admin actions, and editing place facts it did not create. It has its own MCP endpoint and connector, separate from the resolver.
-- **Tools:** search and list places, get a place with its visible tags and comments, list tags, add a place (Claude looks it up itself and the Worker checks the facts like a resolver result, including the duplicate link check, optionally as one outlet of a chain), put a place it added into a chain, set Visited or Want to, add tags and comments. New opinions default to the Personal board, as everywhere. Pending items live only on the device that made them, so they stay with the resolver connector.
+- **Tools:** search and list places, get a place with its visible tags and comments, list tags, add a place (Claude looks it up itself and the Worker checks the facts like a resolver result, including the duplicate link check, optionally as one outlet of a chain), put a place it added into a chain, set Visited or Want to, add tags and comments. New opinions default to the Personal board, as everywhere. Pending items (sealed on my Personal board with their job's one-time key) are never read by the Claude device, so they stay with the resolver connector.
 - Items Claude creates are signed by the Claude device and shown as "Snehil via Claude".
 - Revoking Claude uses the normal revoke: its device row and encrypted keys are deleted, and the master and Personal keys rotate.
 
