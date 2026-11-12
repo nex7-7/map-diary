@@ -2,6 +2,7 @@
 
 import { useCallback, useRef, useState, type ReactNode } from "react";
 import { Button } from "./button";
+import { Icon } from "./icon";
 import { CloseButton, Sheet } from "./overlays";
 
 export interface ConfirmOptions {
@@ -42,9 +43,28 @@ export function useConfirm(): [(options: ConfirmOptions) => Promise<boolean>, Re
           <div className="flex justify-end">
             <CloseButton onClick={() => answer(false)} />
           </div>
-          <h2 className="heading-m">{options.title}</h2>
-          {options.body && <p style={{ margin: 0, color: "var(--ink-2)" }}>{options.body}</p>}
-          <Button variant={options.danger ? "danger" : "primary"} block onClick={() => answer(true)}>
+          {options.danger ? (
+            <>
+              <h2 className="heading-m flex items-center gap-2 text-seal-deep">
+                <Icon name="alert" />
+                {options.title}
+              </h2>
+              {options.body && (
+                <p className="m-0 rounded-[12px] border-[1.5px] border-seal-deep bg-seal-wash px-3.5 py-3 text-seal-deep">{options.body}</p>
+              )}
+            </>
+          ) : (
+            <>
+              <h2 className="heading-m">{options.title}</h2>
+              {options.body && <p style={{ margin: 0, color: "var(--ink-2)" }}>{options.body}</p>}
+            </>
+          )}
+          <Button
+            variant={options.danger ? "danger" : "primary"}
+            block
+            className={options.danger ? "bg-seal-deep text-cream hover:bg-seal hover:text-cream" : undefined}
+            onClick={() => answer(true)}
+          >
             {options.confirmLabel}
           </Button>
           <Button variant="ghost" block onClick={() => answer(false)}>
