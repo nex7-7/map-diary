@@ -74,6 +74,11 @@ export function parseLink(raw: string): ParsedEntry {
   if (isGoogleMapsUrl(host, url.pathname)) {
     return { ...parseGoogleMapsUrl(url), link: raw, source: "google-maps", shortLink: false };
   }
+  if (/^google\.[a-z.]+$/.test(host) && url.pathname === "/search") {
+    // Where a share.google link lands: the place's name as Google knows it, no pin.
+    const name = cleanName(url.searchParams.get("q") ?? "");
+    return { link: raw, source: "other", shortLink: false, ...(name ? { name } : {}) };
+  }
   if (host === "zomato.com" || host.endsWith(".zomato.com")) {
     const name = nameFromSlug(zomatoSlug(url.pathname));
     return { link: raw, source: "zomato", shortLink: false, ...(name ? { name } : {}) };
@@ -85,8 +90,9 @@ export function parseLink(raw: string): ParsedEntry {
   return { link: raw, source: "other", shortLink: false };
 }
 
+/** Short Google links the Worker expands; share.google is Google Search's Share button. */
 function isShortGoogleMapsLink(host: string, path: string): boolean {
-  return host === "maps.app.goo.gl" || (host === "goo.gl" && path.startsWith("/maps")) || host === "g.co";
+  return host === "maps.app.goo.gl" || (host === "goo.gl" && path.startsWith("/maps")) || host === "g.co" || host === "share.google";
 }
 
 function isGoogleMapsUrl(host: string, path: string): boolean {

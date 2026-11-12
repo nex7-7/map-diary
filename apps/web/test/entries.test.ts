@@ -82,6 +82,13 @@ describe("parseEntry", () => {
       shortLink: true,
     });
     expect(parseEntry("https://goo.gl/maps/xyz").shortLink).toBe(true);
+    expect(parseEntry("https://share.google/gzWoGDU30CDhMjF71").shortLink).toBe(true);
+  });
+
+  it("reads the name off the Google Search URL a share.google link lands on", () => {
+    const search = "https://www.google.com/search?q=Loyka+Oshiwara&kgmid=/g/11abc&shndl=30";
+    expect(parseEntry(search)).toMatchObject({ name: "Loyka Oshiwara", source: "other", shortLink: false });
+    expect(parseEntry(search).location).toBeUndefined();
   });
 
   it("takes the name from Google Maps share text", () => {

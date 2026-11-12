@@ -1,7 +1,9 @@
 /**
- * Short Google Maps links (maps.app.goo.gl, goo.gl/maps, g.co/kgs) only carry the place
- * in their redirect target. This follows the redirects, fetching Google hosts only, and
- * returns the first full Google Maps URL. It never reads a page body.
+ * Short Google links (maps.app.goo.gl, goo.gl/maps, g.co/kgs, and share.google from Google
+ * Search's Share button) only carry the place in their redirect target. This follows the
+ * redirects, fetching Google hosts only, and returns the first full Google Maps URL, or the
+ * Google Search URL a share.google link lands on (its `q` is the place's name as Google
+ * knows it). It never reads a page body.
  */
 
 const MAX_HOPS = 6;
@@ -11,7 +13,12 @@ export function isShortMapsLink(raw: string): boolean {
   const url = parseHttps(raw.trim());
   if (!url) return false;
   const host = url.hostname.toLowerCase();
-  return host === "maps.app.goo.gl" || (host === "goo.gl" && url.pathname.startsWith("/maps")) || host === "g.co";
+  return (
+    host === "maps.app.goo.gl" ||
+    (host === "goo.gl" && url.pathname.startsWith("/maps")) ||
+    host === "g.co" ||
+    host === "share.google"
+  );
 }
 
 function parseHttps(raw: string): URL | null {
@@ -34,6 +41,12 @@ function isFullMapsUrl(url: URL): boolean {
   return host.startsWith("maps.") || url.pathname.startsWith("/maps");
 }
 
+/** A Google Search results URL naming what was searched, e.g. where share.google links land. */
+function isSearchUrl(url: URL): boolean {
+  const host = url.hostname.toLowerCase();
+  return isGoogleHost(host) && url.pathname === "/search" && Boolean(url.searchParams.get("q")?.trim());
+}
+
 function mayFetch(url: URL): boolean {
   const host = url.hostname.toLowerCase();
   return url.protocol === "https:" && (isShortMapsLink(url.href) || isGoogleHost(host));
@@ -48,7 +61,7 @@ export async function expandShortLink(
   if (url.protocol === "http:") url.protocol = "https:";
 
   for (let hop = 0; hop < MAX_HOPS; hop++) {
-    if (isFullMapsUrl(url)) return url.href;
+    if (isFullMapsUrl(url) || isSearchUrl(url)) return url.href;
     // Google's cookie wall carries the real destination in `continue`.
     if (url.hostname.toLowerCase() === "consent.google.com") {
       const next = parseHttps(url.searchParams.get("continue") ?? "");
@@ -74,7 +87,7 @@ export async function expandShortLink(
       return null;
     }
   }
-  return isFullMapsUrl(url) ? url.href : null;
+  return isFullMapsUrl(url) || isSearchUrl(url) ? url.href : null;
 }
 
 /** A Zomato share link (zomato.onelink.me), which opens the app rather than a web page. */

@@ -150,12 +150,18 @@ describe("resolver queue", () => {
     const res = await fetchApi(`/api/resolver/jobs/${wrong.id}/requeue`, json("POST", { query: better }, asResolver));
     expect(res.status).toBe(200);
     expect((await pending()).find((j) => j.id === wrong.id)).toMatchObject({ query: better, attempts: 1 });
-    // Only failed jobs can be put back.
-    expect(await requeueJob(env.DB, wrong.id, undefined, now)).toMatchObject({ ok: false, status: 404 });
+    // A pending job can have its query swapped too, before it fails.
+    const swapped = "https://share.google/gzWoGDU30CDhMjF71";
+    expect(await requeueJob(env.DB, wrong.id, swapped, now)).toEqual({ ok: true });
+    const row = await env.DB.prepare("SELECT status, query, attempts FROM resolver_jobs WHERE id = ?").bind(wrong.id).first();
+    expect(row).toEqual({ status: "pending", query: swapped, attempts: 0 });
+    expect(await requeueJob(env.DB, wrong.id, better, now)).toEqual({ ok: true });
     await fetchApi(`/api/resolver/jobs/${wrong.id}/resolution`, json("POST", { candidates: [candidate] }, asResolver));
     const got = await (await fetchApi(`/api/resolver/jobs/${wrong.id}`)).json<{ status: string; sealedResult: string }>();
     expect(got.status).toBe("resolved");
     expect(openResolverResult(fromBase64(got.sealedResult), wrong.keys).candidates[0]!.name).toBe("Britannia & Co.");
+    // An answered job can't be put back.
+    expect(await requeueJob(env.DB, wrong.id, undefined, now)).toMatchObject({ ok: false, status: 404 });
 
     // A failed job can be answered directly too, while the device still waits on it.
     const direct = await fetchApi(`/api/resolver/jobs/${later.id}/resolution`, json("POST", { candidates: [candidate] }, asResolver));
@@ -218,6 +224,7 @@ describe("short link expansion", () => {
     expect(isShortMapsLink(short)).toBe(true);
     expect(isShortMapsLink("https://goo.gl/maps/xyz")).toBe(true);
     expect(isShortMapsLink("https://goo.gl/other")).toBe(false);
+    expect(isShortMapsLink("https://share.google/gzWoGDU30CDhMjF71")).toBe(true);
     expect(isShortMapsLink("https://www.zomato.com/mumbai/x")).toBe(false);
   });
 
@@ -226,6 +233,17 @@ describe("short link expansion", () => {
     const { seen, doFetch } = redirects({ [short]: consent });
     expect(await expandShortLink(short, doFetch)).toBe(full);
     expect(seen).toEqual([short]);
+  });
+
+  it("expands a share.google link to the Google Search URL it lands on, without fetching it", async () => {
+    const share = "https://share.google/gzWoGDU30CDhMjF71";
+    const search = "https://www.google.com/search?q=Loyka+Oshiwara&kgmid=/g/11abc&shndl=30";
+    const { seen, doFetch } = redirects({ [share]: search });
+    expect(await expandShortLink(share, doFetch)).toBe(search);
+    expect(seen).toEqual([share]);
+    // A share.google link to a Maps place gives the Maps URL as before.
+    const maps = redirects({ [share]: full });
+    expect(await expandShortLink(share, maps.doFetch)).toBe(full);
   });
 
   it("never fetches a non-Google host", async () => {
