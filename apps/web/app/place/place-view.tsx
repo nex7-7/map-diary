@@ -25,6 +25,7 @@ import {
   editComment,
   EntryError,
   moveStamp,
+  removeFromList,
   removeOpinion,
   setStatus,
   setVisitedDate,
@@ -98,8 +99,10 @@ export function PlaceView({ diary, placeId: asked }: { diary: Diary; placeId: st
   // A catalogue place's facts are the admin's to change once written, apart from the person who
   // added it putting a wrong match right; a dropped pin is its owner's.
   const canEdit = item.type === "place" ? canChangeFacts(items, item.id, me, isAdmin) : isAuthor;
-  // Deleting a catalogue place drops other people's notes with it, so that stays the admin's.
-  const canDelete = item.type === "place" ? isAdmin : isAuthor;
+  // Deleting a catalogue place drops other people's notes with it, so that stays the admin's,
+  // and only from Admin → Places once someone else has a note on it.
+  const othersHere = place.opinions.some((o) => o.authorId !== me);
+  const canDelete = item.type === "place" ? isAdmin && !othersHere : isAuthor;
   const of = <K extends Opinion["kind"]>(kind: K) => place.opinions.filter((o): o is Extract<Opinion, { kind: K }> => o.kind === kind);
   const myStatusOpinion = of("status").find((o) => o.authorId === me);
   const myStatus = myStatusOpinion?.status ?? null;
@@ -260,6 +263,21 @@ export function PlaceView({ diary, placeId: asked }: { diary: Diary; placeId: st
 
           <StatusToggle label="Your status" value={myStatus} onChange={(s: Status) => run(() => setStatus(diary, place.id, s, boards))} />
           {myStatus === null && <p className="hand -mt-2 text-[16px] text-ink-2">Stamp it Want to or Visited to put it on your list.</p>}
+          {myStatus !== null && item.type === "place" && (
+            <button
+              type="button"
+              className={`${styles.textbutton} -mt-2 self-start`}
+              onClick={async () => {
+                const body = othersHere
+                  ? "Your stamp, tags and comments on it are deleted. The place and everyone else's notes stay."
+                  : "Your stamp, tags and comments on it are deleted. The place stays in the diary.";
+                if (!(await ask({ title: `Take ${place.name} off your list?`, body, confirmLabel: "Take it off", danger: true }))) return;
+                run(() => removeFromList(diary, place.id));
+              }}
+            >
+              Take off my list
+            </button>
+          )}
           {myStatus === "visited" && myStatusOpinion && (
             <RedateSheet
               open={redating}
@@ -459,8 +477,8 @@ export function PlaceView({ diary, placeId: asked }: { diary: Diary; placeId: st
                     onClick={async () => {
                       const what = focus ? `the ${outletLabel(place, focus)} location of ${place.name}` : place.name;
                       const body =
-                        item.type === "place" && place.opinions.some((o) => o.authorId !== me)
-                          ? "Your notes on it are deleted too. Other people's notes stay saved but stop showing. If it is a duplicate, merge it from Admin → Places instead."
+                        item.type === "place"
+                          ? "It leaves everyone's diary, and your notes on it are deleted too. To keep the place and only drop your own notes, use Take off my list."
                           : "Your notes on it are deleted too.";
                       if (!(await ask({ title: `Delete ${what}?`, body, confirmLabel: "Delete", danger: true }))) return;
                       run(async () => {

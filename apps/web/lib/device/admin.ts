@@ -24,8 +24,8 @@ import {
 } from "@map-diary/sync";
 import { EntryError } from "../entries/actions";
 import { getPendingQueue } from "../pending/session";
-import { factsAfterMerge, factsOfMerged } from "../places/merges";
-import { readPayload, type PlacePayload } from "../places/payloads";
+import { factsAfterAttach, factsAfterMerge, factsOfMerged, mergeTargets, orphanedOpinions } from "../places/merges";
+import { MERGED_FROM_MAX, readPayload, type PlacePayload } from "../places/payloads";
 import { api } from "./session";
 
 // Admin-only actions. The Worker checks the admin device's signature on each one; nothing
@@ -84,6 +84,22 @@ export async function mergePlaces(diary: Diary, keptId: string, duplicateId: str
     if (facts) await diary.write({ type: "place", placeId: null, id: from, payload: factsOfMerged(facts, keptId) as unknown as JsonValue });
   }
   await diary.write({ type: "place", placeId: null, id: keptId, payload: factsAfterMerge(keptFacts, keptId, dupFacts, duplicateId) as unknown as JsonValue });
+}
+
+/**
+ * Attaches the notes left on a deleted place to a live catalogue place, so they show there
+ * again. Only the kept place's facts change (its `mergedFrom` gains the gone id); nobody's
+ * notes are touched.
+ */
+export async function attachNotes(diary: Diary, keptId: string, goneId: string): Promise<void> {
+  const items = await diary.listItems();
+  if (!orphanedOpinions(items).has(goneId)) throw new EntryError("Those notes are already showing on a place.");
+  const realId = mergeTargets(items).get(keptId) ?? keptId;
+  const kept = items.find((i) => i.id === realId && i.type === "place");
+  const keptFacts = kept && readPayload("place", kept.payload);
+  if (!kept || !keptFacts) throw new EntryError("That place isn't on this device. Let it sync, then try again.");
+  if ((keptFacts.mergedFrom?.length ?? 0) >= MERGED_FROM_MAX) throw new EntryError("That place can't take any more merged notes.");
+  await diary.write({ type: "place", placeId: null, id: realId, payload: factsAfterAttach(keptFacts, realId, goneId) as unknown as JsonValue });
 }
 
 /**
