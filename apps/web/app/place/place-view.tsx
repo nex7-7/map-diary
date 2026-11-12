@@ -266,7 +266,7 @@ export function PlaceView({ diary, placeId: asked }: { diary: Diary; placeId: st
           {myStatus !== null && item.type === "place" && (
             <button
               type="button"
-              className={`${styles.textbutton} -mt-2 self-start`}
+              className={`${styles.textbutton} -mt-2 self-start text-seal-deep`}
               onClick={async () => {
                 const body = othersHere
                   ? "Your stamp, tags and comments on it are deleted. The place and everyone else's notes stay."
