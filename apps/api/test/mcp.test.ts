@@ -138,13 +138,17 @@ describe("MCP resolver endpoint", () => {
     expect((await callTool("requeue_job", { jobId: id, query: link })).structuredContent).toEqual({ jobId: id, status: "pending" });
     const listed = await callTool("get_pending_jobs", { limit: 50 });
     expect((listed.structuredContent as { jobs: { id: string; query: string }[] }).jobs).toContainEqual(expect.objectContaining({ id, query: link }));
-    const again = await callTool("requeue_job", { jobId: id });
-    expect(again.isError).toBe(true);
-    expect(again.content[0]!.text).toMatch(/No such failed job/);
+    // A pending job's link can be swapped too.
+    const share = "https://share.google/gzWoGDU30CDhMjF71";
+    expect((await callTool("requeue_job", { jobId: id, query: share })).structuredContent).toEqual({ jobId: id, status: "pending" });
+    expect((await callTool("requeue_job", { jobId: id, query: link })).structuredContent).toEqual({ jobId: id, status: "pending" });
 
     await callTool("submit_resolution", { jobId: id, candidates: [candidate] });
     const job = await (await fetchApi(`/api/resolver/jobs/${id}`)).json<{ sealedResult: string }>();
     expect(openResolverResult(fromBase64(job.sealedResult), keys).candidates).toHaveLength(1);
+    const again = await callTool("requeue_job", { jobId: id });
+    expect(again.isError).toBe(true);
+    expect(again.content[0]!.text).toMatch(/No such job/);
   });
 
   it("needs the token as a Bearer header, never in the URL", async () => {

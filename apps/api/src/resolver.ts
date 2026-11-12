@@ -150,7 +150,10 @@ export function tokensMatch(given: string, expected: string): boolean {
 export interface PendingJob {
   id: string;
   query: string;
-  /** The full URL behind a short Google Maps link, when the query is one. */
+  /**
+   * The full URL behind a short Google link, when the query is one: a Google Maps URL, or for
+   * a share.google link from Google Search, the Search URL it lands on.
+   */
   expandedUrl?: string;
   /** The restaurant's name behind a Zomato share link, which never says which branch. */
   linkName?: string;
@@ -227,7 +230,8 @@ export type RequeueOutcome = { ok: true } | { ok: false; status: 400 | 404; erro
 
 /**
  * Puts a failed job back in the queue with a fresh count of attempts, optionally with a
- * better query (the right link, or the name and area). The device that asked still holds the
+ * better query (the right link, or the name and area). A job still pending can have its query
+ * swapped the same way, so a better link need not wait for the old one to fail first. The device that asked still holds the
  * job's one-time key, so the answer reaches it as before.
  */
 export async function requeueJob(db: D1Database, id: string, query: unknown, now: number): Promise<RequeueOutcome> {
@@ -240,7 +244,7 @@ export async function requeueJob(db: D1Database, id: string, query: unknown, now
   const { meta } = await db
     .prepare(
       `UPDATE resolver_jobs SET status = 'pending', attempts = 0, query = COALESCE(?, query), updated_at = ?
-        WHERE id = ? AND status = 'failed' AND query IS NOT NULL AND expires_at > ?`,
+        WHERE id = ? AND status IN ('failed', 'pending') AND query IS NOT NULL AND expires_at > ?`,
     )
     .bind(next, now, id, now)
     .run();

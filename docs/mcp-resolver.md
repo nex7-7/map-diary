@@ -21,7 +21,13 @@ a plain JSON reply. `GET` and `DELETE` answer `405`.
 | `get_pending_jobs` | `{ limit?: 1-50 }` (default 10) | `{ jobs: [{ id, query, expandedUrl?, linkName?, attempts, createdAt }] }`. Each listing counts an attempt; 5 without an answer fails the job |
 | `submit_resolution` | `{ jobId, candidates: ResolvedPlace[] }` or `{ jobId, failed: true }` | `{ jobId, status }`, or an error in plain words (outside Mumbai, bad price, already answered…) that Claude can fix and retry. A failed job can still be answered while `get_failed_jobs` lists it |
 | `get_failed_jobs` | `{ limit?: 1-50 }` (default 10) | Failed jobs the device still waits on, newest first, same fields as `get_pending_jobs`. Listing counts no attempt |
-| `requeue_job` | `{ jobId, query? }` | Puts a failed job back in the queue with fresh attempts, with `query` (a better link, or name and area) in place of the old one |
+| `requeue_job` | `{ jobId, query? }` | Puts a failed job back in the queue with fresh attempts, with `query` (a better link, or name and area) in place of the old one. A job still pending can have its `query` swapped the same way |
+
+`expandedUrl` is the full Google URL behind a short link (`maps.app.goo.gl`, `goo.gl/maps`,
+`g.co`, `share.google`). The Worker follows only the redirects, on Google hosts, and stops at
+the first Google Maps URL or Google Search URL with a `q`; it never reads a page. A
+`share.google` link from Google Search's Share button usually lands on a Search URL, which
+names the place but has no pin.
 
 `linkName` is the restaurant's name behind a Zomato share link (`zomato.onelink.me`). Those
 links only carry a token the Zomato app opens; asked like a link preview
@@ -82,11 +88,20 @@ connector. Use no other connector, and do not save anything about these places t
 1. Call get_pending_jobs with limit 10. If there are no jobs, stop and say "No pending jobs."
 2. For each job, find the place its query describes. The query is a Google Maps, Zomato,
    District or other link, or a plain name. If expandedUrl is present, it is the full Google
-   Maps URL behind a short link; its coordinates and name are the best evidence. If linkName
-   is present, the query is a Zomato share link that only opens the app: don't open it, but
-   search Zomato for linkName in Mumbai and use its page; if several branches carry that
-   name, give each one as a candidate. Search the web for anything else. A plain name means
-   a place in Mumbai.
+   URL behind a short link. A Google Maps URL there gives the place's coordinates and name,
+   the best evidence. A Google Search URL there (from a share.google link) gives, in its q,
+   the place's name as Google knows it: look that name up as below. If linkName is present,
+   the query is a Zomato share link that only opens the app: don't open it, but search
+   Zomato for linkName in Mumbai and use its page; if several branches carry that name, give
+   each one as a candidate. Search the web for anything else. A plain name means a place in
+   Mumbai.
+   A new outlet often isn't on Zomato or District yet, and Zomato, Instagram and Google
+   share links refuse automated reads. Don't stop at those: also search Justdial, magicpin,
+   Swiggy, EazyDiner and the brand's own site or store locator for the outlet's address
+   (search "<name> <area> address" and "<name> <area> Mumbai"), and read its coordinates off
+   a Google Maps result or OpenStreetMap for that address. An address at building or street
+   level is enough for the pin. Fail only when no source you can read names the outlet;
+   never submit another outlet of the chain in its place.
 3. Check whether the place is one outlet of a chain. On its Zomato page, scroll down to the
    Direction box: a link such as "See all 3 The Bombay Cartel outlets in Mumbai" means it is.
    Open that link and note every outlet listed (name, area and address, and its own Zomato

@@ -21,7 +21,7 @@ A job listed 5 times without an answer is marked failed. A failed job keeps its 
 
 Short Google Maps links (maps.app.goo.gl) usually don't need a job: the device calls
 `POST /api/resolver/expand` and parses the full URL itself. When that fails, the job's
-listing carries `expandedUrl` if the Worker can expand it later. A Zomato share link
+listing carries `expandedUrl` if the Worker can expand it later. A share.google link from Google Search usually lands on a Search URL with the name but no pin, so it goes to the resolver with that URL as `expandedUrl`. A Zomato share link
 (zomato.onelink.me) only carries a token the Zomato app opens, so its listing carries
 `linkName`, the restaurant's name the Worker reads off the link-preview redirect (see
 [mcp-resolver.md](mcp-resolver.md)); it never says which branch.
@@ -45,7 +45,7 @@ it; the Worker checks the same. After that only the admin edits its facts.
 | `POST /api/resolver/jobs` | `{ query, replyPublicKey }` (query ≤ 1000 chars, key base64url 32 bytes) → `201 { id, status: "pending", expiresAt }`; `503 queue_full` |
 | `GET /api/resolver/jobs/:id` | `{ id, status: "pending" \| "resolved" \| "failed", sealedResult?, expiresAt }`; `404` once deleted or expired |
 | `DELETE /api/resolver/jobs/:id` | `204` |
-| `POST /api/resolver/expand` | `{ url }` (a short Google Maps link) → `{ url }` full Maps URL, or (a Zomato share link) → `{ name }`; `422 not_expanded` |
+| `POST /api/resolver/expand` | `{ url }` (a short Google link) → `{ url }` full Maps URL (or, for share.google, the Google Search URL it lands on), or (a Zomato share link) → `{ name }`; `422 not_expanded` |
 
 `Api` in `@map-diary/sync` has `submitResolverJob`, `getResolverJob`,
 `deleteResolverJob` and `expandMapsLink`.
