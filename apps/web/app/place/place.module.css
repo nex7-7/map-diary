@@ -367,6 +367,31 @@
   box-shadow: 0 3px 0 var(--ink);
 }
 
+.outletHead {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  justify-content: space-between;
+}
+
+.outletSeal {
+  display: grid;
+  justify-items: center;
+  gap: 2px;
+  flex-shrink: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--ink-2);
+  font-size: 13px;
+  line-height: 1.1;
+  cursor: var(--cursor-press);
+}
+
+.outletSeal[aria-pressed="true"] {
+  color: var(--seal);
+}
+
 .outletName {
   display: flex;
   gap: 8px;

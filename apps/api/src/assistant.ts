@@ -345,15 +345,24 @@ const readVisitedAt = (payload: JsonValue): number | undefined => {
   return typeof at === "number" && Number.isFinite(at) && at > 0 ? Math.round(at) : undefined;
 };
 
+/** The outlets of a chain a Visited status names as visited, kept as the app wrote them. */
+const readOutlets = (payload: JsonValue): string[] | undefined => {
+  const v = obj(payload)?.outlets;
+  const ids = Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : [];
+  return ids.length > 0 ? ids : undefined;
+};
+
 /**
  * A status payload written over `prev`, as the app writes it: a place that stays Visited keeps
- * its visit day (the one given, else when it was stamped), so re-writing it does not move it.
+ * its visit day (the one given, else when it was stamped), so re-writing it does not move it,
+ * and keeps the outlets of a chain the app marked as visited.
  */
 function statusPayload(status: Status, prev?: Item, visitedAt?: number): JsonValue {
   if (status !== "visited") return { status };
-  if (visitedAt !== undefined) return { status, visitedAt };
-  if (prev && readStatus(prev.payload) === "visited") return { status, visitedAt: readVisitedAt(prev.payload) ?? prev.updatedAt };
-  return { status };
+  const stays = prev !== undefined && readStatus(prev.payload) === "visited";
+  const outlets = stays ? readOutlets(prev.payload) : undefined;
+  const at = visitedAt ?? (stays ? (readVisitedAt(prev.payload) ?? prev.updatedAt) : undefined);
+  return { status, ...(at !== undefined ? { visitedAt: at } : {}), ...(outlets ? { outlets } : {}) };
 }
 
 const readTagId = (payload: JsonValue) => str(obj(payload)?.tagId);

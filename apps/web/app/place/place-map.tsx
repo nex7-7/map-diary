@@ -14,12 +14,28 @@ import type { LngLat, PlaceView } from "@/lib/places/types";
  * place is; panning and zooming happen on the main map. A chain shows every location's pin,
  * centred on `focus`.
  */
-export function PlaceMap({ place, focus, kind, className }: { place: PlaceView; focus?: LngLat; kind: PinKind; className?: string | undefined }) {
+export function PlaceMap({
+  place,
+  focus,
+  kind,
+  visited,
+  className,
+}: {
+  place: PlaceView;
+  focus?: LngLat;
+  kind: PinKind;
+  /** On a chain stamped Visited: the outlets been to. The others get the uninked seal. */
+  visited?: ReadonlySet<string> | undefined;
+  className?: string | undefined;
+}) {
   const container = useRef<HTMLDivElement>(null);
   const latest = useRef(place);
   latest.current = place;
+  const latestVisited = useRef(visited);
+  latestVisited.current = visited;
   const { id } = place;
   const at = focus ?? place.location;
+  const visitedKey = visited ? [...visited].sort().join(" ") : "";
 
   useEffect(() => {
     const abort = new AbortController();
@@ -29,7 +45,8 @@ export function PlaceMap({ place, focus, kind, className }: { place: PlaceView; 
       const place = latest.current;
       // A pending pin draws in the friends' colour slot; the status decides the rest.
       const status = kind === "want" || kind === "visited" ? kind : "want";
-      const listed = [{ place, status, mine: kind !== "friend", addedAt: "" }] as const;
+      const visitedOutlets = latestVisited.current;
+      const listed = [{ place, status, mine: kind !== "friend", addedAt: "", ...(visitedOutlets ? { visitedOutlets } : {}) }] as const;
       map?.getSource<GeoJSONSource>(PINS_SOURCE)?.setData(pinsCollection(listed, place.id));
     };
 
@@ -62,7 +79,7 @@ export function PlaceMap({ place, focus, kind, className }: { place: PlaceView; 
       map?.remove();
     };
     // Rebuilt only when the place or its pin changes, not on every sync.
-  }, [id, at.lng, at.lat, kind]);
+  }, [id, at.lng, at.lat, kind, visitedKey]);
 
   return <div ref={container} className={className} role="img" aria-label={`Map around ${place.name}`} />;
 }

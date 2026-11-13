@@ -381,12 +381,37 @@ describe("PendingQueue", () => {
     const andheri: ResolvedPlace = { ...lowerParel, address: "Andheri West", location: { lat: 19.13, lng: 72.83 }, sourceLinks: ["https://www.zomato.com/mumbai/the-bombay-cartel-andheri"] };
     const chain: ResolvedChain = { name: "The Bombay Cartel", outlets: [bandra, andheri] };
 
-    it("asks before adding a chain, even with one match", async () => {
+    const statusOf = (d: FakeDiary) => d.snapshot().places[0]!.opinions.find((o) => o.kind === "status");
+    const idOf = (d: FakeDiary, address: string) => places(d).find((p) => readPayload("place", p.payload)!.address === address)!.id;
+
+    it("adds every outlet of a Want to chain straight away when the link was for one place", async () => {
       const { api, diary, queue } = setup();
-      await queue.add(link, draft({ link }));
+      await queue.add(link, draft({ link, comment: "For a birthday" }));
+      api.answer([lowerParel], chain);
+      await queue.poll();
+      expect((await queue.list())[0]!.state).toMatchObject({ kind: "added" });
+      expect(places(diary)).toHaveLength(3);
+      const view = diary.snapshot().places;
+      expect(view).toHaveLength(1);
+      expect(statusOf(diary)).toMatchObject({ status: "want" });
+      expect(view[0]!.opinions.find((o) => o.kind === "comment")).toMatchObject({ text: "For a birthday", allOutlets: true });
+    });
+
+    it("asks a Visited chain which outlet the person went to", async () => {
+      const { api, diary, queue } = setup();
+      await queue.add(link, draft({ link, status: "visited" }));
       api.answer([lowerParel], chain);
       await queue.poll();
       expect((await queue.list())[0]!.state).toMatchObject({ kind: "choose", chain: { name: "The Bombay Cartel" } });
+      expect(places(diary)).toHaveLength(0);
+    });
+
+    it("asks before adding a chain found by name", async () => {
+      const { api, diary, queue } = setup();
+      await queue.add("Bombay Cartel", draft({ label: "Bombay Cartel" }));
+      api.answer([lowerParel], chain);
+      await queue.poll();
+      expect((await queue.list())[0]!.state).toMatchObject({ kind: "choose" });
       expect(places(diary)).toHaveLength(0);
     });
 
@@ -405,20 +430,42 @@ describe("PendingQueue", () => {
 
       const view = diary.snapshot().places;
       expect(view).toHaveLength(1);
-      expect(view[0]).toMatchObject({ id: placeId, name: "The Bombay Cartel" });
-      expect(view[0]!.outlets?.map((o) => o.address)).toEqual(["Kamala Mills, Lower Parel", "Linking Road, Bandra", "Andheri West"]);
-      expect(view[0]!.opinions.find((o) => o.kind === "comment")).toMatchObject({ text: "Great cocktails", allOutlets: true });
+      expect(view[0]).toMatchObject({ name: "The Bombay Cartel" });
+      expect(view[0]!.outlets?.map((o) => o.address)).toEqual(expect.arrayContaining(["Kamala Mills, Lower Parel", "Linking Road, Bandra", "Andheri West"]));
+      expect(placeId).toBe(idOf(diary, "Kamala Mills, Lower Parel"));
+      // The note is about the outlet visited, and the status names it.
+      const comment = view[0]!.opinions.find((o) => o.kind === "comment");
+      expect(comment).toMatchObject({ text: "Great cocktails", placeId });
+      expect(comment).not.toHaveProperty("allOutlets");
+      expect(statusOf(diary)).toMatchObject({ status: "visited", outlets: [placeId] });
     });
 
-    it("adds only the outlet picked, still labelled with its chain, and later outlets join it", async () => {
+    it("puts the stamp and note on the outlet picked, and the link on the one it was for", async () => {
       const { api, diary, queue } = setup();
-      const first = await queue.add(link, draft({ link }));
+      const item = await queue.add(link, draft({ link, status: "visited", comment: "Went with Ria" }));
+      api.answer([lowerParel], chain);
+      await queue.poll();
+      const placeId = await queue.addAll(item.id, 1);
+
+      expect(places(diary)).toHaveLength(3);
+      const bandraId = idOf(diary, "Linking Road, Bandra");
+      expect(placeId).toBe(bandraId);
+      expect(readPayload("place", places(diary).find((p) => p.id === bandraId)!.payload)!.sourceLinks).not.toContain(link);
+      expect(readPayload("place", places(diary).find((p) => p.id === idOf(diary, "Kamala Mills, Lower Parel"))!.payload)!.sourceLinks).toContain(link);
+      expect(statusOf(diary)).toMatchObject({ status: "visited", outlets: [bandraId] });
+      expect(diary.snapshot().places[0]!.opinions.find((o) => o.kind === "comment")).toMatchObject({ placeId: bandraId });
+    });
+
+    it("later outlets join a chain, and a Visited one is marked as visited too", async () => {
+      const { api, diary, queue } = setup();
+      const first = await queue.add(link, draft({ link, status: "visited" }));
       api.answer([lowerParel], chain);
       await queue.poll();
       await queue.choose(first.id, 0);
       expect(places(diary)).toHaveLength(1);
+      const lowerId = places(diary)[0]!.id;
 
-      const second = await queue.add("Bombay Cartel Bandra", draft({ label: "Bombay Cartel Bandra" }));
+      const second = await queue.add("Bombay Cartel Bandra", draft({ label: "Bombay Cartel Bandra", status: "visited" }));
       api.answer([bandra], { name: "Bombay Cartel", outlets: [lowerParel, andheri] });
       await queue.poll();
       await queue.choose(second.id, 0);
@@ -427,15 +474,16 @@ describe("PendingQueue", () => {
       expect(chains).toHaveLength(2);
       expect(chains[0]).toBe(chains[1]);
       expect(diary.snapshot().places).toHaveLength(1);
+      const bandraId = places(diary).find((p) => p.id !== lowerId)!.id;
+      expect(diary.snapshot().places[0]!.opinions.filter((o) => o.kind === "status")).toMatchObject([{ status: "visited", outlets: [lowerId, bandraId] }]);
     });
 
     it("doesn't add an outlet the diary already has twice", async () => {
       const { api, diary, queue } = setup();
       await diary.write({ type: "place", placeId: null, payload: { name: "TBC Bandra", category: "restaurant", location: { lat: 19.06, lng: 72.83 }, sourceLinks: bandra.sourceLinks } });
-      const item = await queue.add(link, draft({ link }));
+      await queue.add(link, draft({ link }));
       api.answer([lowerParel], chain);
       await queue.poll();
-      await queue.addAll(item.id);
       expect(places(diary)).toHaveLength(3);
     });
   });

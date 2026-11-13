@@ -241,12 +241,16 @@ export class PendingQueue {
         return;
       }
       const { candidates, chain } = result;
-      // The result is on the device now; the one-time key is no longer needed. A chain always
-      // asks: every outlet, or only the one the link was for. New facts for a place always ask,
+      // The result is on the device now; the one-time key is no longer needed. Every outlet of a
+      // chain goes on the map: a Visited one asks which outlet the person went to, and a Want to
+      // one adds them all straight away when the link was for one place. New facts for a place always ask,
       // and so does a lone match for a plain name (or a Zomato share link, which only carries
       // the name): a name can mean another place, so only a link for one place adds by itself.
       if (item.draft.refreshPlaceId) await this.save(item, { kind: "choose", candidates });
-      else if (chain) await this.save(item, { kind: "choose", candidates, chain });
+      else if (chain && item.draft.status === "want" && pointsAtOnePlace(item.draft.link)) {
+        await this.save(item, { kind: "choose", candidates, chain });
+        await this.addAll(item.id);
+      } else if (chain) await this.save(item, { kind: "choose", candidates, chain });
       else if (candidates.length === 1 && pointsAtOnePlace(item.draft.link)) await this.write(item, candidates[0]!);
       else await this.save(item, { kind: "choose", candidates });
     }
@@ -286,17 +290,31 @@ export class PendingQueue {
   }
 
   /**
-   * Adds every outlet of the chain: the match carries the status, tags and note (about every
-   * outlet), and the others join it as places of the same chain.
+   * Adds every outlet of the chain. The match keeps the person's link; on a Visited one the
+   * outlet they went to (`visited`, an index into `choicesOf`, the match by default) carries
+   * the status, tags and note, and the status names it as the outlet visited. On a Want to one
+   * the match carries them and the note is about every outlet.
    */
-  async addAll(id: string): Promise<string> {
+  async addAll(id: string, visited = 0): Promise<string> {
     const item = await this.store.get(id);
     if (!item || item.state.kind !== "choose" || !item.state.chain) throw new EntryError("That was already sorted out. Reload the Inbox.");
     const { chain } = item.state;
-    const match = item.state.candidates[0]!;
+    const choices = choicesOf(item.state);
+    const draft = draftOf(item);
+    const isVisited = draft.status === "visited";
+    const pick = isVisited ? (choices[visited] ?? choices[0]!) : choices[0]!;
     const label = chainFor(await this.diary.listItems(), chain.name);
-    const { placeId, existing } = await writeResolved(this.diary, draftOf(item), match, label, true);
-    for (const outlet of chain.outlets) await writeOutlet(this.diary, draftOf(item), outlet, label);
+    // The match and the chain's outlets; another possible match only when it was the one picked.
+    const all = [item.state.candidates[0]!, ...chain.outlets];
+    if (!all.includes(pick)) all.push(pick);
+    // The outlet with the stamp first, so it leads the chain's page and list.
+    const pickDraft: PendingDraft = pick === item.state.candidates[0] ? draft : withoutLink(draft);
+    const { placeId, existing } = await writeResolved(this.diary, pickDraft, pick, label, !isVisited, isVisited ? "self" : undefined);
+    for (const c of all) {
+      if (c === pick) continue;
+      // Only the match keeps the person's link: it is the one the link was for.
+      await writeOutlet(this.diary, draft, c, label, c === item.state.candidates[0]);
+    }
     await this.save(item, added(placeId, chain.name, existing));
     return placeId;
   }
@@ -334,7 +352,8 @@ export class PendingQueue {
     const item = await this.store.get(id);
     if (!item || item.state.kind !== "branch") throw new EntryError("That was already sorted out. Reload the Inbox.");
     const { candidate, chain } = item.state;
-    const { placeId, existing } = await writeResolved(this.diary, draftOf(item), candidate, isBranch ? chain : undefined);
+    // A Visited branch is the outlet the person went to.
+    const { placeId, existing } = await writeResolved(this.diary, draftOf(item), candidate, isBranch ? chain : undefined, false, isBranch ? "self" : undefined);
     await this.save(item, added(placeId, candidate.name, existing));
     return placeId;
   }
@@ -515,17 +534,28 @@ export function factsFromCandidate(draft: PendingDraft, c: ResolvedPlace, chain?
  * place (same source link), the opinions go on it instead and its facts are left alone.
  * `chain` labels it as an outlet; `allOutlets` makes the note about every outlet.
  */
-export async function writeResolved(w: DiaryWriter, draft: PendingDraft, c: ResolvedPlace, chain?: PlaceChain, allOutlets = false): Promise<Written> {
+export async function writeResolved(
+  w: DiaryWriter,
+  draft: PendingDraft,
+  c: ResolvedPlace,
+  chain?: PlaceChain,
+  allOutlets = false,
+  /**
+   * "self": a Visited status names this place as the outlet of its chain the person went to,
+   * also when the catalogue had it already. (A new outlet is always the one visited.)
+   */
+  visitedOutlet?: "self",
+): Promise<Written> {
   const facts = factsFromCandidate(draft, c, chain);
   if (!readPayload("place", facts as unknown as JsonValue)) throw new EntryError("That match is missing a name or a location, so it can't be added. Try looking it up again.");
-  return writeFacts(w, draft, facts, allOutlets);
+  return writeFacts(w, draft, facts, allOutlets, visitedOutlet);
 }
 
 /**
  * Writes a catalogue place from its facts with the draft's status, tags and note, or puts them
  * on the place the catalogue already has with one of its links.
  */
-export async function writeFacts(w: DiaryWriter, draft: PendingDraft, facts: PlacePayload, allOutlets = false): Promise<Written> {
+export async function writeFacts(w: DiaryWriter, draft: PendingDraft, facts: PlacePayload, allOutlets = false, visitedOutlet?: "self"): Promise<Written> {
   const existing = await findCataloguePlace(w, facts.sourceLinks);
   if (!existing) {
     const placeId = await addPlace(w, {
@@ -541,7 +571,7 @@ export async function writeFacts(w: DiaryWriter, draft: PendingDraft, facts: Pla
     return { placeId, existing: false };
   }
 
-  await addDraftOpinions(w, existing, draft, allOutlets);
+  await addDraftOpinions(w, existing, draft, allOutlets, visitedOutlet && draft.status === "visited" ? [existing] : undefined);
   return { placeId: existing, existing: true };
 }
 
@@ -555,9 +585,10 @@ export interface Written {
 const added = (placeId: string, name: string, existing: boolean): PendingState => ({ kind: "added", placeId, name, ...(existing ? { existing: true as const } : {}) });
 
 /** Puts the draft's status, tags and note on a place already in the diary. */
-async function addDraftOpinions(w: DiaryWriter, placeId: string, draft: PendingDraft, allOutlets = false): Promise<void> {
+async function addDraftOpinions(w: DiaryWriter, placeId: string, draft: PendingDraft, allOutlets = false, outlets?: string[]): Promise<void> {
   await addOpinions(w, placeId, {
     status: draft.status,
+    ...(outlets ? { outlets } : {}),
     tagIds: draft.tagIds,
     newTags: draft.newTags,
     comment: draft.comment,
@@ -570,14 +601,19 @@ async function addDraftOpinions(w: DiaryWriter, placeId: string, draft: PendingD
  * Writes another outlet of a chain as a catalogue place, with no opinions: the chain's
  * status and tags cover it. An outlet the catalogue already has is left as it is.
  */
-export async function writeOutlet(w: DiaryWriter, draft: PendingDraft, c: ResolvedPlace, chain: PlaceChain): Promise<string> {
+export async function writeOutlet(w: DiaryWriter, draft: PendingDraft, c: ResolvedPlace, chain: PlaceChain, keepLink = false): Promise<string> {
   // The person's link is for the match, not this outlet.
-  const { link: _link, ...rest } = draft;
-  const facts = factsFromCandidate(rest, c, chain);
+  const facts = factsFromCandidate(keepLink ? draft : withoutLink(draft), c, chain);
   if (!readPayload("place", facts as unknown as JsonValue)) throw new EntryError("One of the outlets is missing a name or a location, so it can't be added.");
   const existing = await findCataloguePlace(w, facts.sourceLinks);
   if (existing) return existing;
   return (await w.write({ type: "place", placeId: null, payload: facts as unknown as JsonValue })).id;
+}
+
+/** The draft without the person's link, for an outlet the link was not for. */
+function withoutLink(draft: PendingDraft): PendingDraft {
+  const { link: _link, expandedUrl: _expanded, ...rest } = draft;
+  return rest;
 }
 
 /** The item's draft, with when it was added. */

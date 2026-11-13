@@ -37,7 +37,15 @@ export interface StatusPayload {
    * time the status was written (the person changed it, or the place was found later).
    */
   visitedAt?: number;
+  /**
+   * Visited on a chain: the outlets (place ids) the person has been to. Missing means the one
+   * the status is attached to. The other outlets show as not visited yet.
+   */
+  outlets?: string[];
 }
+
+/** Most outlets a status can name as visited. */
+export const VISITED_OUTLETS_MAX = 60;
 
 export interface TagDefPayload {
   name: string;
@@ -162,7 +170,12 @@ const readers: { [T in EnvelopeType]: (p: JsonObject) => PayloadByType[T] | unde
     if (p.status === "want") return { status: "want" };
     if (p.status !== "visited") return undefined;
     const at = num(p.visitedAt);
-    return at !== undefined && at > 0 ? { status: "visited", visitedAt: Math.round(at) } : { status: "visited" };
+    const out: StatusPayload = at !== undefined && at > 0 ? { status: "visited", visitedAt: Math.round(at) } : { status: "visited" };
+    if (Array.isArray(p.outlets)) {
+      const ids = [...new Set(p.outlets.flatMap((v) => (typeof v === "string" && PLACE_ID.test(v) ? [v] : [])))].slice(0, VISITED_OUTLETS_MAX);
+      if (ids.length > 0) out.outlets = ids;
+    }
+    return out;
   },
   tag_def: (p) => {
     const name = str(p.name)?.trim();
