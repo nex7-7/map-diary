@@ -244,6 +244,36 @@ export function addressArea(address: string | undefined): string | undefined {
     .at(-1);
 }
 
+/**
+ * The neighbourhood of the nearest place the device already holds with an address, within
+ * about 1.5 km, to say roughly where a pin is. Worked out on the device; nothing is sent.
+ */
+export function nearestArea(items: readonly StoredItem[], location: LngLat, within = 1500): string | undefined {
+  let best: { area: string; d: number } | undefined;
+  for (const i of items) {
+    if (i.type !== "place") continue;
+    const facts = readPayload("place", i.payload);
+    const area = addressArea(facts?.address);
+    if (!facts || !area) continue;
+    const d = distanceMetres(facts.location, location);
+    if (d <= within && (!best || d < best.d)) best = { area, d };
+  }
+  return best?.area;
+}
+
+/** The areas a chain's outlets are in, as "Colaba, Bandra West and Powai". */
+export function outletAreas(items: readonly StoredItem[], placeId: string): string | undefined {
+  const areas = new Set<string>();
+  for (const id of outletIds(items, placeId)) {
+    const item = items.find((i) => i.id === id && i.type === "place");
+    const area = item ? addressArea(readPayload("place", item.payload)?.address) : undefined;
+    if (area) areas.add(area);
+  }
+  const list = [...areas];
+  if (list.length === 0) return undefined;
+  return list.length === 1 ? list[0] : `${list.slice(0, -1).join(", ")} and ${list.at(-1)}`;
+}
+
 /** A short name for an outlet: its area ("Lower Parel"), else its own name, else its number. */
 export function outletLabel(place: PlaceView, outlet: Outlet): string {
   const area = addressArea(outlet.address);

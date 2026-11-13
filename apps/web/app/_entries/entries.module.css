@@ -340,10 +340,83 @@
 
 .note {
   margin: 0;
-  font-family: var(--hand);
-  font-size: 15.5px;
-  line-height: 1.35;
+  font-size: 13px;
+  line-height: 1.45;
   color: var(--ink-2);
+}
+
+/* A pasted link, shown as a chip rather than a long line of URL. */
+.linkchip {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 6px 8px 12px;
+  background: var(--cream);
+  border: 1.5px solid var(--ink);
+  border-radius: 12px;
+}
+
+.linkicon {
+  width: 30px;
+  height: 30px;
+  flex: none;
+  display: grid;
+  place-items: center;
+  border-radius: 8px;
+  background: var(--indigo-wash);
+  color: var(--indigo);
+}
+
+.linktext {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.linktext b {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.linktext span {
+  font-size: 12px;
+  color: var(--ink-2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.linkclear {
+  width: 40px;
+  height: 40px;
+  flex: none;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 50%;
+  background: none;
+  color: var(--ink-2);
+}
+
+.slipline {
+  margin: 0;
+}
+
+.slipactions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 16px;
+}
+
+.tickline {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+  font-size: 14px;
+  font-weight: 600;
 }
 
 .error {
@@ -445,6 +518,17 @@
   border: 1.5px solid var(--ink);
   box-shadow: 0 3px 0 var(--ink);
   background: var(--paper);
+}
+
+.still {
+  height: 104px;
+  box-shadow: none;
+}
+
+.still .crosshair {
+  width: 22px;
+  height: 30px;
+  margin: -30px 0 0 -11px;
 }
 
 .pickermap {
