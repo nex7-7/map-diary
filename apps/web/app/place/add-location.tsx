@@ -11,6 +11,7 @@ import { parseEntry, type ParsedEntry } from "@/lib/entries/parse-input";
 import { getPendingQueue, MAX_QUERY_LENGTH } from "@/lib/pending";
 import type { StoredItem } from "@/lib/places/items-source";
 import { Icon } from "@/lib/ui";
+import p from "./place.module.css";
 
 interface Props {
   diary: Diary;
@@ -88,27 +89,35 @@ export function AddLocation({ diary, items, placeId, onDone }: Props) {
 
   if (!open) {
     return (
-      <button type="button" className={`${styles.textbutton} self-start`} onClick={() => setOpen(true)}>
-        <Icon name="plus" size="s" /> Add a location
+      <button type="button" className={p.addOutlet} onClick={() => setOpen(true)}>
+        <span className={p.addOutletPlus} aria-hidden>
+          <Icon name="plus" size="s" />
+        </span>
+        <span>
+          <strong>Add a location</strong>
+          <span className="sub"> · from a link</span>
+        </span>
       </button>
     );
   }
 
   return (
     <form
-      className="flex flex-col gap-2"
+      className={`${p.outlet} ${p.addOutletForm}`}
       onSubmit={(e) => {
         e.preventDefault();
         void save();
       }}
     >
-      <label className={styles.label} htmlFor="add-location">
-        Another location of {chain.name}
+      <label className={p.addOutletTitle} htmlFor="add-location">
+        <Icon name="pin" size="s" />
+        <strong>New location of {chain.name}</strong>
       </label>
-      <textarea
+      <input
         id="add-location"
         className={styles.input}
-        rows={1}
+        inputMode="url"
+        autoComplete="off"
         autoFocus
         placeholder="Paste a Google Maps, Zomato or District link"
         value={text}
@@ -124,7 +133,7 @@ export function AddLocation({ diary, items, placeId, onDone }: Props) {
           onChange={(e) => setAddress(e.target.value)}
         />
       )}
-      <label className="flex items-center gap-2 text-[15px]">
+      <label className={p.addOutletCheck}>
         <input type="checkbox" checked={been} onChange={(e) => setBeen(e.target.checked)} /> I&apos;ve been to this one
       </label>
       {error && (
@@ -132,19 +141,14 @@ export function AddLocation({ diary, items, placeId, onDone }: Props) {
           {error}
         </p>
       )}
-      <div className={styles.row}>
-        <button type="button" className={styles.secondary} onClick={reset}>
+      <div className={p.addOutletActions}>
+        <button type="button" className={styles.textbutton} onClick={reset}>
           Cancel
         </button>
-        <button type="submit" className={`${styles.primary} ${styles.grow}`} disabled={saving || !ready}>
+        <button type="submit" className={`${styles.primary} ${p.addOutletSave}`} disabled={saving || !ready}>
           {saving ? "Saving…" : expansion.kind === "loading" ? "Opening the link…" : location ? "Add it" : "Add and look it up"}
         </button>
       </div>
-      {!location && ready && (
-        <p className={styles.note}>
-          Only the {typed.link ? "link" : "name"} is sent to look it up. You can follow it in your <Link href="/inbox">Inbox</Link>.
-        </p>
-      )}
     </form>
   );
 }
@@ -152,6 +156,12 @@ export function AddLocation({ diary, items, placeId, onDone }: Props) {
 function Summary({ parsed, expansion, located }: { parsed: ParsedEntry; expansion: string; located: boolean }) {
   if (expansion === "loading") return <p className={styles.note}>Opening the short link…</p>;
   if (located) return <p className={styles.note}>Found the pin on the link. It&apos;s added straight away.</p>;
-  if (parsed.source === "zomato" || parsed.source === "district") return <p className={styles.note}>The address and pin get looked up.</p>;
+  if (parsed.source === "zomato" || parsed.source === "district" || parsed.link) {
+    return (
+      <p className={styles.note}>
+        Only the link is sent to look it up. It joins once found; follow it in your <Link href="/inbox">Inbox</Link>.
+      </p>
+    );
+  }
   return null;
 }

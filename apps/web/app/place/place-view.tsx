@@ -348,10 +348,11 @@ export function PlaceView({ diary, placeId: asked }: { diary: Diary; placeId: st
                   </li>
                 ))}
               </ul>
+              <AddLocation diary={diary} items={items} placeId={place.id} onDone={setNotice} />
             </section>
           )}
-          {/* Another outlet from a link: on a chain a new location, on a single place the start of a chain. */}
-          {items.find((i) => i.id === place.id)?.type === "place" && <AddLocation diary={diary} items={items} placeId={place.id} onDone={setNotice} />}
+          {/* On a single place, another location makes it a chain. */}
+          {!outlets && item.type === "place" && <AddLocation diary={diary} items={items} placeId={place.id} onDone={setNotice} />}
 
           <hr className={p.rule} />
 
