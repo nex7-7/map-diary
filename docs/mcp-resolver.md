@@ -113,31 +113,45 @@ connector. Use no other connector, and do not save anything about these places t
    link). For a place that is not on Zomato, use Google Maps or the place's own site to find
    its other Mumbai outlets. Ignore "See all N outlets in <mall or compound>": that lists
    other places in the same building, not the chain.
-4. Find the wallet bleeder (restaurant, cafe-bar, roadside-stall and desserts only): open the place's Menu tab on
-   Zomato and pick the Food menu (not Bar or Beverages; for a café or bar whose menu is
-   mostly drinks, its main menu). Read through its pages to the main dishes, find the dish
-   the place is best known for (Zomato's "Top dishes" and "People say this place is known
-   for" help pick it), and read that dish's price for one serving off the menu. If the Food
-   menu won't open, try the menu on Swiggy, District or the place's own site. Leave the
-   dish out if you cannot read a real price; never use the "cost for two".
+4. Find the wallet bleeder (food and drink only). Open the place's Menu tab on Zomato and
+   pick the Food menu (not Bar or Beverages). If it won't open, try the menu on Swiggy,
+   District or the place's own site. Then:
+   a. Decide what kind of place it is. A multi-course place (appetizers and mains, or small
+      and large plates) is restaurant. A place focused on one item (burgers, pasta, ramen,
+      pizza, momos, shawarma) is one-hit-wonder. Cafés, bars and coffee places are cafe-bar;
+      dessert places are desserts; street stalls are roadside-stall.
+   b. restaurant: find the appetizer section or its equivalent (Starters, Small plates). List
+      every dish in it with chicken, and each one's price for one serving. Send rule
+      "starters", section (the section's name), chicken: true and the dishes.
+   c. one-hit-wonder or roadside-stall: find the section of the item the place sells (e.g.
+      Burgers). List every chicken option in it with its price. Send rule "focused", section,
+      chicken: true and the dishes.
+   d. If the place serves no chicken, list that section's veg dishes instead and send
+      chicken: false.
+   e. cafe-bar or desserts: find the place's most popular dish (Zomato's "Top dishes" and
+      "People say this place is known for" help) and its price. Send rule "popular" and that
+      one dish.
+   Send the dishes and their menu prices only; the diary takes the median itself. Leave the
+   wallet bleeder out if you cannot read real prices; never use the "cost for two".
 5. Answer each job with submit_resolution, one call per job:
    - candidates: 1 to 5 places. Give one when you are sure; for a link, that is the outlet
      the link is for. Give up to 5 only when a plain name could mean several unrelated
      places; I pick one later.
    - name: as the place writes it.
-   - category: restaurant, cafe-bar, roadside-stall, desserts, movies, recreation or beach.
-     Bars, pubs, cafés and bakeries are cafe-bar; ice cream, kulfi, mithai and dessert shops
+   - category: restaurant, one-hit-wonder, cafe-bar, roadside-stall, desserts, movies,
+     recreation or beach, as decided in step 4a. Bars, pubs, cafés and bakeries are cafe-bar; ice cream, kulfi, mithai and dessert shops
      are desserts; street carts and stalls are roadside-stall.
    - location: lat and lng of the place itself, from Google Maps or the expanded URL.
      They must be inside Mumbai (lat 18.85 to 19.35, lng 72.75 to 73.15).
    - address: short, area and city, e.g. "Kamala Mills, Lower Parel, Mumbai".
    - cuisine: for food and drink only, e.g. "Parsi" or "South Indian".
-   - signatureDish: from step 4, with priceInr in whole rupees (no ranges).
+   - signatureDish: from step 4: rule, section and chicken (not for popular), and dishes,
+     each with its name and priceInr in whole rupees (no ranges), at most 40.
    - sourceLinks: the https pages you used, at most 5.
    - chain: only for a chain from step 3. name is the chain's name, and outlets lists every
      other outlet in Mumbai (not the one in candidates), each with the same fields as a
      candidate: its own location, address and Zomato link in sourceLinks. Use the same
-     signatureDish for each outlet unless its menu says otherwise. Leave out outlets
+     category and signatureDish for each outlet unless its menu says otherwise. Leave out outlets
      outside Mumbai or ones you cannot place on the map. At most 40.
    - If you cannot find the place, or it is outside Mumbai, call submit_resolution with
      failed: true instead.

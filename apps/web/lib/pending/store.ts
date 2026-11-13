@@ -53,6 +53,11 @@ export interface PendingDraft {
    */
   correcting?: true;
   /**
+   * With `refreshPlaceId`: only the place's category and wallet bleeder are filled in (for the
+   * whole chain), and missing outlets of its chain added; a clear match applies by itself.
+   */
+  wallet?: true;
+  /**
    * When the person added it (the item's `createdAt`), filled in as the place is written: a
    * Visited place found later is stamped with that day, not the day it was found.
    */
@@ -67,7 +72,7 @@ export type PendingState =
    * Several matches came back, or the match is one outlet of a chain: the person picks one
    * in the Inbox, or (for a chain) adds every outlet.
    */
-  | { kind: "choose"; candidates: ResolvedPlace[]; chain?: ResolvedChain }
+  | { kind: "choose"; candidates: ResolvedPlace[]; chain?: ResolvedChain; walletChain?: ResolvedChain }
   /**
    * The match has the name of a place already on the map somewhere else: the person says
    * whether it is another branch of it. `area` is where the one on the map is.

@@ -11,6 +11,8 @@ export {
   exportSql,
   defaultQuery,
   lookUpAgain,
+  refreshWallets,
+  walletsToRefresh,
   mergePlaces,
   resolver,
   retryAllFailed,

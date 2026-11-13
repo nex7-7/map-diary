@@ -24,6 +24,7 @@ import {
 } from "@map-diary/sync";
 import { EntryError } from "../entries/actions";
 import { getPendingQueue } from "../pending/session";
+import { placesNeedingWallet } from "../pending/wallet";
 import { factsAfterAttach, factsAfterMerge, factsOfMerged, mergeTargets, orphanedOpinions } from "../places/merges";
 import { MERGED_FROM_MAX, readPayload, type PlacePayload } from "../places/payloads";
 import { api } from "./session";
@@ -111,6 +112,25 @@ export async function lookUpAgain(diary: Diary, placeId: string, query?: string,
   const facts = item && readPayload("place", item.payload);
   if (!facts) throw new EntryError("That place isn't on this device. Let it sync, then try again.");
   await (await getPendingQueue(diary)).lookUpAgain(placeId, query?.trim() || defaultQuery(facts), facts.name, correcting);
+}
+
+/**
+ * Sends every food place whose wallet bleeder predates the current rules (or that has none) to
+ * the resolver, one outlet per chain. Each answer fills in the category and wallet bleeder of
+ * the place (its whole chain) and adds the chain's missing outlets. Places already waiting
+ * for a lookup are skipped. Returns how many were sent.
+ */
+export async function refreshWallets(diary: Diary): Promise<number> {
+  const queue = await getPendingQueue(diary);
+  const waiting = new Set((await queue.list()).flatMap((i) => (i.draft.refreshPlaceId && i.state.kind !== "added" && i.state.kind !== "failed" ? [i.draft.refreshPlaceId] : [])));
+  const todo = placesNeedingWallet(await diary.listItems()).filter((p) => !waiting.has(p.id));
+  for (const p of todo) await queue.lookUpAgain(p.id, defaultQuery(p.facts), p.facts.name, false, true);
+  return todo.length;
+}
+
+/** How many food places still need a wallet bleeder under the current rules (chains count once). */
+export async function walletsToRefresh(diary: Diary): Promise<number> {
+  return placesNeedingWallet(await diary.listItems()).length;
 }
 
 /** What a place is looked up again by when nothing better is given: its first link, or its name and address. */

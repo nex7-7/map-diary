@@ -17,6 +17,7 @@ export const RESOLVER_RESULT_VERSION = 1;
 /** Categories a resolver may assign. Custom categories are a person's own choice. */
 export const RESOLVER_CATEGORIES = [
   "restaurant",
+  "one-hit-wonder",
   "cafe-bar",
   "roadside-stall",
   "desserts",
@@ -27,8 +28,70 @@ export const RESOLVER_CATEGORIES = [
 export type ResolverCategory = (typeof RESOLVER_CATEGORIES)[number];
 
 /** Categories that may carry a signature dish (food and drink only). */
-export const FOOD_CATEGORIES = ["restaurant", "cafe-bar", "roadside-stall", "desserts"] as const satisfies readonly ResolverCategory[];
+export const FOOD_CATEGORIES = ["restaurant", "one-hit-wonder", "cafe-bar", "roadside-stall", "desserts"] as const satisfies readonly ResolverCategory[];
 const FOOD: ReadonlySet<ResolverCategory> = new Set(FOOD_CATEGORIES);
+
+/**
+ * How a place's wallet bleeder is picked (Snehil's rules, 2026-11-13). Judge a place by its
+ * appetizer or the equivalent:
+ * - `starters`: a multi-course restaurant (appetizers and mains, small and large plates). The
+ *   median price of the chicken dishes in the appetizer section, or of its veg dishes when the
+ *   place serves no chicken.
+ * - `focused`: a one hit wonder or a stall built around one item (burgers, pasta, ramen). The
+ *   median price of the chicken options of that main item, or of its veg options.
+ * - `popular`: a café, bar or dessert place. The price of its most popular dish.
+ */
+export const DISH_RULES = ["starters", "focused", "popular"] as const;
+export type DishRule = (typeof DISH_RULES)[number];
+
+/** The rule each food category must use. */
+export const DISH_RULE_OF: Record<(typeof FOOD_CATEGORIES)[number], DishRule> = {
+  restaurant: "starters",
+  "one-hit-wonder": "focused",
+  "roadside-stall": "focused",
+  "cafe-bar": "popular",
+  desserts: "popular",
+};
+
+/** The most dishes one median can be taken over. */
+export const MAX_DISHES = 40;
+
+export interface PricedDish {
+  name: string;
+  priceInr: number;
+}
+
+/**
+ * A place's wallet bleeder: a price to judge it by. For `starters` and `focused` it is the
+ * median of `dishes` and `name` says what they are ("Chicken appetizers"); for `popular`
+ * it is the one dish. Older places carry only a name and a price.
+ */
+export interface SignatureDish {
+  name: string;
+  priceInr: number;
+  rule?: DishRule;
+  /** The section the dishes come from, e.g. "Appetizers", "Small plates", "Burgers". */
+  section?: string;
+  /** False when the place serves no chicken and the veg dishes were used. */
+  chicken?: boolean;
+  dishes?: PricedDish[];
+}
+
+/** The median of whole-rupee prices; between two middle prices, their mean rounded. */
+export function medianPrice(prices: readonly number[]): number {
+  if (prices.length === 0) throw new CryptoError("invalid_input", "No prices to take a median of");
+  const sorted = [...prices].sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  return sorted.length % 2 === 1 ? sorted[mid]! : Math.round((sorted[mid - 1]! + sorted[mid]!) / 2);
+}
+
+/** "Chicken appetizers", "Veg burgers": what a median was taken over. */
+export function dishLabel(section: string, chicken: boolean): string {
+  const s = section.trim();
+  const lower = s.charAt(0).toLowerCase() + s.slice(1);
+  if (chicken) return /chicken/i.test(s) ? s : `Chicken ${lower}`;
+  return /\bveg/i.test(s) ? s : `Veg ${lower}`;
+}
 
 /** [west, south, east, north]: the same box the map is limited to. */
 export const MUMBAI_BOUNDS = [72.75, 18.85, 73.15, 19.35] as const;
@@ -52,8 +115,8 @@ export interface ResolvedPlace {
   location: { lat: number; lng: number };
   address?: string;
   cuisine?: string;
-  /** The dish the place is best known for, at its current menu price for one serving. */
-  signatureDish?: { name: string; priceInr: number };
+  /** The wallet bleeder, picked by the category's `DishRule`. */
+  signatureDish?: SignatureDish;
   sourceLinks: string[];
 }
 
@@ -85,6 +148,8 @@ export type ResolutionProblem =
   | "inside_mumbai"
   | "bad_price"
   | "dish_not_food"
+  | "bad_dishes"
+  | "wrong_rule"
   | "bad_link"
   | "bad_chain"
   | "too_many_outlets";
@@ -129,7 +194,7 @@ function onEarth(lat: unknown, lng: unknown): boolean {
 }
 
 /** `outside` checks for a place beyond Mumbai instead (the one-time import of the owner's old list). */
-function parseCandidate(c: unknown, outside = false): ResolvedPlace | ResolutionProblem {
+function parseCandidate(c: unknown, outside = false, strict = false): ResolvedPlace | ResolutionProblem {
   if (!isObj(c)) return "bad_shape";
   const name = text(c.name, 200);
   if (!name) return "bad_name";
@@ -163,17 +228,55 @@ function parseCandidate(c: unknown, outside = false): ResolvedPlace | Resolution
 
   if (c.signatureDish !== undefined && c.signatureDish !== null) {
     if (!FOOD.has(category)) return "dish_not_food";
-    const d = c.signatureDish;
-    if (!isObj(d)) return "bad_shape";
-    const dish = text(d.name, 120);
-    if (!dish) return "bad_shape";
-    const price = d.priceInr;
-    if (typeof price !== "number" || !Number.isInteger(price) || price < 1 || price > MAX_PRICE_INR) {
-      return "bad_price";
-    }
-    place.signatureDish = { name: dish, priceInr: price };
+    const dish = parseDish(c.signatureDish, category as (typeof FOOD_CATEGORIES)[number], strict);
+    if (typeof dish === "string") return dish;
+    place.signatureDish = dish;
   }
   return place;
+}
+
+function parsePrice(v: unknown): number | null {
+  return typeof v === "number" && Number.isInteger(v) && v >= 1 && v <= MAX_PRICE_INR ? v : null;
+}
+
+/**
+ * Checks a wallet bleeder. With a `rule` it lists the dishes it was taken from, and the price
+ * is worked out here (the median, or the one popular dish), never taken on trust. `strict`
+ * (a fresh answer from the resolver) also refuses the old shape of a bare name and price.
+ */
+function parseDish(d: unknown, category: (typeof FOOD_CATEGORIES)[number], strict: boolean): SignatureDish | ResolutionProblem {
+  if (!isObj(d)) return "bad_shape";
+  if (d.rule === undefined || d.rule === null) {
+    if (strict) return "wrong_rule";
+    const name = text(d.name, 120);
+    if (!name) return "bad_shape";
+    const price = parsePrice(d.priceInr);
+    return price === null ? "bad_price" : { name, priceInr: price };
+  }
+  if (d.rule !== DISH_RULE_OF[category]) return "wrong_rule";
+  const rule = d.rule as DishRule;
+  if (!Array.isArray(d.dishes) || d.dishes.length === 0 || d.dishes.length > MAX_DISHES) return "bad_dishes";
+  if (rule === "popular" && d.dishes.length !== 1) return "bad_dishes";
+  const dishes: PricedDish[] = [];
+  for (const x of d.dishes) {
+    if (!isObj(x)) return "bad_dishes";
+    const name = text(x.name, 120);
+    if (!name) return "bad_dishes";
+    const price = parsePrice(x.priceInr);
+    if (price === null) return "bad_price";
+    dishes.push({ name, priceInr: price });
+  }
+  if (rule === "popular") return { name: dishes[0]!.name, priceInr: dishes[0]!.priceInr, rule, dishes };
+  const section = text(d.section, 60);
+  if (!section || typeof d.chicken !== "boolean") return "bad_dishes";
+  return {
+    name: dishLabel(section, d.chicken),
+    priceInr: medianPrice(dishes.map((x) => x.priceInr)),
+    rule,
+    section,
+    chicken: d.chicken,
+    dishes,
+  };
 }
 
 /**
@@ -182,19 +285,19 @@ function parseCandidate(c: unknown, outside = false): ResolvedPlace | Resolution
  * with a whole-rupee price, plus an optional chain whose outlets pass the same checks.
  * Text is trimmed and coordinates rounded to six decimals.
  */
-export function parseResolution(value: unknown): ParsedResolution {
+export function parseResolution(value: unknown, strict = false): ParsedResolution {
   if (!isObj(value) || !Array.isArray(value.candidates)) return { ok: false, problem: "bad_shape" };
   if (value.candidates.length === 0) return { ok: false, problem: "no_candidates" };
   if (value.candidates.length > MAX_CANDIDATES) return { ok: false, problem: "too_many_candidates" };
   const candidates: ResolvedPlace[] = [];
   for (const c of value.candidates) {
-    const parsed = parseCandidate(c);
+    const parsed = parseCandidate(c, false, strict);
     if (typeof parsed === "string") return { ok: false, problem: parsed };
     candidates.push(parsed);
   }
   const result: ResolverResult = { v: RESOLVER_RESULT_VERSION, candidates };
   if (value.chain !== undefined && value.chain !== null) {
-    const chain = parseChain(value.chain);
+    const chain = parseChain(value.chain, strict);
     if (typeof chain === "string") return { ok: false, problem: chain };
     if (chain) result.chain = chain;
   }
@@ -210,14 +313,14 @@ export function parseOutsidePlace(value: unknown): ResolvedPlace | ResolutionPro
 }
 
 /** A chain's name and other outlets, each checked like a candidate. No outlets means no chain. */
-function parseChain(c: unknown): ResolvedChain | undefined | ResolutionProblem {
+function parseChain(c: unknown, strict: boolean): ResolvedChain | undefined | ResolutionProblem {
   if (!isObj(c) || !Array.isArray(c.outlets)) return "bad_chain";
   const name = text(c.name, 200);
   if (!name) return "bad_chain";
   if (c.outlets.length > MAX_OUTLETS) return "too_many_outlets";
   const outlets: ResolvedPlace[] = [];
   for (const o of c.outlets) {
-    const parsed = parseCandidate(o);
+    const parsed = parseCandidate(o, false, strict);
     if (typeof parsed === "string") return parsed;
     outlets.push(parsed);
   }

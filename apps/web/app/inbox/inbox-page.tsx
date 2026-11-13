@@ -244,7 +244,7 @@ function ItemHead({ item }: { item: PendingItem }) {
   return (
     <div className="flex min-w-0 flex-col gap-0.5">
       <span className="font-serif text-[21px] leading-tight [overflow-wrap:anywhere]">{item.draft.label || item.query}</span>
-      <span className="text-[12px] text-ink-3">{item.draft.refreshPlaceId ? "New details for a place" : STATUS_LABELS[item.draft.status]}</span>
+      <span className="text-[12px] text-ink-3">{item.draft.wallet ? "Wallet bleeder for a place" : item.draft.refreshPlaceId ? "New details for a place" : STATUS_LABELS[item.draft.status]}</span>
       {item.draft.link && item.draft.link !== item.draft.label && <span className={`text-[12px] text-ink-3 ${b.link}`}>{item.draft.link}</span>}
     </div>
   );

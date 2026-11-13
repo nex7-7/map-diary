@@ -87,7 +87,7 @@ describe("the Claude assistant's MCP tools", () => {
       category: "restaurant",
       location: { lat: 19.0269, lng: 72.8553 },
       cuisine: "South Indian",
-      signatureDish: { name: "Rasam vada", priceInr: 120 },
+      signatureDish: { rule: "starters", section: "Starters", chicken: false, dishes: [{ name: "Rasam vada", priceInr: 120 }, { name: "Medu vada", priceInr: 100 }] },
       sourceLinks: ["https://maps.app.goo.gl/madras?g_st=iw"],
       comment: "Go before 9 on a Sunday",
     });

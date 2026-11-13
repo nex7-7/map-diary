@@ -1,10 +1,10 @@
 import { MUMBAI_BOUNDS, type JsonValue } from "@map-diary/crypto";
 import { readPayload, type PlacePayload } from "../places/payloads";
 import { normaliseChainName } from "../places/chains";
-import type { Category, LngLat, PlaceChain } from "../places/types";
+import type { Category, LngLat, PlaceChain, SignatureDish } from "../places/types";
 
 /** Categories that get a wallet bleeder (signature dish and price). */
-const FOOD: readonly Category[] = ["restaurant", "cafe-bar", "roadside-stall", "desserts"];
+const FOOD: readonly Category[] = ["restaurant", "one-hit-wonder", "cafe-bar", "roadside-stall", "desserts"];
 
 export function isFood(category: Category): boolean {
   return FOOD.includes(category);
@@ -26,6 +26,8 @@ export interface FactsForm {
   chainName?: string;
   /** The place's saved location, which may stay as it is even outside Mumbai (the one-time import). */
   savedLocation?: LngLat;
+  /** The saved wallet bleeder, whose dish list is kept while its name and price stay as they are. */
+  savedDish?: SignatureDish;
 }
 
 export type FactsResult = { ok: true; facts: PlacePayload } | { ok: false; message: string };
@@ -57,7 +59,9 @@ export function buildFacts(form: FactsForm, chainFor?: (name: string) => PlaceCh
     if (!dish || !price || !Number.isFinite(priceInr) || priceInr < 0) {
       return { ok: false, message: "A wallet bleeder needs both a dish and its price in ₹" };
     }
-    facts.signatureDish = { name: dish.slice(0, 80), priceInr: Math.round(priceInr) };
+    const typed = { name: dish.slice(0, 80), priceInr: Math.round(priceInr) };
+    const saved = form.savedDish;
+    facts.signatureDish = saved && saved.name === typed.name && saved.priceInr === typed.priceInr ? { ...saved } : typed;
   }
 
   const chainName = form.chainName?.trim();
@@ -86,6 +90,7 @@ export function formFromFacts(facts: PlacePayload): FactsForm {
     ...(facts.chain ? { chain: facts.chain } : {}),
     chainName: facts.chain?.name ?? "",
     savedLocation: facts.location,
+    ...(facts.signatureDish ? { savedDish: facts.signatureDish } : {}),
   };
 }
 

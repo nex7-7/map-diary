@@ -88,7 +88,7 @@ interface ResolvedPlace {
   location: { lat: number; lng: number };         // inside MUMBAI_BOUNDS, rounded to 6 dp
   address?: string;                               // ≤ 300
   cuisine?: string;                               // ≤ 100
-  signatureDish?: { name: string; priceInr: number }; // food and drink categories only; whole ₹, 1 to 50,000
+  signatureDish?: { rule: "starters" | "focused" | "popular"; section?: string; chicken?: boolean; dishes: { name: string; priceInr: number }[] }; // food and drink only; whole ₹, 1 to 50,000
   sourceLinks: string[];                          // https only, ≤ 5
 }
 ```
@@ -99,8 +99,26 @@ the person's status, tags and note on the outlet they linked; "only this one" wr
 outlet alone, still labelled, so outlets added later join it. An outlet the catalogue already
 has (same source link) is not added twice. Devices that predate `chain` ignore it.
 
-**Signature dish** (default until Snehil writes the definition): the dish the place is
-best known for, at its current menu price for one serving, in whole rupees.
+**Wallet bleeder** (`signatureDish`, Snehil's rules from 2026-11-13): judge a place by its
+appetizer or the equivalent. The resolver sends the dishes; `parseResolution` works out the
+price, so a model's arithmetic is never trusted.
+
+| Category | rule | Dishes sent | Price |
+| --- | --- | --- | --- |
+| restaurant (multi-course) | `starters` | every chicken dish in the appetizer section or its equivalent (small plates) | median |
+| one-hit-wonder, roadside-stall (focused on one item) | `focused` | every chicken option of the main item (burgers, ramen…) | median |
+| cafe-bar, desserts | `popular` | the one most popular dish | that dish |
+
+With no chicken on the menu, the same section's veg dishes (`chicken: false`). An even count
+takes the mean of the two middle prices, rounded. The stored dish keeps `rule`, `section`,
+`chicken` and `dishes`; `name` reads "Chicken appetizers", or the dish for `popular`. The
+resolver and the assistant must send this shape; results sealed before it still open.
+
+**Backfill:** Admin → Resolver → "Find wallet bleeders" looks up again every food place whose
+dish has no `rule` (one outlet per chain). A match within 300 m or sharing a link applies by
+itself: only the category (between food categories), the wallet bleeder and a missing cuisine
+change, every outlet of the chain gets it, and the chain's outlets the catalogue lacks are
+added. Anything less clear waits in the admin's Inbox.
 
 ## Setup
 

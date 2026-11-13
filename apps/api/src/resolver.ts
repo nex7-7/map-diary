@@ -303,7 +303,7 @@ export async function submitResolution(db: D1Database, id: string, answer: unkno
     return { ok: true, status: "failed" };
   }
 
-  const parsed = parseResolution(answer);
+  const parsed = parseResolution(answer, true);
   if (!parsed.ok) return { ok: false, status: 400, error: parsed.problem };
   await ready();
   const sealed = sealResolverResult(parsed.result, bytes(row.reply_public_key));

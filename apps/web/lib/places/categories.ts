@@ -12,6 +12,8 @@ interface CategoryStyle {
 
 export const CATEGORY_STYLES: Record<BuiltinCategory, CategoryStyle> = {
   restaurant: { label: "Restaurant", emoji: "🍛", glyph: "bowl", color: "#d9480f" },
+  // A place focused on one item (burgers, pasta, ramen), apart from multi-course restaurants.
+  "one-hit-wonder": { label: "One hit wonders", emoji: "🍔", glyph: "star", color: "#b8860b" },
   "cafe-bar": { label: "Café/Bar", emoji: "☕", glyph: "cup", color: "#9c36b5" },
   "roadside-stall": { label: "Roadside Stall", emoji: "🥙", glyph: "stall", color: "#e67700" },
   desserts: { label: "Desserts", emoji: "🍨", glyph: "cone", color: "#d6336c" },

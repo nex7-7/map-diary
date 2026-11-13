@@ -19,6 +19,7 @@ import type { PlaceChain } from "../places/types";
 import type { StoredItem } from "../places/items-source";
 import { readPayload, type PlacePayload } from "../places/payloads";
 import type { PendingDraft, PendingItem, PendingState, PendingStore, WaitingJob } from "./store";
+import { applyWallet, confidentMatch } from "./wallet";
 
 /** The resolver calls this needs; they are never signed, so no account is tied to a job. */
 export type ResolverApi = Pick<Api, "submitResolverJob" | "getResolverJob" | "takeResolverJob" | "deleteResolverJob" | "expandMapsLink">;
@@ -246,7 +247,12 @@ export class PendingQueue {
       // one adds them all straight away when the link was for one place. New facts for a place always ask,
       // and so does a lone match for a plain name (or a Zomato share link, which only carries
       // the name): a name can mean another place, so only a link for one place adds by itself.
-      if (item.draft.refreshPlaceId) await this.save(item, { kind: "choose", candidates });
+      if (item.draft.refreshPlaceId && item.draft.wallet) {
+        // A wallet refresh applies by itself when a match is clearly the place; else the admin picks.
+        const match = confidentMatch(await this.diary.listItems(), item.draft.refreshPlaceId, candidates);
+        if (match) await this.writeWallet(item, match, chain);
+        else await this.save(item, { kind: "choose", candidates, ...(chain ? { walletChain: chain } : {}) });
+      } else if (item.draft.refreshPlaceId) await this.save(item, { kind: "choose", candidates });
       else if (chain && item.draft.status === "want" && pointsAtOnePlace(item.draft.link)) {
         await this.save(item, { kind: "choose", candidates, chain });
         await this.addAll(item.id);
@@ -319,7 +325,17 @@ export class PendingQueue {
     return placeId;
   }
 
+  private async writeWallet(item: PendingItem, candidate: ResolvedPlace, chain?: ResolvedChain): Promise<string> {
+    const placeId = item.draft.refreshPlaceId!;
+    await applyWallet(this.diary, placeId, candidate, chain);
+    await this.save(item, { kind: "added", placeId, name: item.draft.label });
+    return placeId;
+  }
+
   private async write(item: PendingItem, candidate: ResolvedPlace, chain?: ResolvedChain): Promise<string | undefined> {
+    if (item.draft.refreshPlaceId && item.draft.wallet) {
+      return this.writeWallet(item, candidate, item.state.kind === "choose" ? item.state.walletChain : undefined);
+    }
     if (item.draft.refreshPlaceId) {
       const placeId = await refreshFacts(this.diary, item.draft.refreshPlaceId, candidate, item.draft.correcting === true ? item.draft.link : false);
       await this.save(item, { kind: "added", placeId, name: candidate.name });
@@ -362,7 +378,7 @@ export class PendingQueue {
    * Saves a lookup of an existing catalogue place, whose answer becomes its new facts. With
    * `correcting` the place was the wrong match: its links and chain are replaced, not kept.
    */
-  async lookUpAgain(placeId: string, query: string, label: string, correcting = false): Promise<PendingItem> {
+  async lookUpAgain(placeId: string, query: string, label: string, correcting = false, wallet = false): Promise<PendingItem> {
     const q = query.trim();
     return this.add(q, {
       label,
@@ -373,6 +389,7 @@ export class PendingQueue {
       comment: "",
       refreshPlaceId: placeId,
       ...(correcting ? { correcting: true as const } : {}),
+      ...(wallet && !correcting ? { wallet: true as const } : {}),
     });
   }
 

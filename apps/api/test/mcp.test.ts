@@ -48,7 +48,7 @@ const candidate = {
   category: "cafe-bar",
   location: { lat: 18.9439, lng: 72.8264 },
   cuisine: "Irani",
-  signatureDish: { name: "Bun maska", priceInr: 60 },
+  signatureDish: { rule: "popular", dishes: [{ name: "Bun maska", priceInr: 60 }] },
   sourceLinks: ["https://www.zomato.com/mumbai/kyani-co-marine-lines"],
 };
 
