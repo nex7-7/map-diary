@@ -58,6 +58,13 @@ export interface PendingDraft {
    */
   wallet?: true;
   /**
+   * A new location of this chain, from "Add a location" on its place page: the match joins the
+   * chain as another outlet, with no opinions of its own (the chain's cover it).
+   */
+  outletOf?: PlaceChain;
+  /** With `outletOf`: the person has been to this location, so it is marked as visited. */
+  been?: true;
+  /**
    * When the person added it (the item's `createdAt`), filled in as the place is written: a
    * Visited place found later is stamped with that day, not the day it was found.
    */

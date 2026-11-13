@@ -750,3 +750,60 @@ describe("filling in wallet bleeders", () => {
     expect(readPayload("place", diary.items.get(a.id)!.payload)!.location).toEqual({ lat: 19.0534, lng: 72.8514 });
   });
 });
+
+describe("Add a location", () => {
+  const loyka = { id: "chain-loyka", name: "Loyka" };
+  const bandra = { name: "Loyka", category: "desserts" as const, location: { lat: 19.065, lng: 72.831 }, address: "Linking Road, Bandra West, Mumbai", cuisine: "Desserts", sourceLinks: ["https://www.zomato.com/mumbai/loyka-linking-road-bandra-west"], chain: loyka };
+  const OSHIWARA = "https://www.zomato.com/mumbai/loyka-oshiwara-andheri-west";
+  const oshiwara: ResolvedPlace = {
+    name: "Loyka Desserts & Chocolate Boudoir",
+    category: "cafe-bar",
+    location: { lat: 19.149, lng: 72.835 },
+    address: "Oshiwara, Andheri West, Mumbai",
+    sourceLinks: [OSHIWARA],
+  };
+  const other: ResolvedPlace = { ...oshiwara, address: "Ghatkopar East, Mumbai", location: { lat: 19.08, lng: 72.91 }, sourceLinks: ["https://www.zomato.com/mumbai/loyka-ghatkopar-east"] };
+
+  it("joins the found place to the chain as a new location, with no opinions of its own", async () => {
+    const { api, diary, queue } = setup();
+    const lead = await diary.write({ type: "place", placeId: null, payload: bandra });
+    await setStatus(diary, lead.id, "visited");
+    await queue.addOutlet(OSHIWARA, loyka, "desserts", true);
+    const [, job] = api.only();
+    expect(job.query).toBe(OSHIWARA);
+    // The chain's other outlets the resolver finds are not added from here.
+    api.answer([oshiwara], { name: "Loyka", outlets: [other] });
+    await queue.poll();
+
+    expect(places(diary)).toHaveLength(2);
+    const added = places(diary).find((p) => p.id !== lead.id)!;
+    expect(readPayload("place", added.payload)).toMatchObject({ category: "desserts", chain: loyka, address: "Oshiwara, Andheri West, Mumbai" });
+    expect((await queue.list())[0]!.state).toMatchObject({ kind: "added", placeId: added.id });
+    const view = diary.snapshot().places;
+    expect(view).toHaveLength(1);
+    // Still one stamp, now naming both locations as visited.
+    expect(view[0]!.opinions.filter((o) => o.kind === "status")).toMatchObject([{ status: "visited", outlets: [lead.id, added.id] }]);
+  });
+
+  it("asks when several places match, and never offers the chain itself as a known place", async () => {
+    const { api, diary, queue } = setup();
+    await diary.write({ type: "place", placeId: null, payload: bandra });
+    const item = await queue.addOutlet("Loyka Oshiwara", loyka, "desserts", false);
+    api.answer([oshiwara, other]);
+    await queue.poll();
+    expect((await queue.list())[0]!.state).toMatchObject({ kind: "choose" });
+    expect(knownForItem([...diary.items.values()], (await queue.list())[0]!, diary.device.accountId)).toBeUndefined();
+    await queue.choose(item.id, 0);
+    expect(diary.snapshot().places).toHaveLength(1);
+    expect([...diary.items.values()].filter((i) => i.type === "status")).toHaveLength(0);
+  });
+
+  it("fills a new location in by hand into the chain", async () => {
+    const { diary, queue } = setup();
+    await diary.write({ type: "place", placeId: null, payload: bandra });
+    const item = await queue.addOutlet(OSHIWARA, loyka, "desserts", false);
+    await queue.fillIn(item.id, { name: "Loyka", category: "desserts", location: oshiwara.location, sourceLinks: [OSHIWARA] });
+    expect(diary.snapshot().places).toHaveLength(1);
+    expect(diary.snapshot().places[0]!.outlets).toHaveLength(2);
+  });
+});

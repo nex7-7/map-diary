@@ -14,6 +14,7 @@ import { BoardBadge, buttonClass, Icon, Pin, useConfirm } from "@/lib/ui";
 import { onMap } from "@/lib/map/style";
 import { PlaceMap } from "./place-map";
 import { RedateSheet } from "./redate-sheet";
+import { AddLocation } from "./add-location";
 import p from "./place.module.css";
 import { defaultQuery, lookUpAgain, type Diary } from "@/lib/device";
 import {
@@ -349,6 +350,8 @@ export function PlaceView({ diary, placeId: asked }: { diary: Diary; placeId: st
               </ul>
             </section>
           )}
+          {/* Another outlet from a link: on a chain a new location, on a single place the start of a chain. */}
+          {items.find((i) => i.id === place.id)?.type === "place" && <AddLocation diary={diary} items={items} placeId={place.id} onDone={setNotice} />}
 
           <hr className={p.rule} />
 

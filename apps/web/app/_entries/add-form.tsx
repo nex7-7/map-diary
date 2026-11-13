@@ -453,7 +453,7 @@ function InputSummary({ parsed, pinned, expansion, findLater }: SummaryProps) {
   return null;
 }
 
-type Expansion =
+export type Expansion =
   | { kind: "none" }
   | { kind: "loading" }
   | { kind: "failed" }
@@ -465,7 +465,7 @@ type Expansion =
  * Short Google Maps links carry the place only in their redirect, which a web page can't
  * follow, so the Worker expands them. Only the link is sent; the coordinates are read here.
  */
-function useExpandedLink(parsed: ParsedEntry): Expansion {
+export function useExpandedLink(parsed: ParsedEntry): Expansion {
   const link = parsed.shortLink ? parsed.link : undefined;
   const [result, setResult] = useState<{ link: string; expansion: Expansion } | null>(null);
   useEffect(() => {
