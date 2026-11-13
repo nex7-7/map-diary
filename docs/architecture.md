@@ -110,9 +110,9 @@ Places hold shared facts, people attach opinions to them, and every opinion is p
 - **Facts:** written once by the first resolution. The person who added a place can still correct a wrong match (look it up again with a better link, or type the details in) for three days, while nobody else has an opinion on it. After that, only the admin can edit them. Duplicate places are blocked by a keyed hash of the normalised source link, which the server can check without reading the place.
 - Dropped pins are private places and never enter the shared catalogue.
 - **Chains:** each outlet of a chain is its own catalogue place (own pin, address, links and duplicate check), and its facts carry the chain's id and name. The app folds a chain's outlets into one place page with a row per location, one list entry, and a pin per outlet. Status and tags count for the whole chain (one status per person); a comment is about one outlet or all of them. Boards work as for any place. The resolver returns a chain's other outlets and the Inbox asks whether to add all of them or only one. The resolver keeps no memory, so the device itself compares a newly found place with the catalogue it already holds: the same name at the same spot adds to the existing place, and the same name elsewhere asks "Another branch of …?" and, if so, joins it (a place not yet in a chain lends its id as the chain id, and the admin's device writes the chain into its facts). Only the admin can add an existing place to a chain (Edit details → Part of a chain); the Claude assistant can also do it, but only for places it added itself.
-- **Categories:** Restaurant, Café/Bar, Roadside Stall, Desserts, Movies, Recreation, Beach, plus custom ones. The four food and drink ones carry a wallet bleeder.
+- **Categories:** Restaurant (multi-course), One hit wonders (a place focused on one item: burgers, pasta, ramen), Café/Bar, Roadside Stall, Desserts, Movies, Recreation, Beach, plus custom ones. The five food and drink ones carry a wallet bleeder.
 - **Places outside Mumbai:** only through a one-time allowance for importing my old notes list (until 2026-10-27, admin's Claude assistant only): such a place is a private place on my Personal board, never in the catalogue, and gets no map pin.
-- **Wallet bleeder:** food and drink only. The signature dish and its menu price in ₹, with no tiers. The definition of "signature dish" is still to be written.
+- **Wallet bleeder:** food and drink only, a menu price in ₹ to judge a place by its appetizer or the equivalent. Restaurant: the median price of the chicken dishes in the appetizer section (small plates). One hit wonders and roadside stalls: the median of the chicken options of the main item. No chicken on the menu: the same section's veg dishes. Café/Bar and Desserts: the price of the most popular dish. The resolver sends the dishes and the median is worked out in code.
 
 **Decided**
 
@@ -262,7 +262,7 @@ Status as of 2026-10-19: Phases 1 to 4 are live, and rotating the master key whe
 
 **Content**
 
-- [ ] Definition of "signature dish" for the wallet bleeder. (Default in use: the dish the place is best known for, at its current menu price for one serving, in whole ₹.)
+- [x] Definition of "signature dish" for the wallet bleeder: see Wallet bleeder above (2026-11-13).
 - [ ] Final category list, and are custom categories personal or shared?
 - [ ] Are custom tags personal, or can others reuse a tag they can see?
 - [ ] Photos on places: needed now, later, or never?

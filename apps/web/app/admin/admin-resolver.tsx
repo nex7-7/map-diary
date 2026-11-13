@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { accountStyles as s, day } from "@/app/_account/parts";
 import { userMessage } from "@/lib/errors";
-import { resolver, retryAllFailed, retryJob, type AdminResolverView, type Diary } from "@/lib/device";
+import { refreshWallets, resolver, retryAllFailed, retryJob, walletsToRefresh, type AdminResolverView, type Diary } from "@/lib/device";
 import { Button } from "@/lib/ui";
 
 /**
@@ -15,6 +15,7 @@ export function AdminResolver({ diary }: { diary: Diary }) {
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [wallets, setWallets] = useState<number | null>(null);
 
   const load = useCallback(() => {
     resolver(diary).then(
@@ -26,6 +27,9 @@ export function AdminResolver({ diary }: { diary: Diary }) {
     );
   }, [diary]);
   useEffect(load, [load]);
+  useEffect(() => {
+    walletsToRefresh(diary).then(setWallets, () => setWallets(null));
+  }, [diary, notice]);
 
   const run = async (action: () => Promise<string>) => {
     setBusy(true);
@@ -74,6 +78,27 @@ export function AdminResolver({ diary }: { diary: Diary }) {
           </Button>
           <Button variant="ghost" size="m" disabled={busy} onClick={load}>
             Refresh
+          </Button>
+        </div>
+      </section>
+
+      <section className={s.card}>
+        <h2 className="heading-s">Wallet bleeders</h2>
+        <p className="sub" style={{ margin: 0 }}>
+          {wallets === null ? "Counting…" : wallets === 0 ? "Every food place has a wallet bleeder from the current rules." : `${wallets} food ${wallets === 1 ? "place needs" : "places need"} one (a chain counts once).`}
+        </p>
+        <p className={s.hint}>
+          Looks each one up again so it gets its wallet bleeder from the current rules, is filed as Restaurant or One hit wonders, and gets any outlets of its
+          chain that are missing. Nothing else about the place changes. A clear match fills in by itself; the rest wait in your Inbox.
+        </p>
+        <div className={s.buttons}>
+          <Button
+            variant="secondary"
+            size="m"
+            disabled={busy || !wallets}
+            onClick={() => void run(async () => `${await refreshWallets(diary)} sent to the resolver. They fill in after its next runs.`)}
+          >
+            Find wallet bleeders
           </Button>
         </div>
       </section>

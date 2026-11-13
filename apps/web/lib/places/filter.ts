@@ -105,7 +105,7 @@ export function sortPlaces(listed: readonly ListedPlace[], key: SortKey): Listed
 
 function searchText(place: PlaceView): string {
   const outlets = place.outlets?.flatMap((o) => [o.name, o.address]) ?? [];
-  return [place.name, place.address, place.cuisine, place.signatureDish?.name, ...outlets].filter(Boolean).join(" ").toLowerCase();
+  return [place.name, place.address, place.cuisine, place.signatureDish?.name, ...(place.signatureDish?.dishes?.map((d) => d.name) ?? []), ...outlets].filter(Boolean).join(" ").toLowerCase();
 }
 
 const EARTH_RADIUS_M = 6_371_008.8;

@@ -39,6 +39,7 @@ import { mergeTargets, resolvePlace } from "@/lib/places/merges";
 import { categoryStyle } from "@/lib/places/categories";
 import { readPayload, type PlacePayload } from "@/lib/places/payloads";
 import { visitedOn, visitedOutlets } from "@/lib/places/visited";
+import { dishBasis, dishCaption } from "@/lib/places/dish";
 import type { CommentOpinion, DiarySnapshot, Opinion, Outlet, PlaceView as Place, Status, StatusOpinion, TagOpinion } from "@/lib/places/types";
 
 /**
@@ -158,13 +159,29 @@ export function PlaceView({ diary, placeId: asked }: { diary: Diary; placeId: st
   };
 
   const board = (id: string) => snapshot.boards.find((b) => b.id === id);
+  const basis = place.signatureDish ? dishBasis(place.signatureDish) : [];
   const bleeder = place.signatureDish && (
-    <div className="ticket pop self-start [--notch:var(--page)] [--r:-1deg]" style={{ animationDelay: "0.5s" }}>
-      <span className="flex flex-col gap-px py-2.5 pr-3.5 pl-4">
-        <span className="text-[9px] font-bold tracking-[0.18em] uppercase">Wallet bleeder · signature dish</span>
-        <span className="font-print text-[21px] leading-tight">{place.signatureDish.name}</span>
-      </span>
-      <span className="stub worn grid place-items-center pr-4 pl-3.5 text-[28px]">₹{place.signatureDish.priceInr.toLocaleString("en-IN")}</span>
+    <div className="flex flex-col gap-1.5 self-start">
+      <div className="ticket pop self-start [--notch:var(--page)] [--r:-1deg]" style={{ animationDelay: "0.5s" }}>
+        <span className="flex flex-col gap-px py-2.5 pr-3.5 pl-4">
+          <span className="text-[9px] font-bold tracking-[0.18em] uppercase">{dishCaption(place.signatureDish)}</span>
+          <span className="font-print text-[21px] leading-tight">{place.signatureDish.name}</span>
+        </span>
+        <span className="stub worn grid place-items-center pr-4 pl-3.5 text-[28px]">₹{place.signatureDish.priceInr.toLocaleString("en-IN")}</span>
+      </div>
+      {basis.length > 0 && (
+        <details className="text-[12.5px] text-[var(--ink-2)]">
+          <summary className="cursor-pointer">The {basis.length} dishes</summary>
+          <ul className="mt-1 flex flex-col gap-0.5">
+            {basis.map((d, i) => (
+              <li key={i} className="flex justify-between gap-3">
+                <span className="min-w-0">{d.name}</span>
+                <span className="shrink-0 tabular-nums">₹{d.priceInr.toLocaleString("en-IN")}</span>
+              </li>
+            ))}
+          </ul>
+        </details>
+      )}
     </div>
   );
   const links = (at: Place | Outlet, short?: boolean) => (

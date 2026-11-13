@@ -6,6 +6,7 @@ import { setStatus } from "../lib/entries/actions";
 import { unwrittenChains } from "../lib/places/chains";
 import { ADDED_KEEP_MS, PendingQueue, knownForItem, type ResolverApi } from "../lib/pending/queue";
 import { MemoryPendingStore, type PendingDraft } from "../lib/pending/store";
+import { placesNeedingWallet } from "../lib/pending/wallet";
 import { FakeDiary } from "./fake-diary";
 
 beforeAll(ready);
@@ -675,5 +676,77 @@ describe("PendingQueue", () => {
       expect(api.jobs.size).toBe(0);
       expect(places(diary)).toHaveLength(1);
     });
+  });
+});
+
+describe("filling in wallet bleeders", () => {
+  // As the resolver sends them: the name and price are worked out again when the result opens.
+  const starters = {
+    name: "",
+    priceInr: 1,
+    rule: "starters" as const,
+    section: "Appetizers",
+    chicken: true,
+    dishes: [
+      { name: "Chicken tikka", priceInr: 400 },
+      { name: "Chicken 65", priceInr: 300 },
+      { name: "Chicken satay", priceInr: 500 },
+    ],
+  };
+  const burgers = { name: "", priceInr: 1, rule: "focused" as const, section: "Burgers", chicken: true, dishes: [{ name: "Chicken burger", priceInr: 285 }] };
+  const ZOMATO = "https://www.zomato.com/mumbai/walters-khar";
+
+  it("fills in only the category and wallet bleeder of a clear match, and adds the chain's missing outlets", async () => {
+    const { api, diary, queue } = setup();
+    const place = await diary.write({
+      type: "place",
+      placeId: null,
+      payload: { name: "Walters Burger", category: "restaurant", location: { lat: 19.0704, lng: 72.8227 }, address: "Danda Khar", sourceLinks: [ZOMATO] },
+    });
+    const todo = placesNeedingWallet(await diary.listItems());
+    expect(todo.map((p) => p.id)).toEqual([place.id]);
+    await queue.lookUpAgain(place.id, ZOMATO, "Walters Burger", false, true);
+
+    const match: ResolvedPlace = { name: "Walters Burger Khar", category: "one-hit-wonder", location: { lat: 19.0705, lng: 72.8228 }, cuisine: "Burgers", signatureDish: burgers, sourceLinks: [ZOMATO] };
+    const powai: ResolvedPlace = { ...match, name: "Walters Burger Powai", location: { lat: 19.1206, lng: 72.9092 }, sourceLinks: ["https://www.zomato.com/mumbai/walters-powai"] };
+    api.answer([match], { name: "Walters Burger", outlets: [powai] });
+    await queue.poll();
+
+    expect((await queue.list())[0]!.state.kind).toBe("added");
+    const facts = readPayload("place", diary.items.get(place.id)!.payload)!;
+    // The name, address and links stay; the category, wallet bleeder and cuisine come in.
+    expect(facts).toMatchObject({ name: "Walters Burger", address: "Danda Khar", category: "one-hit-wonder", cuisine: "Burgers", sourceLinks: [ZOMATO] });
+    expect(facts.signatureDish).toMatchObject({ name: "Chicken burgers", priceInr: 285, rule: "focused" });
+    expect(facts.chain).toEqual({ id: place.id, name: "Walters Burger" });
+    const outlets = places(diary).map((i) => readPayload("place", i.payload)!);
+    expect(outlets.map((o) => o.name)).toEqual(["Walters Burger", "Walters Burger Powai"]);
+    expect(outlets[1]!.chain).toEqual({ id: place.id, name: "Walters Burger" });
+    expect(placesNeedingWallet(await diary.listItems())).toEqual([]);
+  });
+
+  it("gives every outlet of a chain the new rules from one lookup, and asks when the match is not clearly the place", async () => {
+    const { api, diary, queue } = setup();
+    const chain = { id: "c1", name: "Foo" };
+    const a = await diary.write({ type: "place", placeId: null, payload: { name: "Foo BKC", category: "restaurant", location: { lat: 19.0534, lng: 72.8514 }, sourceLinks: ["https://z.com/foo-bkc"], chain } });
+    const b = await diary.write({ type: "place", placeId: null, payload: { name: "Foo Palladium", category: "restaurant", location: { lat: 18.995, lng: 72.824 }, sourceLinks: [], chain } });
+    expect(placesNeedingWallet(await diary.listItems()).map((p) => p.id)).toEqual([a.id]);
+    const item = await queue.lookUpAgain(a.id, "https://z.com/foo-bkc", "Foo BKC", false, true);
+
+    const far: ResolvedPlace = { name: "Foo", category: "restaurant", location: { lat: 19.2245, lng: 72.8634 }, signatureDish: starters, sourceLinks: ["https://z.com/foo-borivali"] };
+    api.answer([far]);
+    await queue.poll();
+    expect((await queue.list())[0]!.state.kind).toBe("choose");
+    // Nothing changed until the admin picks it.
+    expect(readPayload("place", diary.items.get(a.id)!.payload)!.signatureDish).toBeUndefined();
+    await queue.choose(item.id, 0);
+
+    for (const id of [a.id, b.id]) {
+      const facts = readPayload("place", diary.items.get(id)!.payload)!;
+      expect(facts.signatureDish).toMatchObject({ name: "Chicken appetizers", priceInr: 400, rule: "starters" });
+      expect(facts.signatureDish!.dishes).toHaveLength(3);
+    }
+    // The far match was not added as another outlet, and no place moved.
+    expect(places(diary)).toHaveLength(2);
+    expect(readPayload("place", diary.items.get(a.id)!.payload)!.location).toEqual({ lat: 19.0534, lng: 72.8514 });
   });
 });

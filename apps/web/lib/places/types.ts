@@ -1,3 +1,4 @@
+import type { DishRule, PricedDish } from "@map-diary/crypto";
 import type { AvatarPayload } from "./payloads";
 /**
  * What the map and list see: decrypted places and opinions, already limited to
@@ -7,7 +8,7 @@ import type { AvatarPayload } from "./payloads";
 
 export type Status = "visited" | "want";
 
-export const BUILTIN_CATEGORIES = ["restaurant", "cafe-bar", "roadside-stall", "desserts", "movies", "recreation", "beach"] as const;
+export const BUILTIN_CATEGORIES = ["restaurant", "one-hit-wonder", "cafe-bar", "roadside-stall", "desserts", "movies", "recreation", "beach"] as const;
 export type BuiltinCategory = (typeof BUILTIN_CATEGORIES)[number];
 /** A built-in category, or the id of a custom one (`custom:<slug>`). */
 export type Category = BuiltinCategory | `custom:${string}`;
@@ -33,10 +34,19 @@ export interface LngLat {
   lat: number;
 }
 
+/**
+ * The wallet bleeder: a price to judge a food place by. Newer ones say how it was picked
+ * (`rule`, see DISH_RULES in @map-diary/crypto) and list the dishes; for `starters` and
+ * `focused` the price is their median and `name` says what they are ("Chicken appetizers").
+ */
 export interface SignatureDish {
   name: string;
   /** Menu price in rupees. */
   priceInr: number;
+  rule?: DishRule;
+  section?: string;
+  chicken?: boolean;
+  dishes?: PricedDish[];
 }
 
 /** A chain of outlets, named by the resolver; every outlet carries the same id. */

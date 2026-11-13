@@ -146,3 +146,47 @@ describe("sealed results", () => {
     expect(() => sealResolverResult({ v: 1, candidates: [] }, new Uint8Array(8))).toThrow(CryptoError);
   });
 });
+
+describe("wallet bleeder rules", () => {
+  const place = (category: string, signatureDish: unknown) => ({
+    candidates: [{ name: "X", category, location: { lat: 19.07, lng: 72.83 }, signatureDish }],
+  });
+  const dishes = (...prices: number[]) => prices.map((p, i) => ({ name: `Dish ${i}`, priceInr: p }));
+
+  it("takes the median of a restaurant's chicken appetizers, never a price it was given", () => {
+    const parsed = parseResolution(place("restaurant", { rule: "starters", section: "Small plates", chicken: true, priceInr: 1, dishes: dishes(500, 300, 450) }), true);
+    expect(parsed.ok && parsed.result.candidates[0]!.signatureDish).toMatchObject({ name: "Chicken small plates", priceInr: 450, rule: "starters", chicken: true });
+    const even = parseResolution(place("restaurant", { rule: "starters", section: "Appetizers", chicken: false, dishes: dishes(300, 451, 200, 600) }), true);
+    expect(even.ok && even.result.candidates[0]!.signatureDish).toMatchObject({ name: "Veg appetizers", priceInr: 376 });
+  });
+
+  it("uses the focused rule for one hit wonders and stalls, and the most popular dish for cafés and desserts", () => {
+    expect(parseResolution(place("one-hit-wonder", { rule: "focused", section: "Ramen", chicken: true, dishes: dishes(550, 650) }), true).ok).toBe(true);
+    expect(parseResolution(place("roadside-stall", { rule: "focused", section: "Momos", chicken: true, dishes: dishes(120) }), true).ok).toBe(true);
+    const cafe = parseResolution(place("cafe-bar", { rule: "popular", dishes: [{ name: "Bun maska", priceInr: 60 }] }), true);
+    expect(cafe.ok && cafe.result.candidates[0]!.signatureDish).toMatchObject({ name: "Bun maska", priceInr: 60, rule: "popular" });
+  });
+
+  it("refuses a rule that does not fit the category, a bad dish list, and (from the resolver) the old bare dish", () => {
+    const problem = (v: unknown, strict = true) => {
+      const r = parseResolution(v, strict);
+      return r.ok ? "ok" : r.problem;
+    };
+    expect(problem(place("restaurant", { rule: "popular", dishes: dishes(300) }))).toBe("wrong_rule");
+    expect(problem(place("desserts", { rule: "popular", dishes: dishes(300, 400) }))).toBe("bad_dishes");
+    expect(problem(place("restaurant", { rule: "starters", chicken: true, dishes: dishes(300) }))).toBe("bad_dishes");
+    expect(problem(place("restaurant", { rule: "starters", section: "Starters", chicken: true, dishes: [] }))).toBe("bad_dishes");
+    expect(problem(place("restaurant", { rule: "starters", section: "Starters", chicken: true, dishes: dishes(299.5) }))).toBe("bad_price");
+    expect(problem(place("restaurant", { name: "Berry pulao", priceInr: 750 }))).toBe("wrong_rule");
+    // A result sealed before the rules still opens on the device.
+    expect(problem(place("restaurant", { name: "Berry pulao", priceInr: 750 }), false)).toBe("ok");
+  });
+
+  it("re-checks the median when a sealed result is opened", () => {
+    const keys = generateReplyKeys();
+    const parsed = parseResolution(place("restaurant", { rule: "starters", section: "Appetizers", chicken: true, dishes: dishes(100, 200, 900) }), true);
+    if (!parsed.ok) throw new Error(parsed.problem);
+    const opened = openResolverResult(sealResolverResult(parsed.result, keys.publicKey), keys);
+    expect(opened.candidates[0]!.signatureDish).toMatchObject({ priceInr: 200, dishes: dishes(100, 200, 900) });
+  });
+});

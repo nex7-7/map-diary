@@ -1,4 +1,4 @@
-import type { EnvelopeType, JsonValue } from "@map-diary/crypto";
+import { DISH_RULES, MAX_DISHES, type DishRule, type EnvelopeType, type JsonValue } from "@map-diary/crypto";
 import { oneEmoji } from "../entries/emoji";
 import { BUILTIN_CATEGORIES, type Category, type LngLat, type PlaceChain, type SignatureDish, type Status } from "./types";
 
@@ -125,6 +125,26 @@ function readCategory(v: JsonValue | undefined): Category | undefined {
   return s.startsWith("custom:") && s.length > "custom:".length ? (s as Category) : undefined;
 }
 
+/** How a wallet bleeder was picked, when the payload says so; anything malformed is dropped. */
+function readDishDetails(d: JsonObject, dish: SignatureDish): SignatureDish {
+  const rule = str(d.rule);
+  if (!rule || !(DISH_RULES as readonly string[]).includes(rule)) return dish;
+  const out: SignatureDish = { ...dish, rule: rule as DishRule };
+  const section = str(d.section);
+  if (section) out.section = section;
+  if (typeof d.chicken === "boolean") out.chicken = d.chicken;
+  if (Array.isArray(d.dishes)) {
+    const dishes = d.dishes.flatMap((x) => {
+      if (!isObject(x)) return [];
+      const name = str(x.name);
+      const priceInr = num(x.priceInr);
+      return name && priceInr !== undefined && priceInr >= 0 ? [{ name, priceInr }] : [];
+    });
+    if (dishes.length > 0) out.dishes = dishes.slice(0, MAX_DISHES);
+  }
+  return out;
+}
+
 function readPlace(p: JsonObject): PlacePayload | undefined {
   const name = str(p.name)?.trim();
   const category = readCategory(p.category);
@@ -147,7 +167,7 @@ function readPlace(p: JsonObject): PlacePayload | undefined {
   if (isObject(p.signatureDish)) {
     const dish = str(p.signatureDish.name);
     const priceInr = num(p.signatureDish.priceInr);
-    if (dish && priceInr !== undefined && priceInr >= 0) place.signatureDish = { name: dish, priceInr };
+    if (dish && priceInr !== undefined && priceInr >= 0) place.signatureDish = readDishDetails(p.signatureDish, { name: dish, priceInr });
   }
   if (isObject(p.chain)) {
     const id = str(p.chain.id);

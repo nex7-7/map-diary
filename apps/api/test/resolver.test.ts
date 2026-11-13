@@ -39,7 +39,17 @@ const candidate = {
   category: "restaurant",
   location: { lat: 18.9345, lng: 72.8399 },
   cuisine: "Parsi",
-  signatureDish: { name: "Berry pulao", priceInr: 750 },
+  signatureDish: {
+    rule: "starters",
+    section: "Appetizers",
+    chicken: true,
+    dishes: [
+      { name: "Chicken cutlet", priceInr: 450 },
+      { name: "Chicken farcha", priceInr: 750 },
+      { name: "Chicken lollipop", priceInr: 700 },
+      { name: "Chicken 65", priceInr: 1050 },
+    ],
+  },
   sourceLinks: ["https://www.zomato.com/mumbai/britannia-co-fort"],
 };
 
@@ -67,7 +77,7 @@ describe("resolver queue", () => {
     const after = await (await fetchApi(`/api/resolver/jobs/${id}`)).json<{ status: string; sealedResult: string }>();
     expect(after.status).toBe("resolved");
     const result = openResolverResult(fromBase64(after.sealedResult), keys);
-    expect(result.candidates[0]).toMatchObject({ name: "Britannia & Co.", signatureDish: { priceInr: 750 } });
+    expect(result.candidates[0]).toMatchObject({ name: "Britannia & Co.", signatureDish: { name: "Chicken appetizers", priceInr: 725, rule: "starters" } });
 
     expect((await fetchApi(`/api/resolver/jobs/${id}`, { method: "DELETE" })).status).toBe(204);
     expect((await fetchApi(`/api/resolver/jobs/${id}`)).status).toBe(404);
