@@ -103,3 +103,37 @@ describe("fixture source", () => {
     expect(juhu[0]).toMatchObject({ status: "visited", boards: ["personal"] });
   });
 });
+
+describe("search ranking", () => {
+  const { outlets, signatureDish, cuisine, address, ...base } = places[0]!;
+  const make = (id: string, name: string, extra: Partial<PlaceView> = {}): PlaceView => ({ ...base, id, name, ...extra });
+  const pool = [
+    make("p-quesera", "Que Sera Sera", { cuisine: "Italian, Mediterranean" }),
+    make("p-opera", "Bombay Island Coffee Roasters", { address: "Opera House, Girgaon" }),
+    make("p-erastreet", "Eraa Street Kitchen"),
+    make("p-new", "The New Era Bakery"),
+    make("p-era", "Era"),
+    make("p-erarea", "Coffee Bar", { address: "Era Building, Bandra" }),
+  ];
+  const search = (query: string, sort: "added" | "price" = "added") =>
+    ids(sortPlaces(filterPlaces(pool, { ...EMPTY_FILTERS, query }, me.id), sort));
+
+  it("ranks exact name, then prefix, then word start, then other fields, then inside a name", () => {
+    expect(search("Era")).toEqual(["p-era", "p-erastreet", "p-new", "p-erarea", "p-quesera"]);
+  });
+
+  it("keeps the ranking whatever the sort", () => {
+    expect(search("era", "price")[0]).toBe("p-era");
+  });
+
+  it("never matches inside a word of the address or cuisine", () => {
+    expect(search("era")).not.toContain("p-opera");
+    expect(search("terra")).toEqual([]);
+  });
+
+  it("matches every word in any order, ignoring case, accents and apostrophes", () => {
+    expect(search("bakery new")).toEqual(["p-new"]);
+    expect(ids(filterPlaces([make("p-cafe", "Café Leopold's")], { ...EMPTY_FILTERS, query: "cafe leopolds" }, me.id))).toEqual(["p-cafe"]);
+    expect(search("girgaon coffee")).toEqual(["p-opera"]);
+  });
+});

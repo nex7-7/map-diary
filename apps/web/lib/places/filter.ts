@@ -2,7 +2,7 @@ import { visitedOutlets } from "./visited";
 import type { Category, DiarySnapshot, LngLat, Person, PlaceView, Status, StatusOpinion } from "./types";
 
 export interface PlaceFilters {
-  /** Matches name, address, cuisine and signature dish, case-insensitively. */
+  /** Matches the name, or word starts in the address, cuisine, dishes and outlets. See `searchRank`. */
   query: string;
   /** Board ids; empty means every board this device can read. A board shows only its members' opinions. */
   boards: string[];
@@ -39,6 +39,8 @@ export interface ListedPlace {
   addedAt: string;
   /** Metres from the given position, if one was given. */
   distanceM?: number;
+  /** With a search: how well the place matched, 0 best. Results are ranked by it before the chosen sort. */
+  searchRank?: number;
   /** On a chain the owner stamped Visited: the outlets they have been to. The others show as not been yet. */
   visitedOutlets?: ReadonlySet<string>;
 }
@@ -51,14 +53,15 @@ const overlaps = (selected: readonly string[], values: readonly string[]) =>
  * the board, status and author filters: tags and comments alone never list it.
  */
 export function filterPlaces(places: readonly PlaceView[], filters: PlaceFilters, meId: string, here?: LngLat): ListedPlace[] {
-  const query = filters.query.trim().toLowerCase();
+  const query = normalise(filters.query);
   const out: ListedPlace[] = [];
 
   for (const place of places) {
     if (filters.categories.length > 0 && !filters.categories.includes(place.category)) continue;
     if (filters.cuisines.length > 0 && (place.cuisine === undefined || !filters.cuisines.includes(place.cuisine))) continue;
     if (filters.maxPriceInr !== null && (place.signatureDish === undefined || place.signatureDish.priceInr > filters.maxPriceInr)) continue;
-    if (query && !searchText(place).includes(query)) continue;
+    const rank = query ? searchRank(place, query) : undefined;
+    if (rank === null) continue;
 
     const statuses = place.opinions.filter(
       (o): o is StatusOpinion =>
@@ -80,6 +83,7 @@ export function filterPlaces(places: readonly PlaceView[], filters: PlaceFilters
     const status: Status = own?.status ?? (statuses.some((o) => o.status === "visited") ? "visited" : "want");
     const addedAt = statuses.reduce((min, o) => (o.createdAt < min ? o.createdAt : min), statuses[0]!.createdAt);
     const listed: ListedPlace = { place, status, mine: own !== undefined, addedAt };
+    if (rank !== undefined) listed.searchRank = rank;
     if (own?.status === "visited" && place.outlets && place.outlets.length > 1) listed.visitedOutlets = visitedOutlets(place, own);
     // A chain is as near as its nearest outlet.
     if (here) listed.distanceM = Math.min(...(place.outlets ?? [place]).map((o) => distanceMetres(here, o.location)));
@@ -88,7 +92,10 @@ export function filterPlaces(places: readonly PlaceView[], filters: PlaceFilters
   return out;
 }
 
-/** Sorts a copy. Distance falls back to date added when there is no position. */
+/**
+ * Sorts a copy. Distance falls back to date added when there is no position.
+ * With a search, the best matches come first and the chosen sort orders places within each rank.
+ */
 export function sortPlaces(listed: readonly ListedPlace[], key: SortKey): ListedPlace[] {
   const byAdded = (a: ListedPlace, b: ListedPlace) => b.addedAt.localeCompare(a.addedAt);
   const byName = (a: ListedPlace, b: ListedPlace) => a.place.name.localeCompare(b.place.name);
@@ -100,12 +107,46 @@ export function sortPlaces(listed: readonly ListedPlace[], key: SortKey): Listed
     price: (a: ListedPlace, b: ListedPlace) =>
       (a.place.signatureDish?.priceInr ?? Infinity) - (b.place.signatureDish?.priceInr ?? Infinity) || byName(a, b),
   }[key];
-  return [...listed].sort(compare);
+  return [...listed].sort((a, b) => (a.searchRank ?? 0) - (b.searchRank ?? 0) || compare(a, b));
 }
 
-function searchText(place: PlaceView): string {
-  const outlets = place.outlets?.flatMap((o) => [o.name, o.address]) ?? [];
-  return [place.name, place.address, place.cuisine, place.signatureDish?.name, ...(place.signatureDish?.dishes?.map((d) => d.name) ?? []), ...outlets].filter(Boolean).join(" ").toLowerCase();
+/** Lower case, accents and apostrophes dropped, other punctuation and runs of space as one space. */
+export function normalise(text: string): string {
+  return text
+    .normalize("NFKD")
+    .replace(/\p{M}/gu, "")
+    .toLowerCase()
+    .replace(/['’‘`]/g, "")
+    .replace(/[^\p{L}\p{N}]+/gu, " ")
+    .trim();
+}
+
+/** True when `needle` appears in `hay` starting at the start of a word. Both normalised. */
+const atWordStart = (hay: string, needle: string) => hay.startsWith(needle) || hay.includes(` ${needle}`);
+
+/**
+ * How well a place matches a normalised search, 0 best, or null for no match:
+ * 0 the name is the search; 1 the name starts with it; 2 a word in the name starts with it;
+ * 3 every search word starts a word in the name; 4 every search word starts a word in the name,
+ * address, cuisine, dishes or outlets; 5 the name holds the search inside a word.
+ * Other fields never match inside a word, so "era" no longer finds "Opera House" or "Mediterranean".
+ */
+export function searchRank(place: PlaceView, query: string): number | null {
+  const names = [place.name, ...(place.outlets?.map((o) => o.name) ?? [])].map(normalise);
+  const words = query.split(" ");
+  if (names.some((n) => n === query)) return 0;
+  if (names.some((n) => n.startsWith(query))) return 1;
+  if (names.some((n) => atWordStart(n, query))) return 2;
+  if (names.some((n) => words.every((w) => atWordStart(n, w)))) return 3;
+  const dishes = place.signatureDish?.dishes?.map((d) => d.name) ?? [];
+  const outletAddresses = place.outlets?.map((o) => o.address) ?? [];
+  const other = [place.name, place.address, place.cuisine, place.signatureDish?.name, ...dishes, ...outletAddresses, ...names]
+    .filter((t): t is string => Boolean(t))
+    .map(normalise)
+    .join(" ");
+  if (words.every((w) => atWordStart(other, w))) return 4;
+  if (names.some((n) => n.includes(query))) return 5;
+  return null;
 }
 
 const EARTH_RADIUS_M = 6_371_008.8;

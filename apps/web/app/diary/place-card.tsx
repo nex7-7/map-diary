@@ -49,7 +49,7 @@ export function PlaceCard({ item, snapshot, onClose, onSetStatus }: Props) {
         </div>
 
         {place.signatureDish && (
-          <div className="ticket self-start [--notch:var(--page)]">
+          <div className="ticket self-start">
             <span className="flex flex-col justify-center px-3.5 py-2">
               <span className="text-[9.5px] font-bold tracking-[0.14em] uppercase opacity-70">Wallet bleeder</span>
               <span className="font-print text-[15px] leading-tight">{place.signatureDish.name}</span>
