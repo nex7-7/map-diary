@@ -411,3 +411,79 @@
   font-weight: 400;
   font-size: 18px;
 }
+
+/* "Add a location": a blank outlet row waiting to be filled in. */
+.addOutlet {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  width: 100%;
+  padding: 12px 14px;
+  border-radius: 14px;
+  border: 1.5px dashed var(--rule-ink);
+  background: transparent;
+  color: var(--ink-2);
+  font: inherit;
+  font-size: 14.5px;
+  text-align: start;
+  cursor: var(--cursor-press);
+}
+
+.addOutlet strong {
+  font-family: var(--serif);
+  font-weight: 400;
+  font-size: 18px;
+  color: var(--ink);
+}
+
+.addOutlet:hover,
+.addOutlet:focus-visible {
+  border-color: var(--ink-2);
+  background: var(--page);
+}
+
+.addOutletPlus {
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  border: 1.5px solid var(--seal);
+  color: var(--seal);
+}
+
+.addOutletForm {
+  gap: 10px;
+}
+
+.addOutletTitle {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.addOutletTitle strong {
+  font-family: var(--serif);
+  font-weight: 400;
+  font-size: 18px;
+}
+
+.addOutletCheck {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  font-size: 15px;
+}
+
+.addOutletActions {
+  display: flex;
+  gap: 14px;
+  align-items: center;
+  justify-content: flex-end;
+}
+
+.addOutletSave {
+  padding: 9px 16px;
+  font-size: 14px;
+}
