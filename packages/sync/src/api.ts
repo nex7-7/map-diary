@@ -569,6 +569,11 @@ export class Api {
     return this.call<ResolverJobResponse>("GET", `/api/resolver/jobs/${encodeURIComponent(id)}`, undefined, null);
   }
 
+  /** Takes a resolved job's sealed result and drops the job; 404 once another device took it. */
+  takeResolverJob(id: string) {
+    return this.call<{ sealedResult: string }>("POST", `/api/resolver/jobs/${encodeURIComponent(id)}/take`, undefined, null);
+  }
+
   deleteResolverJob(id: string) {
     return this.call<undefined>("DELETE", `/api/resolver/jobs/${encodeURIComponent(id)}`, undefined, null);
   }

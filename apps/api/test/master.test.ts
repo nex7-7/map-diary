@@ -250,6 +250,27 @@ describe("the master board and the place catalogue", () => {
     const res = await api.pushEnvelopes([forged], signer(friend));
     expect(res.rejected).toEqual([{ id: forged.id, reason: "private_on_master" }]);
 
+    // A pending place, which holds its job's one-time key, goes on the author's Personal board alone.
+    const pending = (boards: string[]) =>
+      sealEnvelope({
+        type: "pending",
+        authorId: friend.accountId,
+        deviceId: friend.deviceId,
+        placeId: null,
+        payload: { query: "Kyani" },
+        boards: boards.map((id) => writeKey(friend, id)!),
+        signSecretKey: friend.identity.signSecretKey,
+      });
+    const onMaster = pending([masterBoardOf(friend)!.id]);
+    const onBoth = pending([masterBoardOf(friend)!.id, friend.personalBoardId]);
+    const onPersonal = pending([friend.personalBoardId]);
+    const pushed = await api.pushEnvelopes([onMaster, onBoth, onPersonal], signer(friend));
+    expect(pushed.accepted).toEqual([onPersonal.id]);
+    expect(pushed.rejected).toEqual([
+      { id: onMaster.id, reason: "board_not_allowed" },
+      { id: onBoth.id, reason: "board_not_allowed" },
+    ]);
+
     // Only the admin deletes a catalogue place.
     expect((await api.deleteEnvelopes([mine.id], signer(friend))).deleted).toEqual([]);
 

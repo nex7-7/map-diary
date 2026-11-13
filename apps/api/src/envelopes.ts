@@ -153,16 +153,20 @@ export async function pushEnvelopes(
   // holds keys for the master and Personal boards only.
   const boardIds = [...new Set(candidates.flatMap((e) => e.boards.map((b) => b.boardId)))];
   const allowed = new Map<string, number>();
+  const kinds = new Map<string, string>();
   if (boardIds.length > 0) {
     const { results } = await db
       .prepare(
-        `SELECT b.id, b.key_version FROM boards b
+        `SELECT b.id, b.key_version, b.kind FROM boards b
            JOIN board_members m ON m.board_id = b.id AND m.account_id = ?
           WHERE b.id IN (SELECT value FROM json_each(?)) AND (? = 0 OR b.kind IN ('master', 'personal'))`,
       )
       .bind(device.accountId, JSON.stringify(boardIds), isClaude ? 1 : 0)
-      .all<{ id: string; key_version: number }>();
-    for (const r of results) allowed.set(r.id, r.key_version);
+      .all<{ id: string; key_version: number; kind: string }>();
+    for (const r of results) {
+      allowed.set(r.id, r.key_version);
+      kinds.set(r.id, r.kind);
+    }
   }
 
   type Existing = {
@@ -219,6 +223,9 @@ export async function pushEnvelopes(
     } else if (e.type === "private_place" && onMaster) {
       // Dropped pins never enter the catalogue.
       rejected.push({ id: e.id, reason: "private_on_master" });
+    } else if (e.type === "pending" && (isClaude || e.boards.length !== 1 || kinds.get(e.boards[0]!.boardId) !== "personal")) {
+      // A pending place holds its job's one-time key: only the author's own devices read it.
+      rejected.push({ id: e.id, reason: "board_not_allowed" });
     } else if (e.boards.some((b) => (allowed.get(b.boardId) ?? 0) > b.keyVersion)) {
       // Sealed before its device collected a rotated key; the device re-seals it and retries.
       rejected.push({ id: e.id, reason: "stale_key" });

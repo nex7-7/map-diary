@@ -30,6 +30,15 @@ class FakeResolver implements ResolverApi {
     if (!job) throw new ApiError(404, "not_found");
     return { id, status: job.status, expiresAt: 2_000_000_000_000, ...(job.sealedResult ? { sealedResult: job.sealedResult } : {}) };
   }
+  async takeResolverJob(id: string): Promise<{ sealedResult: string }> {
+    if (this.offline) throw new NetworkError();
+    const job = this.jobs.get(id);
+    if (!job || job.status !== "resolved" || !job.sealedResult) throw new ApiError(404, "not_found");
+    this.jobs.delete(id);
+    this.taken++;
+    return { sealedResult: job.sealedResult };
+  }
+  taken = 0;
   async deleteResolverJob(id: string): Promise<undefined> {
     this.jobs.delete(id);
     return undefined;

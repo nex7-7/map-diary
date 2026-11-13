@@ -17,7 +17,8 @@ import { bytes, fail, isB64, isId, isObject } from "./http";
  * key; no account or device is attached. The resolver (Claude's scheduled task, or any
  * script holding RESOLVER_TOKEN) lists pending jobs and answers them; the Worker checks
  * each answer, seals it to the job's key and clears the query. The device fetches the
- * sealed result by job id and deletes the job. See docs/resolver.md.
+ * sealed result by job id with a one-time take (or deletes a job it gives up on). See
+ * docs/resolver.md.
  */
 
 /** Jobs nobody picks up are dropped by the cron after this long. */
@@ -95,6 +96,25 @@ resolverJobs.get("/resolver/jobs/:id", async (c) => {
     ...(row.status === "resolved" ? { sealedResult: toBase64(bytes(row.sealed_result)) } : {}),
     expiresAt: row.expires_at,
   });
+});
+
+/**
+ * Hands over a resolved job's sealed result once and drops the job in the same statement, so
+ * when several of a person's devices hold the job only one of them ever gets the answer and
+ * writes the place. A job that is not resolved (or already taken) answers 404; the device then
+ * reads its status with GET.
+ */
+resolverJobs.post("/resolver/jobs/:id/take", async (c) => {
+  const id = c.req.param("id");
+  if (!isId(id)) return fail(c, 404, "not_found");
+  const row = await c.env.DB.prepare(
+    "DELETE FROM resolver_jobs WHERE id = ? AND status = 'resolved' AND expires_at > ? RETURNING sealed_result",
+  )
+    .bind(id, Date.now())
+    .first<{ sealed_result: unknown }>();
+  if (!row) return fail(c, 404, "not_found");
+  await ready();
+  return c.json({ sealedResult: toBase64(bytes(row.sealed_result)) });
 });
 
 /** The device has its result, or gave up on the job. */

@@ -5,10 +5,12 @@ import type { Diary } from "@map-diary/sync";
 import { api } from "../device/session";
 import { PendingQueue } from "./queue";
 import { IdbPendingStore, type PendingItem } from "./store";
+import { DiaryPendingStore } from "./synced";
 
 /** How often the queue checks for results while the app is open. The Inbox checks more often. */
 const POLL_INTERVAL_MS = 60_000;
 
+/** Where items saved before they synced were kept; emptied into the diary as the queue starts. */
 let store: Promise<IdbPendingStore> | null = null;
 let current: { diary: Diary; queue: Promise<PendingQueue>; stop: () => void } | null = null;
 
@@ -17,11 +19,27 @@ function openStore(): Promise<IdbPendingStore> {
   return store;
 }
 
+/**
+ * Moves items this device kept to itself (before pending places synced) into the diary, so the
+ * person's other devices get them too. Each is written before its local copy goes.
+ */
+async function moveLocalItems(synced: DiaryPendingStore): Promise<void> {
+  const local = await openStore().catch(() => null);
+  if (!local) return;
+  for (const { id, ...item } of await local.list()) {
+    await synced.create(item);
+    await local.delete(id);
+  }
+}
+
 /** The pending queue for this device's diary, polling in the background while the app is open. */
 export function getPendingQueue(diary: Diary): Promise<PendingQueue> {
   if (current?.diary === diary) return current.queue;
   current?.stop();
-  const queue = openStore().then((s) => new PendingQueue(s, api, diary));
+  const synced = new DiaryPendingStore(diary);
+  const queue = moveLocalItems(synced)
+    .catch(() => undefined)
+    .then(() => new PendingQueue(synced, api, diary));
   const poll = () => void queue.then((q) => q.poll()).catch(() => undefined);
   const onVisible = () => document.visibilityState === "visible" && poll();
   const timer = setInterval(poll, POLL_INTERVAL_MS);
@@ -40,7 +58,10 @@ export function getPendingQueue(diary: Diary): Promise<PendingQueue> {
   return queue;
 }
 
-/** Drops every pending item and its one-time keys; used when the device is forgotten. */
+/**
+ * Drops the pending items this device still keeps to itself; used when the device is forgotten.
+ * Synced items go with the diary store, and stay on the person's other devices.
+ */
 export async function clearPending(): Promise<void> {
   current?.stop();
   current = null;

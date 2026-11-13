@@ -18,6 +18,11 @@ export const ENVELOPE_TYPES = [
   "group",
   /** A name for one of the author's devices, on their Personal board. */
   "device_name",
+  /**
+   * A place waiting for the resolver, with its job's one-time key, on the author's Personal
+   * board alone, so any of their devices can collect the answer and finish it.
+   */
+  "pending",
 ] as const;
 
 export type EnvelopeType = (typeof ENVELOPE_TYPES)[number];

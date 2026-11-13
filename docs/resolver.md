@@ -8,13 +8,20 @@ sealing) and `apps/api/src/resolver.ts` (routes).
 
 1. The device makes a one-time X25519 keypair (`generateReplyKeys()`), keeps the secret
    key with its pending item, and posts the query with the public key. The request is
-   **not signed**, so no account or device is attached.
+   **not signed**, so no account or device is attached. The pending item, key included, is
+   a sealed `pending` item on the person's own Personal board (the Worker refuses that type
+   anywhere else, and from a Claude device), so all of their devices hold it.
 2. The resolver lists pending jobs, looks each one up, and answers with up to five
    candidates or `{ "failed": true }`.
 3. The Worker checks the answer (`parseResolution`: Mumbai bounds, known category, whole ₹
    price, https links), seals it to the job's key (`crypto_box_seal`) and clears the query.
-4. The device polls its job, opens the result (`openResolverResult`, which re-checks it),
-   writes the place facts, and deletes the job.
+4. Any of the person's open devices polls the job, takes the result with
+   `POST /api/resolver/jobs/:id/take` (which drops the job in the same statement, so only one
+   device ever gets it), opens it (`openResolverResult`, which re-checks it), writes the place
+   facts and updates the pending item, which then syncs to the other devices. A device that
+   finds the job gone before it expires waits up to 10 minutes for that update before calling
+   the item failed. Settling an item without the resolver (a link already in the diary) and
+   sending an unsent item are left to the device that wrote it last, for 5 minutes.
 
 A job listed 5 times without an answer is marked failed. A failed job keeps its query until the device drops it or it expires, so the admin can put it back in the queue from Admin → Resolver; the device keeps checking a failed job until then. The hourly cron deletes jobs
 14 days after they were made. At most 500 jobs can be pending at once.
@@ -44,10 +51,11 @@ it; the Worker checks the same. After that only the admin edits its facts.
 | --- | --- |
 | `POST /api/resolver/jobs` | `{ query, replyPublicKey }` (query ≤ 1000 chars, key base64url 32 bytes) → `201 { id, status: "pending", expiresAt }`; `503 queue_full` |
 | `GET /api/resolver/jobs/:id` | `{ id, status: "pending" \| "resolved" \| "failed", sealedResult?, expiresAt }`; `404` once deleted or expired |
+| `POST /api/resolver/jobs/:id/take` | `{ sealedResult }` once, and the job is deleted; `404` if not resolved, already taken, or expired |
 | `DELETE /api/resolver/jobs/:id` | `204` |
 | `POST /api/resolver/expand` | `{ url }` (a short Google link) → `{ url }` full Maps URL (or, for share.google, the Google Search URL it lands on), or (a Zomato share link) → `{ name }`; `422 not_expanded` |
 
-`Api` in `@map-diary/sync` has `submitResolverJob`, `getResolverJob`,
+`Api` in `@map-diary/sync` has `submitResolverJob`, `getResolverJob`, `takeResolverJob`,
 `deleteResolverJob` and `expandMapsLink`.
 
 ## Resolver routes (`Authorization: Bearer $RESOLVER_TOKEN`)
