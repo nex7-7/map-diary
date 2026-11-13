@@ -112,7 +112,11 @@ connector. Use no other connector, and do not save anything about these places t
    Open that link and note every outlet listed (name, area and address, and its own Zomato
    link). For a place that is not on Zomato, use Google Maps or the place's own site to find
    its other Mumbai outlets. Ignore "See all N outlets in <mall or compound>": that lists
-   other places in the same building, not the chain.
+   other places in the same building, not the chain. Zomato's list can be short: also check
+   the brand's own site or store locator, Swiggy and District, and include every outlet in
+   Mumbai, Thane and Navi Mumbai (Vashi, Belapur) that is inside the map's box. A brand name
+   with a different prefix is a different chain run by different people: B Bhagat Tarachand
+   and K Bhagat Tarachand are two chains, so list only the outlets of the exact brand.
 4. Find the wallet bleeder (food and drink only). Open the place's Menu tab on Zomato and
    pick the Food menu (not Bar or Beverages). If it won't open, try the menu on Swiggy,
    District or the place's own site. Then:
@@ -149,7 +153,7 @@ connector. Use no other connector, and do not save anything about these places t
      each with its name and priceInr in whole rupees (no ranges), at most 40.
    - sourceLinks: the https pages you used, at most 5.
    - chain: only for a chain from step 3. name is the chain's name, and outlets lists every
-     other outlet in Mumbai (not the one in candidates), each with the same fields as a
+     other outlet from step 3 (not the one in candidates), each with the same fields as a
      candidate: its own location, address and Zomato link in sourceLinks. Use the same
      category and signatureDish for each outlet unless its menu says otherwise. Leave out outlets
      outside Mumbai or ones you cannot place on the map. At most 40.

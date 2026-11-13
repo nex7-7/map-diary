@@ -82,7 +82,9 @@ const INSTRUCTIONS = `Resolves places for a private Mumbai map diary. Call get_p
 (a Google Maps, Zomato, District or other link, or a plain place name), then call submit_resolution once per job \
 with 1 to ${MAX_CANDIDATES} candidates, or failed: true when you cannot find the place. Several candidates are \
 fine when a name is ambiguous; the person picks one later. When the place is one outlet of a chain, also send \
-chain with the chain's name and its other outlets in Mumbai, so the person can add them all. A Zomato share link \
+chain with the chain's name and every other outlet in Mumbai, Thane and Navi Mumbai (check the brand's own store \
+locator too, since Zomato's list can be short), so the person can add them all. A brand with a different prefix \
+(B Bhagat Tarachand, K Bhagat Tarachand) is a different chain: list only the exact brand's outlets. A Zomato share link \
 (zomato.onelink.me) only opens the app; its linkName is the restaurant's name, so search that name in Mumbai and \
 give every branch as a candidate unless you can tell which one. get_failed_jobs lists jobs that failed; when the \
 owner gives you a better link or name for a failed or pending job, call requeue_job with it, or answer it with submit_resolution. Never invent facts: leave out a field you could not \
