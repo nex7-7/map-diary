@@ -17,7 +17,7 @@ export const CATEGORY_GLYPHS = {
   cone: ["M7.5 10.5a4.5 4.5 0 0 1 9 0Z", "M7.5 10.5 12 21l4.5-10.5", "M9.2 14.2l4.6-1.8M10.5 17.5l2.5-1"],
   arch: ["M3.5 20.5h17M5.5 20.5V10L12 4.8l6.5 5.2v10.5", "M9.5 20.5v-5.4a2.5 2.5 0 0 1 5 0v5.4"],
   umbrella: ["M4 11a8 8 0 0 1 16 0Z", "M12 11v7", "M3 20.5c1.5-1 3-1 4.5 0s3 1 4.5 0 3-1 4.5 0 3 1 4.5 0"],
-  star: ["M12 3.8l2.5 5.2 5.7.7-4.2 3.9 1.1 5.6L12 16.4l-5.1 2.8 1.1-5.6-4.2-3.9 5.7-.7Z"],
+  burger: ["M4.5 10.5a7.5 5 0 0 1 15 0Z", "M4 13.5h16", "M4.5 16.5h15a2 2 0 0 1-2 3h-11a2 2 0 0 1-2-3Z", "M9.5 7.6h.01M13 7h.01"],
   spot: ["M12 21s-6.5-5.6-6.5-11a6.5 6.5 0 0 1 13 0c0 5.4-6.5 11-6.5 11Z", "M12 12.2a2.2 2.2 0 1 0 0-4.4 2.2 2.2 0 0 0 0 4.4Z"],
 } as const;
 
@@ -76,7 +76,7 @@ export const ICON_PATHS = {
   film: glyph("film"),
   arch: glyph("arch"),
   umbrella: glyph("umbrella"),
-  star: glyph("star"),
+  burger: glyph("burger"),
   spot: glyph("spot"),
 } as const;
 
