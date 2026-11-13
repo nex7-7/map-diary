@@ -156,7 +156,7 @@ connector. Use no other connector, and do not save anything about these places t
      other outlet from step 3 (not the one in candidates), each with the same fields as a
      candidate: its own location, address and Zomato link in sourceLinks. Use the same
      category and signatureDish for each outlet unless its menu says otherwise. Leave out outlets
-     outside Mumbai or ones you cannot place on the map. At most 40.
+     outside the map's box or ones you cannot place on the map. At most 40.
    - If you cannot find the place, or it is outside Mumbai, call submit_resolution with
      failed: true instead.
 6. Never invent a fact. Leave out any optional field you could not check.
