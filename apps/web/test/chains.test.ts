@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { JsonValue } from "@map-diary/crypto";
-import { addComment, applyTag, editComment, setStatus, unapplyTag } from "../lib/entries/actions";
+import { addComment, applyTag, editComment, setOutletVisited, setStatus, unapplyTag } from "../lib/entries/actions";
 import { buildFacts, formFromFacts } from "../lib/entries/facts";
 import { addressArea, branchKey, chainFor, knownByName, normaliseChainName, outletLabel, viewOf } from "../lib/places/chains";
 import { EMPTY_FILTERS, filterPlaces } from "../lib/places/filter";
@@ -97,6 +97,45 @@ describe("chains", () => {
     expect(listed).toHaveLength(1);
     expect(listed[0]!.distanceM).toBeLessThan(1);
     expect(pinsCollection(listed, null).features).toHaveLength(2);
+  });
+
+  it("draws the outlets not been to with the uninked seal", async () => {
+    const { diary, parel } = await twoOutlets();
+    await setStatus(diary, parel, "visited");
+    const listed = filterPlaces(diary.snapshot().places, EMPTY_FILTERS, "acct-me");
+    const icons = pinsCollection(listed, null).features.map((f) => f.properties.icon.split("|")[1]);
+    expect(icons).toEqual(["visited", "outlet"]);
+    // A Want to chain is Want to at every outlet.
+    await setStatus(diary, parel, "want");
+    const wants = pinsCollection(filterPlaces(diary.snapshot().places, EMPTY_FILTERS, "acct-me"), null).features;
+    expect(wants.map((f) => f.properties.icon.split("|")[1])).toEqual(["want", "want"]);
+  });
+
+  it("marks and unmarks the outlets been to, keeping at least one", async () => {
+    const { diary, parel, bandra } = await twoOutlets();
+    // Marking an outlet on a Want to chain stamps it Visited there.
+    await setStatus(diary, parel, "want");
+    await setOutletVisited(diary, parel, bandra, true);
+    const status = () => readPayload("status", [...diary.items.values()].find((i) => i.type === "status")!.payload);
+    expect(status()).toMatchObject({ status: "visited", outlets: [bandra] });
+    await setOutletVisited(diary, bandra, parel, true);
+    expect(status()!.outlets).toEqual([bandra, parel]);
+    await setOutletVisited(diary, parel, bandra, false);
+    expect(status()!.outlets).toEqual([parel]);
+    await expect(setOutletVisited(diary, parel, parel, false)).rejects.toThrow(/at least one/);
+    // Re-stamping keeps the outlets; Want to drops them.
+    await setStatus(diary, parel, "visited");
+    expect(status()!.outlets).toEqual([parel]);
+    await setStatus(diary, parel, "want");
+    expect(status()).toEqual({ status: "want" });
+    expect([...diary.items.values()].filter((i) => i.type === "status")).toHaveLength(1);
+  });
+
+  it("counts an old Visited stamp as visited at the outlet it is on", async () => {
+    const { diary, bandra } = await twoOutlets();
+    await setStatus(diary, bandra, "visited");
+    const listed = filterPlaces(diary.snapshot().places, EMPTY_FILTERS, "acct-me");
+    expect([...listed[0]!.visitedOutlets!]).toEqual([bandra]);
   });
 
   it("draws no pin for a place outside Mumbai, but keeps it on the list", () => {

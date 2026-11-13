@@ -214,16 +214,19 @@ function pinLayers(): LayerSpecification[] {
   ];
 }
 
-const PIN_INK: Record<PinKind, { fill: string; glyph: string; dashed: boolean }> = {
+const PIN_INK: Record<PinKind, { fill: string; glyph: string; dashed: boolean; ring?: string }> = {
   visited: { fill: "#c63730", glyph: "#fff8ef", dashed: false },
+  // The seal's red ring and glyph on bare paper: the same chain, not stamped here yet.
+  outlet: { fill: "#f8f2e5", glyph: "#c63730", dashed: false, ring: "#c63730" },
   friend: { fill: "#6b3d61", glyph: "#fff8ef", dashed: false },
   want: { fill: "#f8f2e5", glyph: "#5f5a51", dashed: true },
   pending: { fill: "#f8f2e5", glyph: "#6a6356", dashed: true },
 };
 
 /**
- * Draws a marker for `pinImageId`: a vermilion seal for Visited (plum for a friend's), a
- * dashed graphite slot for Want to, each round the category's pencil glyph. A selected pin
+ * Draws a marker for `pinImageId`: a vermilion seal for Visited (plum for a friend's), its
+ * uninked ring for a chain's outlets not visited yet, a dashed graphite slot for Want to,
+ * each round the category's pencil glyph. A selected pin
  * is larger with a pencil circle round it. MapLibre asks for each the first time it is needed.
  */
 export function drawPin(id: string, pixelRatio: number): ImageData | null {
@@ -264,6 +267,17 @@ export function drawPin(id: string, pixelRatio: number): ImageData | null {
     ctx.arc(c, c, radius - 1, 0, Math.PI * 2);
     ctx.stroke();
     ctx.setLineDash([]);
+  } else if (ink.ring) {
+    // An uninked seal: its outer and inner rings only.
+    ctx.strokeStyle = ink.ring;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(c, c, radius - 1, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.lineWidth = 0.9;
+    ctx.beginPath();
+    ctx.arc(c, c, radius - 3.6, 0, Math.PI * 2);
+    ctx.stroke();
   } else {
     // The seal's inner ring.
     ctx.lineWidth = 1;
@@ -297,7 +311,8 @@ export function drawPin(id: string, pixelRatio: number): ImageData | null {
   return ctx.getImageData(0, 0, px, px);
 }
 
-export type PinKind = "visited" | "want" | "friend" | "pending";
+/** `outlet`: an outlet of a chain the owner stamped Visited, but not one they have been to. */
+export type PinKind = "visited" | "want" | "friend" | "pending" | "outlet";
 
 export interface PinProps {
   id: string;
@@ -310,19 +325,20 @@ export interface PinProps {
 export function pinsCollection(listed: readonly ListedPlace[], selectedId: string | null): FeatureCollection<Point, PinProps> {
   return {
     type: "FeatureCollection",
-    features: listed.flatMap(({ place, status, mine }) => {
+    features: listed.flatMap(({ place, status, mine, visitedOutlets }) => {
       // Someone else's status, not mine: drawn in the friends' colour.
       const kind: PinKind = mine ? status : "friend";
       const selected = place.id === selectedId;
       const glyph = categoryStyle(place.category).glyph;
-      // A chain gets a pin per outlet, all opening the one place page.
+      // A chain gets a pin per outlet, all opening the one place page. On a chain stamped
+      // Visited, the outlets not been to yet get the uninked seal.
       return (place.outlets ?? [place]).filter((at) => onMap(at.location)).map((at) => ({
         type: "Feature" as const,
         geometry: { type: "Point" as const, coordinates: [at.location.lng, at.location.lat] },
         properties: {
           id: place.id,
           name: place.name,
-          icon: pinImageId(kind, glyph, selected),
+          icon: pinImageId(kind === "visited" && visitedOutlets && !visitedOutlets.has(at.id) ? "outlet" : kind, glyph, selected),
           mine,
           selected,
         },

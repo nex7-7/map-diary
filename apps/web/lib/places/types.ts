@@ -95,6 +95,11 @@ export interface StatusOpinion extends OpinionBase {
   status: Status;
   /** Visited only: the day of the visit when it is not `updatedAt`. Read it with `visitedOn`. */
   visitedAt?: string;
+  /**
+   * Visited on a chain: the outlets the person has been to. Missing means the one the status
+   * is attached to (`placeId`). Read it with `visitedOutlets`.
+   */
+  outlets?: string[];
 }
 
 export interface TagOpinion extends OpinionBase {

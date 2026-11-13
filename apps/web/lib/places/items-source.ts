@@ -142,7 +142,8 @@ export function snapshotFromItems(
         const s = readPayload("status", item.payload);
         if (s && item.placeId) {
           const visitedAt = s.visitedAt !== undefined ? { visitedAt: iso(s.visitedAt) } : {};
-          opinions.push({ placeId: item.placeId, opinion: { ...base, kind: "status", status: s.status, ...visitedAt } });
+          const outlets = s.outlets ? { outlets: s.outlets } : {};
+          opinions.push({ placeId: item.placeId, opinion: { ...base, kind: "status", status: s.status, ...visitedAt, ...outlets } });
         }
         break;
       }

@@ -42,6 +42,8 @@ export interface NewPlace {
   status: Status;
   /** Visited only: when the visit was, if not now (a place found later keeps the day it was added). */
   visitedAt?: number;
+  /** Visited on a chain: the outlets the person went to. */
+  outlets?: string[];
   /** Existing tag definitions to apply. */
   tagIds: string[];
   /** Tags made in the sheet: defined, then applied. */
@@ -62,6 +64,13 @@ const json = (v: object): JsonValue => v as JsonValue;
 
 /** Saves a place with its status, tags and comment. Returns the place's id. */
 export async function addPlace(w: DiaryWriter, input: NewPlace): Promise<string> {
+  if (input.kind === "place" && input.facts.chain) {
+    // An outlet of a chain: the person may have a stamp on the chain already, which it joins.
+    // A Visited one is the outlet they went to.
+    const place = await w.write({ type: "place", placeId: null, payload: json(input.facts) });
+    await addOpinions(w, place.id, { ...input, ...(input.status === "visited" ? { outlets: [place.id] } : {}) });
+    return place.id;
+  }
   const { boards, tagBoards = boards, commentBoards = boards } = input;
   const defined: string[] = [];
   for (const def of input.newTags) defined.push(await defineTag(w, def, tagBoards));
@@ -71,7 +80,7 @@ export async function addPlace(w: DiaryWriter, input: NewPlace): Promise<string>
   const pinBoards = input.kind === "private_place" ? [...new Set([...(boards ?? []), ...(tagBoards ?? []), ...(commentBoards ?? [])])] : undefined;
   const place = await w.write({ type: input.kind, placeId: null, payload: json(input.facts), ...on(pinBoards) });
   // The status goes first: tags and comments need one.
-  await w.write({ type: "status", placeId: place.id, payload: nextStatusPayload(input.status, undefined, input.visitedAt), ...on(boards) });
+  await w.write({ type: "status", placeId: place.id, payload: nextStatusPayload(input.status, undefined, input.visitedAt, input.outlets), ...on(boards) });
   for (const tagId of new Set([...input.tagIds, ...defined])) await applyTag(w, place.id, tagId, tagBoards);
   const text = input.comment.trim();
   if (text) await w.write({ type: "comment", placeId: place.id, payload: { text, ...(input.commentAllOutlets ? { allOutlets: true } : {}) }, ...on(commentBoards) });
@@ -85,7 +94,8 @@ export async function addPlace(w: DiaryWriter, input: NewPlace): Promise<string>
 export async function addOpinions(w: DiaryWriter, placeId: string, input: Omit<NewPlace, "kind" | "facts">): Promise<void> {
   const { boards, tagBoards = boards, commentBoards = boards } = input;
   const hasStatus = own(w, await w.listItems(), "status", placeId).length > 0;
-  if (!hasStatus) await setStatus(w, placeId, input.status, boards, input.visitedAt);
+  if (!hasStatus) await setStatus(w, placeId, input.status, boards, input.visitedAt, input.outlets);
+  else if (input.status === "visited" && input.outlets) for (const id of input.outlets) await setOutletVisited(w, placeId, id, true);
   const defined: string[] = [];
   for (const def of input.newTags) defined.push(await defineTag(w, def, tagBoards));
   for (const tagId of new Set([...input.tagIds, ...defined])) await applyTag(w, placeId, tagId, tagBoards);
@@ -167,10 +177,10 @@ async function requireStatus(w: DiaryWriter, placeId: string): Promise<StoredIte
  * has one status per person, kept on the outlet it was first set on. A place that stays
  * Visited keeps its visit date unless `visitedAt` gives a new one.
  */
-export async function setStatus(w: DiaryWriter, placeId: string, status: Status, boards?: Boards, visitedAt?: number): Promise<void> {
+export async function setStatus(w: DiaryWriter, placeId: string, status: Status, boards?: Boards, visitedAt?: number, outlets?: readonly string[]): Promise<void> {
   const mine = own(w, await w.listItems(), "status", placeId);
   const latest = mine.reduce<StoredItem | undefined>((a, b) => (!a || b.updatedAt > a.updatedAt ? b : a), undefined);
-  const payload = nextStatusPayload(status, latest, visitedAt);
+  const payload = nextStatusPayload(status, latest, visitedAt, outlets);
   await w.write({ type: "status", placeId: latest?.placeId ?? placeId, payload, ...(latest ? { id: latest.id } : {}), ...on(boards) });
   // A sync race can leave two; keep one.
   for (const extra of mine) if (extra !== latest) await w.remove(extra.id);
@@ -237,6 +247,33 @@ function readableOn(w: DiaryWriter, postedTo: readonly string[], boardId: string
 }
 
 const sameBoards = (a: readonly string[], b: readonly string[]) => a.length === b.length && a.every((id) => b.includes(id));
+
+/**
+ * Marks one outlet of a chain as visited by this person, or not. Marking one when their stamp
+ * is Want to (or missing) stamps the chain Visited at that outlet (a new stamp on `boards`). The last visited outlet
+ * can't be unmarked: changing the stamp to Want to does that. Outlets the status names that
+ * are no longer in the chain are dropped.
+ */
+export async function setOutletVisited(w: DiaryWriter, placeId: string, outletId: string, been: boolean, boards?: Boards): Promise<void> {
+  const items = await w.listItems();
+  const outlets = outletIds(items, placeId);
+  if (!outlets.includes(outletId)) throw new EntryError("That location isn't part of this place any more. Reload the page.");
+  const mine = own(w, items, "status", placeId);
+  const latest = mine.reduce<StoredItem | undefined>((a, b) => (!a || b.updatedAt > a.updatedAt ? b : a), undefined);
+  const before = latest ? readPayload("status", latest.payload) : undefined;
+  if (before?.status !== "visited") {
+    if (!been) return;
+    // A new stamp goes where the person picked; an existing one keeps its boards.
+    await setStatus(w, placeId, "visited", latest ? undefined : boards, undefined, [outletId]);
+    return;
+  }
+  const named = (before.outlets ?? [latest!.placeId ?? placeId]).filter((id) => outlets.includes(id));
+  const current = named.length > 0 ? named : outlets;
+  const next = been ? [...new Set([...current, outletId])] : current.filter((id) => id !== outletId);
+  if (next.length === 0) throw new EntryError("You've been to at least one location. To take the stamp off, change it to Want to.");
+  if (next.length === current.length && next.every((id) => current.includes(id)) && before.outlets) return;
+  await setStatus(w, placeId, "visited", undefined, undefined, next);
+}
 
 /** Earliest visit date accepted. */
 const VISITED_FROM = Date.UTC(1950, 0, 1);

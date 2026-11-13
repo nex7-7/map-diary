@@ -1,3 +1,4 @@
+import { visitedOutlets } from "./visited";
 import type { Category, DiarySnapshot, LngLat, Person, PlaceView, Status, StatusOpinion } from "./types";
 
 export interface PlaceFilters {
@@ -38,6 +39,8 @@ export interface ListedPlace {
   addedAt: string;
   /** Metres from the given position, if one was given. */
   distanceM?: number;
+  /** On a chain the owner stamped Visited: the outlets they have been to. The others show as not been yet. */
+  visitedOutlets?: ReadonlySet<string>;
 }
 
 const overlaps = (selected: readonly string[], values: readonly string[]) =>
@@ -77,6 +80,7 @@ export function filterPlaces(places: readonly PlaceView[], filters: PlaceFilters
     const status: Status = own?.status ?? (statuses.some((o) => o.status === "visited") ? "visited" : "want");
     const addedAt = statuses.reduce((min, o) => (o.createdAt < min ? o.createdAt : min), statuses[0]!.createdAt);
     const listed: ListedPlace = { place, status, mine: own !== undefined, addedAt };
+    if (own?.status === "visited" && place.outlets && place.outlets.length > 1) listed.visitedOutlets = visitedOutlets(place, own);
     // A chain is as near as its nearest outlet.
     if (here) listed.distanceM = Math.min(...(place.outlets ?? [place]).map((o) => distanceMetres(here, o.location)));
     out.push(listed);

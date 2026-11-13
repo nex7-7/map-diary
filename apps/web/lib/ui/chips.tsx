@@ -5,14 +5,18 @@ import type { BoardKind, Category, Status } from "@/lib/places/types";
 import { cn } from "@/lib/utils";
 import { Icon } from "./icon";
 
-/** What a pin or dot stands for: my status, a friend's, or a place still being looked up. */
-export type PinKind = Status | "friend" | "pending";
+/**
+ * What a pin or dot stands for: my status, a friend's, a place still being looked up, or an
+ * outlet of a chain I stamped Visited that I haven't been to (the uninked seal).
+ */
+export type PinKind = Status | "friend" | "pending" | "outlet";
 
 const DOT: Record<PinKind, string> = {
   visited: "bg-seal",
   want: "border-[1.5px] border-dashed border-graphite",
   friend: "bg-plum",
   pending: "border-[1.5px] border-dashed border-ink-3",
+  outlet: "border-[1.5px] border-seal",
 };
 
 /** A tiny stamp: a red seal for Visited, a dashed slot for Want to, plum for a friend's. */
@@ -97,6 +101,8 @@ export function Pin({ kind, category, large = false }: { kind: PinKind; category
         kind === "visited" && "bg-seal text-cream shadow-[0_0_0_2.5px_var(--page)]",
         kind === "friend" && "bg-plum text-cream shadow-[0_0_0_2.5px_var(--page)]",
         (kind === "want" || kind === "pending") && "border-[1.8px] border-dashed border-graphite bg-page text-graphite",
+        // The seal's two rings, uninked.
+        kind === "outlet" && "border-2 border-seal bg-page text-seal shadow-[inset_0_0_0_2px_var(--page),inset_0_0_0_3px_var(--seal),0_0_0_2.5px_var(--page)]",
       )}
       aria-hidden
     >

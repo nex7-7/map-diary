@@ -337,30 +337,44 @@ function ChooseLetter({ item, queue, run, style }: LetterProps) {
   );
 }
 
-/** A match that is one outlet of a chain: add every outlet, or only one. */
+/**
+ * A match that is one outlet of a chain. Every outlet goes on the map: a Visited one asks
+ * which outlet the person went to; a Want to one (found by name) asks to add them all.
+ */
 function ChainLetter({ item, queue, run, style }: LetterProps) {
   if (item.state.kind !== "choose" || !item.state.chain) return null;
   const { chain } = item.state;
   const choices = choicesOf(item.state);
   const matches = item.state.candidates.length;
+  // The match and the chain's other outlets are what gets added.
+  const count = chain.outlets.length + 1;
+  const visited = item.draft.status === "visited";
   return (
-    <Letter style={style} postage={<span className="worn text-[11px] text-seal">×{choices.length}</span>}>
+    <Letter style={style} postage={<span className="worn text-[11px] text-seal">×{count}</span>}>
       <div className="flex flex-col gap-1 pr-12">
         <span className="font-serif text-[21px]">{chain.name}</span>
-        <span className="hand text-[15px] leading-snug text-ink-2">It has {choices.length} outlets in Mumbai. Add every outlet, or just one?</span>
+        <span className="hand text-[15px] leading-snug text-ink-2">
+          {visited
+            ? `It has ${count} outlets in Mumbai, and they all go on the map. Which one did you go to?`
+            : `It has ${count} outlets in Mumbai. They all go on the map as one place.`}
+        </span>
       </div>
-      <Button size="m" onClick={() => run(() => queue.addAll(item.id))}>
-        Every outlet ({choices.length})
-      </Button>
-      <ul className={b.candidates}>
-        {choices.map((c, n) => (
-          <li key={n}>
-            <button type="button" className={b.cand} onClick={() => run(() => queue.choose(item.id, n))}>
-              <Candidate place={c} note={n < matches ? (item.draft.link ? "The one you linked" : "Best match") : undefined} />
-            </button>
-          </li>
-        ))}
-      </ul>
+      {!visited && (
+        <Button size="m" onClick={() => run(() => queue.addAll(item.id))}>
+          Add all {count}
+        </Button>
+      )}
+      {visited && (
+        <ul className={b.candidates}>
+          {choices.map((c, n) => (
+            <li key={n}>
+              <button type="button" className={b.cand} onClick={() => run(() => queue.addAll(item.id, n))}>
+                <Candidate place={c} note={n < matches ? (item.draft.link ? "The one you linked" : "Best match") : undefined} />
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
       <div className={styles.row}>
         <button type="button" className={styles.textbutton} onClick={() => run(() => queue.dismiss(item.id))}>
           Remove

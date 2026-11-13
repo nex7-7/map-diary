@@ -10,7 +10,7 @@ import styles from "@/app/_entries/entries.module.css";
 import { Avatar } from "@/app/_account/parts";
 import { sealDate } from "@/app/diary/places-list";
 import { toastError } from "@/lib/errors";
-import { BoardBadge, buttonClass, Icon, useConfirm } from "@/lib/ui";
+import { BoardBadge, buttonClass, Icon, Pin, useConfirm } from "@/lib/ui";
 import { onMap } from "@/lib/map/style";
 import { PlaceMap } from "./place-map";
 import { RedateSheet } from "./redate-sheet";
@@ -27,6 +27,7 @@ import {
   moveStamp,
   removeFromList,
   removeOpinion,
+  setOutletVisited,
   setStatus,
   setVisitedDate,
   unapplyTag,
@@ -37,7 +38,7 @@ import { addressArea, chainFor, outletLabel, outletOf, viewOf } from "@/lib/plac
 import { mergeTargets, resolvePlace } from "@/lib/places/merges";
 import { categoryStyle } from "@/lib/places/categories";
 import { readPayload, type PlacePayload } from "@/lib/places/payloads";
-import { visitedOn } from "@/lib/places/visited";
+import { visitedOn, visitedOutlets } from "@/lib/places/visited";
 import type { CommentOpinion, DiarySnapshot, Opinion, Outlet, PlaceView as Place, Status, StatusOpinion, TagOpinion } from "@/lib/places/types";
 
 /**
@@ -64,8 +65,8 @@ export function PlaceView({ diary, placeId: asked }: { diary: Diary; placeId: st
   const [commentBoardEdit, setCommentBoardEdit] = useState<string[] | null>(null);
   /** The location in focus on a chain: the map centres on it and its details are the ones edited. */
   const [focusId, setFocusId] = useState(placeId);
-  /** On a chain: "all", or the location a new comment is about. */
-  const [commentScope, setCommentScope] = useState<string>("all");
+  /** On a chain: "all", or the location a new comment is about; null until picked (the one visited). */
+  const [commentScope, setCommentScope] = useState<string | null>(null);
 
   const me = diary.device.accountId;
   const place = viewOf(snapshot.places, placeId);
@@ -106,6 +107,9 @@ export function PlaceView({ diary, placeId: asked }: { diary: Diary; placeId: st
   const of = <K extends Opinion["kind"]>(kind: K) => place.opinions.filter((o): o is Extract<Opinion, { kind: K }> => o.kind === kind);
   const myStatusOpinion = of("status").find((o) => o.authorId === me);
   const myStatus = myStatusOpinion?.status ?? null;
+  // On a chain stamped Visited: the locations this person has been to.
+  const been = outlets && myStatusOpinion?.status === "visited" ? visitedOutlets(place, myStatusOpinion) : undefined;
+  const scope = commentScope ?? (been ? (outlets?.find((o) => been.has(o.id))?.id ?? "all") : "all");
   // Only boards the person is in whose readers can all see this place (a dropped pin never goes Public).
   const choices = boardChoices(opinionBoards(snapshot, place).filter((b) => diary.boards.some((k) => k.id === b.id)));
   // New opinions here go where the person's status is, unless they pick otherwise.
@@ -202,7 +206,7 @@ export function PlaceView({ diary, placeId: asked }: { diary: Diary; placeId: st
       <aside className={p.side}>
         <div className={p.hero}>
           {onMap(at.location) ? (
-            <PlaceMap place={place} focus={at.location} kind={myStatus ?? (of("status").length > 0 ? "friend" : "pending")} className={p.map} />
+            <PlaceMap place={place} focus={at.location} kind={myStatus ?? (of("status").length > 0 ? "friend" : "pending")} visited={been} className={p.map} />
           ) : (
             <div className={`${p.map} ${p.offMap}`}>
               <Icon name="mapFold" size="l" />
@@ -300,13 +304,26 @@ export function PlaceView({ diary, placeId: asked }: { diary: Diary; placeId: st
               <ul className={p.outlets}>
                 {outlets.map((o) => (
                   <li key={o.id} className={o.id === at.id ? `${p.outlet} ${p.outletFocus}` : p.outlet}>
-                    <button type="button" className={p.outletName} onClick={() => setFocusId(o.id)} aria-pressed={o.id === at.id}>
-                      <Icon name="pin" size="s" />
-                      <span>
-                        <strong>{outletLabel(place, o)}</strong>
-                        {o.address && <span className="sub"> · {o.address}</span>}
-                      </span>
-                    </button>
+                    <div className={p.outletHead}>
+                      <button type="button" className={p.outletName} onClick={() => setFocusId(o.id)} aria-pressed={o.id === at.id}>
+                        <Icon name="pin" size="s" />
+                        <span>
+                          <strong>{outletLabel(place, o)}</strong>
+                          {o.address && <span className="sub"> · {o.address}</span>}
+                        </span>
+                      </button>
+                      {/* Which locations this person has been to: tap to mark one, or unmark it. */}
+                      <button
+                        type="button"
+                        className={p.outletSeal}
+                        aria-pressed={been?.has(o.id) ?? false}
+                        aria-label={`${been?.has(o.id) ? "Been to" : "Not been to"} ${outletLabel(place, o)}`}
+                        onClick={() => run(() => setOutletVisited(diary, place.id, o.id, !been?.has(o.id), boards))}
+                      >
+                        <Pin kind={been?.has(o.id) ? "visited" : myStatus === "visited" ? "outlet" : "want"} category={place.category} />
+                        <span className="hand">{been?.has(o.id) ? "Been here" : myStatus === "visited" ? "Not yet" : "Been here?"}</span>
+                      </button>
+                    </div>
                     {links(o, true)}
                   </li>
                 ))}
@@ -410,7 +427,7 @@ export function PlaceView({ diary, placeId: asked }: { diary: Diary; placeId: st
               onSubmit={(e) => {
                 e.preventDefault();
                 const text = draft;
-                const about = outlets && commentScope !== "all" && outlets.some((o) => o.id === commentScope) ? commentScope : undefined;
+                const about = outlets && scope !== "all" && outlets.some((o) => o.id === scope) ? scope : undefined;
                 run(async () => {
                   await addComment(diary, about ?? place.id, text, commentBoards, outlets !== undefined && about === undefined);
                   setDraft("");
@@ -429,7 +446,7 @@ export function PlaceView({ diary, placeId: asked }: { diary: Diary; placeId: st
               {outlets && myStatus !== null && (
                 <label className={styles.row}>
                   <span className={styles.label}>About</span>
-                  <select className={styles.input} value={commentScope} onChange={(e) => setCommentScope(e.target.value)}>
+                  <select className={styles.input} value={scope} onChange={(e) => setCommentScope(e.target.value)}>
                     <option value="all">All locations</option>
                     {outlets.map((o) => (
                       <option key={o.id} value={o.id}>
