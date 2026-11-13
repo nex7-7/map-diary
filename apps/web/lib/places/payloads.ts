@@ -61,6 +61,8 @@ export interface CommentPayload {
   text: string;
   /** On a chain: about every outlet, not just the one the comment is attached to. */
   allOutlets?: true;
+  /** When it was first written (ms), kept when it moves to another outlet of the chain. */
+  writtenAt?: number;
 }
 
 export interface ProfilePayload {
@@ -188,7 +190,8 @@ const readers: { [T in EnvelopeType]: (p: JsonObject) => PayloadByType[T] | unde
   comment: (p) => {
     const text = str(p.text)?.trim();
     if (!text) return undefined;
-    return p.allOutlets === true ? { text, allOutlets: true } : { text };
+    const writtenAt = typeof p.writtenAt === "number" && Number.isFinite(p.writtenAt) && p.writtenAt > 0 ? Math.floor(p.writtenAt) : undefined;
+    return { text, ...(p.allOutlets === true ? { allOutlets: true as const } : {}), ...(writtenAt !== undefined ? { writtenAt } : {}) };
   },
   profile: (p) => {
     const name = cleanDisplayName(str(p.name) ?? "");

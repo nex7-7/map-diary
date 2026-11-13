@@ -347,13 +347,40 @@ export async function addComment(w: DiaryWriter, placeId: string, text: string, 
   await w.write({ type: "comment", placeId, payload: json(payload), ...on(boards) });
 }
 
-/** Rewrites a comment's text; it stays on its own place and keeps its scope. */
-export async function editComment(w: DiaryWriter, id: string, placeId: string, text: string): Promise<void> {
-  const prior = (await w.listItems()).find((i) => i.id === id);
-  const allOutlets = prior && readPayload("comment", prior.payload)?.allOutlets === true;
-  const payload: CommentPayload = { text: text.trim(), ...(allOutlets ? { allOutlets: true as const } : {}) };
+/**
+ * Rewrites a comment's text. On a chain, `about` also changes what it is about: "all" for every
+ * location, or one outlet's place id; left out, it keeps its scope. The Worker never lets an
+ * item change place, so moving it to another outlet writes it there afresh (same boards, same
+ * day written) and then deletes the old one.
+ */
+export async function editComment(w: DiaryWriter, id: string, placeId: string, text: string, about?: string): Promise<void> {
+  const items = await w.listItems();
+  const prior = items.find((i) => i.id === id);
+  const before = prior ? readPayload("comment", prior.payload) : undefined;
+  const at = prior?.placeId ?? placeId;
+  let target = at;
+  let allOutlets = before?.allOutlets === true;
+  if (about === "all") allOutlets = true;
+  else if (about !== undefined) {
+    if (!outletIds(items, at).includes(about)) throw new EntryError("That location isn't part of this place any more. Reload the page.");
+    target = about;
+    allOutlets = false;
+  }
+  // A moved comment keeps the day it was first written.
+  const writtenAt = before?.writtenAt ?? (target !== at ? prior?.createdAt : undefined);
+  const payload: CommentPayload = {
+    text: text.trim(),
+    ...(allOutlets ? { allOutlets: true as const } : {}),
+    ...(writtenAt !== undefined ? { writtenAt } : {}),
+  };
   if (!payload.text) throw new EntryError("A comment needs some text.");
-  await w.write({ type: "comment", placeId: prior?.placeId ?? placeId, payload: json(payload), id });
+  if (target === at) {
+    await w.write({ type: "comment", placeId: at, payload: json(payload), id });
+    return;
+  }
+  if (!prior || prior.authorId !== w.device.accountId) throw new EntryError("Only your own comments can be moved.");
+  await w.write({ type: "comment", placeId: target, payload: json(payload), boards: prior.boardIds });
+  await w.remove(id);
 }
 
 /** Removes one of this person's own opinions. Nobody can remove someone else's. */
