@@ -12,10 +12,11 @@ import {
 } from "@map-diary/crypto";
 import { ApiError, NetworkError, type Api } from "@map-diary/sync";
 import { EntryError, addOpinions, addPlace, findCataloguePlace, findLocalPlace, updateFacts, type DiaryWriter } from "../entries/actions";
+import { addOutlet } from "../entries/outlet";
 import { parseLink } from "../entries/parse-input";
 import { isFood } from "../entries/facts";
 import { branchOf, chainFor, knownByName, type KnownPlace } from "../places/chains";
-import type { PlaceChain } from "../places/types";
+import type { Category, PlaceChain } from "../places/types";
 import type { StoredItem } from "../places/items-source";
 import { readPayload, type PlacePayload } from "../places/payloads";
 import type { PendingDraft, PendingItem, PendingState, PendingStore, WaitingJob } from "./store";
@@ -197,7 +198,8 @@ export class PendingQueue {
     const items = await this.diary.listItems();
     const place = items.find((i) => i.id === placeId);
     const name = place && (place.type === "place" || place.type === "private_place") ? readPayload(place.type, place.payload)?.name : undefined;
-    await addDraftOpinions(this.diary, placeId, draftOf(item));
+    // A new location of a chain carries no opinions: the link was for a place already in the diary.
+    if (!item.draft.outletOf) await addDraftOpinions(this.diary, placeId, draftOf(item));
     const open = jobOf(item.state);
     if (open) await this.forgetJob(open.jobId);
     await this.save(item, added(placeId, name ?? item.draft.label, true));
@@ -253,6 +255,12 @@ export class PendingQueue {
         if (match) await this.writeWallet(item, match, chain);
         else await this.save(item, { kind: "choose", candidates, ...(chain ? { walletChain: chain } : {}) });
       } else if (item.draft.refreshPlaceId) await this.save(item, { kind: "choose", candidates });
+      // A new location of a chain: the match is the outlet the link was for; its chain's other
+      // outlets are not added here.
+      else if (item.draft.outletOf) {
+        if (candidates.length === 1 && pointsAtOnePlace(item.draft.link)) await this.write(item, candidates[0]!);
+        else await this.save(item, { kind: "choose", candidates });
+      }
       else if (chain && item.draft.status === "want" && pointsAtOnePlace(item.draft.link)) {
         await this.save(item, { kind: "choose", candidates, chain });
         await this.addAll(item.id);
@@ -341,6 +349,13 @@ export class PendingQueue {
       await this.save(item, { kind: "added", placeId, name: candidate.name });
       return placeId;
     }
+    if (item.draft.outletOf) {
+      const facts = factsFromCandidate({ ...item.draft, category: item.draft.category ?? candidate.category }, candidate, item.draft.outletOf);
+      if (!readPayload("place", facts as unknown as JsonValue)) throw new EntryError("That match is missing a name or a location, so it can't be added. Try looking it up again.");
+      const done = await addOutlet(this.diary, item.draft.outletOf.id, facts, item.draft.been === true);
+      await this.save(item, added(done.placeId, candidate.name, done.kind !== "added"));
+      return done.placeId;
+    }
     const items = await this.diary.listItems();
     let label = chain ? chainFor(items, chain.name) : undefined;
     let written: Written;
@@ -394,6 +409,25 @@ export class PendingQueue {
   }
 
   /**
+   * Saves a lookup of a new location of a chain ("Add a location" on its place page). Once
+   * found it joins the chain as another outlet, in the chain's category.
+   */
+  async addOutlet(query: string, chain: PlaceChain, category: Category, been: boolean): Promise<PendingItem> {
+    const q = query.trim();
+    return this.add(q, {
+      label: `${chain.name}, new location`,
+      ...(isLink(q) ? { link: q } : {}),
+      category,
+      status: "want",
+      tagIds: [],
+      newTags: [],
+      comment: "",
+      outletOf: { ...chain },
+      ...(been ? { been: true as const } : {}),
+    });
+  }
+
+  /**
    * Looks the item up again with a better link or name, keeping its status, tags, note and
    * boards. A wrong link is dropped, so it never becomes one of the place's source links.
    */
@@ -430,6 +464,10 @@ export class PendingQueue {
       if (!place) throw new EntryError("That place isn't on this device any more. It may have been deleted.");
       await updateFacts(this.diary, place, facts);
       placeId = place.id;
+    } else if (item.draft.outletOf) {
+      const done = await addOutlet(this.diary, item.draft.outletOf.id, { ...facts, chain: { ...item.draft.outletOf } }, item.draft.been === true);
+      placeId = done.placeId;
+      existing = done.kind !== "added";
     } else {
       const written = await writeFacts(this.diary, draftOf(item), facts);
       placeId = written.placeId;
@@ -466,7 +504,8 @@ export class PendingQueue {
  * nothing the person cannot see is revealed.
  */
 export function knownForItem(items: readonly StoredItem[], item: PendingItem, accountId: string): KnownPlace | undefined {
-  if (item.draft.refreshPlaceId) return undefined;
+  // A new location of a chain is not the chain itself, whose name it carries.
+  if (item.draft.refreshPlaceId || item.draft.outletOf) return undefined;
   const names = [item.draft.label, item.draft.expandedUrl ? parseLink(item.draft.expandedUrl).name : undefined];
   for (const name of names) {
     if (!name || /^https?:/i.test(name)) continue;
