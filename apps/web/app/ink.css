@@ -183,32 +183,31 @@
     opacity: 0.45;
   }
 
-  /* The wallet bleeder: a yellow ticket stub, notched sides, dashed tear line. */
+  /* The wallet bleeder: a yellow ticket stub, punched sides, dashed tear line.
+     The paper is drawn by ::before and masked, so the punch holes are real holes that show
+     whatever is behind (paper texture, dark page), and the drop shadow follows the cut-outs. */
   .ticket {
     position: relative;
+    isolation: isolate;
     display: inline-flex;
     align-items: stretch;
-    background: var(--marker);
-    border-radius: 6px;
     color: var(--ink);
-    box-shadow: 0 2px 0 rgb(32 31 27 / 0.18);
-  }
-  .ticket::before,
-  .ticket::after {
-    content: "";
-    position: absolute;
-    top: 50%;
-    width: 12px;
-    height: 12px;
-    margin-top: -6px;
-    border-radius: 50%;
-    background: var(--notch, var(--page));
+    filter: drop-shadow(0 2px 0 rgb(32 31 27 / 0.18));
   }
   .ticket::before {
-    left: -6px;
-  }
-  .ticket::after {
-    right: -6px;
+    --hole: 6px;
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    background: var(--marker);
+    border-radius: 6px;
+    -webkit-mask:
+      radial-gradient(circle var(--hole) at 0 50%, transparent calc(var(--hole) - 0.5px), #000 var(--hole)) left / 51% 100% no-repeat,
+      radial-gradient(circle var(--hole) at 100% 50%, transparent calc(var(--hole) - 0.5px), #000 var(--hole)) right / 51% 100% no-repeat;
+    mask:
+      radial-gradient(circle var(--hole) at 0 50%, transparent calc(var(--hole) - 0.5px), #000 var(--hole)) left / 51% 100% no-repeat,
+      radial-gradient(circle var(--hole) at 100% 50%, transparent calc(var(--hole) - 0.5px), #000 var(--hole)) right / 51% 100% no-repeat;
   }
   .ticket .stub {
     border-left: 1.5px dashed rgb(32 31 27 / 0.45);
