@@ -341,10 +341,78 @@ textarea.input {
 
 .hint {
   margin: 0;
-  font-family: var(--hand);
-  font-size: 15px;
-  line-height: 1.35;
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--ink-2);
+}
+
+/* A shell command to copy, in monospace on ink. */
+.command {
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: var(--ink);
+  color: var(--page);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+  user-select: all;
+}
+
+/* Three counts side by side, like a tally card. */
+.stats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  border: 1.5px solid var(--ink);
+  border-radius: 12px;
+  background: var(--page);
+}
+
+.stat {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 10px 4px 8px;
+  text-align: center;
+}
+
+.stat + .stat {
+  border-left: 1px dashed var(--rule-ink);
+}
+
+.stat strong {
+  font-family: var(--worn);
+  font-size: 26px;
+  font-weight: 400;
+  line-height: 1;
+}
+
+.stat span {
+  font-size: 9.5px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
   color: var(--ink-3);
+}
+
+.statAlert strong {
+  color: var(--seal);
+}
+
+/* A count on a tab, such as failed resolver jobs. */
+.tabBadge {
+  display: inline-grid;
+  place-items: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 4px;
+  border-radius: 9px;
+  background: var(--seal);
+  color: var(--cream);
+  font-size: 10.5px;
+  font-weight: 700;
 }
 
 .error {
@@ -533,4 +601,40 @@ img.avatar {
   align-items: center;
   justify-content: space-between;
   gap: 12px;
+}
+
+/* A chain's outlets, nested under its row in Admin → Places. */
+.outletList {
+  flex-basis: 100%;
+  list-style: none;
+  margin: 4px 0 0;
+  padding: 0 0 0 44px;
+  display: flex;
+  flex-direction: column;
+}
+
+.outletList li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 40px;
+  font-size: 13.5px;
+}
+
+.outletList li > a {
+  flex: 1;
+  min-width: 0;
+}
+
+.outletDot {
+  width: 7px;
+  height: 7px;
+  flex: none;
+  border-radius: 50%;
+  border: 1.3px solid var(--graphite);
+}
+
+.outletDotOn {
+  border-color: var(--seal);
+  background: var(--seal);
 }

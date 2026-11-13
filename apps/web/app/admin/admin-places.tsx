@@ -7,7 +7,7 @@ import { attachNotes, lookUpAgain, mergePlaces, useDiaryItems, type Diary } from
 import { deletePlace } from "@/lib/entries/actions";
 import { userMessage } from "@/lib/errors";
 import { categoryStyle } from "@/lib/places/categories";
-import { normaliseChainName } from "@/lib/places/chains";
+import { addressArea, normaliseChainName } from "@/lib/places/chains";
 import { profilesOf } from "@/lib/places/items-source";
 import { mergeTargets, orphanedOpinions, withMerged } from "@/lib/places/merges";
 import { readPayload, type PlacePayload } from "@/lib/places/payloads";
@@ -121,7 +121,7 @@ export function AdminPlaces({ diary }: { diary: Diary }) {
       items={[
         { label: "Look up again", icon: "search", onSelect: () => run(() => lookUpAgain(diary, r.id), `Looking up ${r.facts.name}. Pick the new details in your Inbox.`) },
         { label: "Merge into…", icon: "pin", onSelect: () => setMerging(r) },
-        { label: "Delete…", icon: "x", danger: true, onSelect: () => void remove(r) },
+        { label: "Delete…", icon: "trash", danger: true, onSelect: () => void remove(r) },
       ]}
     />
   );
@@ -199,9 +199,13 @@ export function AdminPlaces({ diary }: { diary: Diary }) {
           <p className="sub">No places in the catalogue yet.</p>
         ) : (
           <ul className={s.list}>
-            {shown.map((r) => (
-              <PlaceRow key={r.id} row={r} by={nameOf(r.authorId)} menu={menu(r)} />
-            ))}
+            {groupChains(shown).map((g) =>
+              g.length === 1 ? (
+                <PlaceRow key={g[0]!.id} row={g[0]!} by={nameOf(g[0]!.authorId)} menu={menu(g[0]!)} />
+              ) : (
+                <ChainRow key={g[0]!.facts.chain?.id ?? g[0]!.id} rows={g} nameOf={nameOf} menu={menu} />
+              ),
+            )}
           </ul>
         )}
         <p className={s.hint}>Open a place to edit its details. Places only on someone&apos;s Personal board or a group you&apos;re not in aren&apos;t in the catalogue, so they aren&apos;t here.</p>
@@ -243,11 +247,67 @@ export function AdminPlaces({ diary }: { diary: Diary }) {
   );
 }
 
+/** The rows in order, with a chain's outlets together in one group where it first appears. */
+function groupChains(rows: Row[]): Row[][] {
+  const groups: Row[][] = [];
+  const byChain = new Map<string, Row[]>();
+  for (const r of rows) {
+    const id = r.facts.chain?.id;
+    const group = id ? byChain.get(id) : undefined;
+    if (group) group.push(r);
+    else {
+      const next = [r];
+      if (id) byChain.set(id, next);
+      groups.push(next);
+    }
+  }
+  return groups;
+}
+
+const notes = (n: number) => `${n} ${n === 1 ? "note" : "notes"}`;
+
+/** A chain as one row, its outlets nested under it, each with its own tools. */
+function ChainRow({ rows, nameOf, menu }: { rows: Row[]; nameOf: (id: string) => string; menu: (r: Row) => React.ReactNode }) {
+  const first = rows[0]!;
+  const name = first.facts.chain?.name ?? first.facts.name;
+  const total = rows.reduce((n, r) => n + r.opinions, 0);
+  return (
+    <li className={s.row} style={{ padding: "10px 0", flexWrap: "wrap" }}>
+      <Glyph category={first.facts.category} />
+      <span className={s.rowText}>
+        <span className={s.rowTitle}>
+          <Link href={`/place#${encodeURIComponent(first.id)}`} className={s.plainName}>
+            {name}
+          </Link>
+          <span className="sub"> · chain of {rows.length}</span>
+        </span>
+        <span className="sub">
+          {categoryStyle(first.facts.category).label} · {nameOf(first.authorId)} · {notes(total)}
+        </span>
+      </span>
+      <ul className={s.outletList}>
+        {rows.map((r) => (
+          <li key={r.id} title={`Added by ${nameOf(r.authorId)} ${day(r.createdAt)}`}>
+            <span className={r.opinions > 0 ? `${s.outletDot} ${s.outletDotOn}` : s.outletDot} aria-hidden="true" />
+            <Link href={`/place#${encodeURIComponent(r.id)}`} className={s.plainName}>
+              {addressArea(r.facts.address) ?? r.facts.name}
+            </Link>
+            <span className="sub">{[r.opinions > 0 ? notes(r.opinions) : "", r.facts.sourceLinks.length === 0 ? "no links" : ""].filter(Boolean).join(" · ")}</span>
+            {menu(r)}
+          </li>
+        ))}
+      </ul>
+    </li>
+  );
+}
+
 function PlaceRow({ row: r, by, menu }: { row: Row; by: string; menu: React.ReactNode }) {
   const style = categoryStyle(r.facts.category);
-  const detail = [style.label, r.facts.chain ? `${r.facts.chain.name} outlet` : undefined, r.facts.address].filter(Boolean).join(" · ");
+  const detail = [style.label, r.facts.chain ? `${r.facts.chain.name} outlet` : undefined, addressArea(r.facts.address), by, notes(r.opinions), r.facts.sourceLinks.length === 0 ? "no links" : undefined]
+    .filter(Boolean)
+    .join(" · ");
   return (
-    <li className={s.row} style={{ padding: "10px 0" }}>
+    <li className={s.row} style={{ padding: "10px 0" }} title={`Added by ${by} ${day(r.createdAt)}`}>
       <Glyph category={r.facts.category} />
       <span className={s.rowText}>
         <span className={s.rowTitle}>
@@ -257,10 +317,6 @@ function PlaceRow({ row: r, by, menu }: { row: Row; by: string; menu: React.Reac
           {r.facts.mergedFrom && r.facts.mergedFrom.length > 0 && <Badge tone="personal">+{r.facts.mergedFrom.length} merged</Badge>}
         </span>
         <span className="sub">{detail}</span>
-        <span className="sub">
-          Added by {by} {day(r.createdAt)} · {r.opinions} {r.opinions === 1 ? "note" : "notes"}
-          {r.facts.sourceLinks.length === 0 ? " · no links" : ""}
-        </span>
       </span>
       {menu}
     </li>
