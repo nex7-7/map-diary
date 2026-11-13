@@ -9,6 +9,7 @@ import { userMessage } from "@/lib/errors";
 import { addOutlet, chainToJoin, outletFacts } from "@/lib/entries/outlet";
 import { parseEntry, type ParsedEntry } from "@/lib/entries/parse-input";
 import { getPendingQueue, MAX_QUERY_LENGTH } from "@/lib/pending";
+import { nearestArea } from "@/lib/places/chains";
 import type { StoredItem } from "@/lib/places/items-source";
 import { Icon } from "@/lib/ui";
 import p from "./place.module.css";
@@ -42,6 +43,7 @@ export function AddLocation({ diary, items, placeId, onDone }: Props) {
   const expandedUrl = expansion.kind === "done" || expansion.kind === "partial" ? expansion.url : undefined;
   const query = typed.link ?? text.trim();
   const ready = expansion.kind !== "loading" && query.length > 0;
+  const near = useMemo(() => (location ? nearestArea(items, location) : undefined), [items, location]);
 
   if (!join) return null;
   const { chain, lead } = join;
@@ -103,35 +105,41 @@ export function AddLocation({ diary, items, placeId, onDone }: Props) {
 
   return (
     <form
-      className={`${p.outlet} ${p.addOutletForm}`}
+      className={p.addOutletForm}
       onSubmit={(e) => {
         e.preventDefault();
         void save();
       }}
     >
-      <label className={p.addOutletTitle} htmlFor="add-location">
-        <Icon name="pin" size="s" />
+      <div className={p.addOutletTitle}>
+        <span className={p.addOutletPlus} aria-hidden>
+          <Icon name="plus" size="s" />
+        </span>
         <strong>New location of {chain.name}</strong>
-      </label>
-      <input
-        id="add-location"
-        className={styles.input}
-        inputMode="url"
-        autoComplete="off"
-        autoFocus
-        placeholder="Paste a Google Maps, Zomato or District link"
-        value={text}
-        onChange={(e) => setText(e.target.value)}
-      />
-      <Summary parsed={typed} expansion={expansion.kind} located={location !== undefined} />
-      {location && (
+      </div>
+      <label className={p.field} htmlFor="add-location">
+        <span>Link</span>
         <input
+          id="add-location"
           className={styles.input}
-          placeholder="Area, e.g. Oshiwara, Andheri West, Mumbai (optional)"
-          aria-label="Area or address"
-          value={address}
-          onChange={(e) => setAddress(e.target.value)}
+          inputMode="url"
+          autoComplete="off"
+          autoFocus
+          placeholder="Paste a link"
+          aria-describedby="add-location-help"
+          value={text}
+          onChange={(e) => setText(e.target.value)}
         />
+        <small id="add-location-help">Google Maps, Zomato or District</small>
+      </label>
+      <Summary parsed={typed} expansion={expansion.kind} located={location !== undefined} near={near} chain={chain.name} />
+      {location && (
+        <label className={p.field}>
+          <span>
+            Area <small>(how this location is labelled)</small>
+          </span>
+          <input className={styles.input} placeholder={`e.g. ${near ?? "Oshiwara"}`} value={address} onChange={(e) => setAddress(e.target.value)} />
+        </label>
       )}
       <label className={p.addOutletCheck}>
         <input type="checkbox" checked={been} onChange={(e) => setBeen(e.target.checked)} /> I&apos;ve been to this one
@@ -142,24 +150,37 @@ export function AddLocation({ diary, items, placeId, onDone }: Props) {
         </p>
       )}
       <div className={p.addOutletActions}>
+        <button type="submit" className={`${styles.primary} ${p.addOutletSave}`} disabled={saving || !ready}>
+          {saving ? "Saving…" : expansion.kind === "loading" ? "Opening the link…" : location || !ready ? "Add location" : "Add and look it up"}
+        </button>
         <button type="button" className={styles.textbutton} onClick={reset}>
           Cancel
-        </button>
-        <button type="submit" className={`${styles.primary} ${p.addOutletSave}`} disabled={saving || !ready}>
-          {saving ? "Saving…" : expansion.kind === "loading" ? "Opening the link…" : location ? "Add it" : "Add and look it up"}
         </button>
       </div>
     </form>
   );
 }
 
-function Summary({ parsed, expansion, located }: { parsed: ParsedEntry; expansion: string; located: boolean }) {
+function Summary({ parsed, expansion, located, near, chain }: { parsed: ParsedEntry; expansion: string; located: boolean; near: string | undefined; chain: string }) {
   if (expansion === "loading") return <p className={styles.note}>Opening the short link…</p>;
-  if (located) return <p className={styles.note}>Found the pin on the link. It&apos;s added straight away.</p>;
+  if (located) {
+    return (
+      <p className={p.found} role="status">
+        <Icon name="pin" size="s" />
+        <span>
+          <b>Pin found</b>
+          {near ? ` near ${near}` : ""}. Nothing to look up.
+        </span>
+      </p>
+    );
+  }
   if (parsed.source === "zomato" || parsed.source === "district" || parsed.link) {
     return (
-      <p className={styles.note}>
-        Only the link is sent to look it up. It joins once found; follow it in your <Link href="/inbox">Inbox</Link>.
+      <p className={p.found} role="status">
+        <Icon name="search" size="s" />
+        <span>
+          We&apos;ll look it up and add it to {chain}. Only the link is sent; follow it in your <Link href="/inbox">Inbox</Link>.
+        </span>
       </p>
     );
   }

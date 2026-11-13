@@ -99,11 +99,14 @@ export interface MenuItem {
 }
 
 /** A ⋯ button that opens a short list of actions. */
-export function MoreMenu({ label, items }: { label: string; items: MenuItem[] }) {
+export function MoreMenu({ label, items, className }: { label: string; items: MenuItem[]; className?: string }) {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger
-        className="grid size-9 shrink-0 place-items-center rounded-full border-[1.5px] border-rule-ink bg-page text-ink-2 hover:border-ink hover:text-ink data-[state=open]:border-ink"
+        className={
+          className ??
+          "grid size-9 shrink-0 place-items-center rounded-full border-[1.5px] border-rule-ink bg-page text-ink-2 hover:border-ink hover:text-ink data-[state=open]:border-ink"
+        }
         aria-label={label}
       >
         <Icon name="more" size="m" />

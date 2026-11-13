@@ -34,6 +34,7 @@ export const ICON_PATHS = {
   search: `<circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/>`,
   filter: `<path d="M3 6h18"/><path d="M7 12h10"/><path d="M10 18h4"/>`,
   x: `<path d="M18 6 6 18"/><path d="m6 6 12 12"/>`,
+  trash: `<path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="m19 6-1 14H6L5 6"/>`,
   chevronRight: `<path d="m9 18 6-6-6-6"/>`,
   chevronLeft: `<path d="m15 18-6-6 6-6"/>`,
   chevronDown: `<path d="m6 9 6 6 6-6"/>`,
