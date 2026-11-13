@@ -154,7 +154,7 @@ export function snapshotFromItems(
       }
       case "comment": {
         const c = readPayload("comment", item.payload);
-        if (c && item.placeId) opinions.push({ placeId: item.placeId, opinion: { ...base, kind: "comment", text: c.text, ...(c.allOutlets ? { allOutlets: true } : {}) } });
+        if (c && item.placeId) opinions.push({ placeId: item.placeId, opinion: { ...base, ...(c.writtenAt !== undefined ? { createdAt: iso(c.writtenAt) } : {}), kind: "comment", text: c.text, ...(c.allOutlets ? { allOutlets: true } : {}) } });
         break;
       }
     }

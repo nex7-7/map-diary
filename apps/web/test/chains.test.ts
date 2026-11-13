@@ -90,6 +90,31 @@ describe("chains", () => {
     expect(readPayload("comment", diary.items.get(all.id)!.payload)).toEqual({ text: "Great cocktails at every one", allOutlets: true });
   });
 
+  it("moves a comment to another location, keeping its boards and the day it was written", async () => {
+    const { diary, parel, bandra } = await twoOutlets();
+    await setStatus(diary, parel, "want");
+    await addComment(diary, parel, "Get the tacos", ["board-personal", "board-group"]);
+    const [first] = diary.snapshot().places[0]!.opinions.filter((o) => o.kind === "comment");
+    const written = first!.createdAt;
+
+    await editComment(diary, first!.id, parel, "Get the tacos here", bandra);
+    expect(diary.items.has(first!.id)).toBe(false);
+    const [moved] = diary.snapshot().places[0]!.opinions.filter((o) => o.kind === "comment");
+    expect(moved).toMatchObject({ text: "Get the tacos here", placeId: bandra, createdAt: written });
+    expect(moved).not.toHaveProperty("allOutlets");
+    expect(diary.items.get(moved!.id)!.boardIds).toEqual(["board-personal", "board-group"]);
+
+    // To all locations: stays where it is, now about every outlet; and back to one in place.
+    await editComment(diary, moved!.id, bandra, "Get the tacos", "all");
+    expect(diary.items.get(moved!.id)).toMatchObject({ placeId: bandra });
+    expect(readPayload("comment", diary.items.get(moved!.id)!.payload)).toMatchObject({ allOutlets: true });
+    await editComment(diary, moved!.id, bandra, "Get the tacos", bandra);
+    expect(readPayload("comment", diary.items.get(moved!.id)!.payload)).not.toHaveProperty("allOutlets");
+    expect(diary.snapshot().places[0]!.opinions.find((o) => o.kind === "comment")).toMatchObject({ createdAt: written });
+
+    await expect(editComment(diary, moved!.id, bandra, "x", "not-an-outlet")).rejects.toThrow(/isn't part of this place/);
+  });
+
   it("lists a chain once, as near as its nearest outlet, with a pin per outlet", async () => {
     const { diary, parel } = await twoOutlets();
     await setStatus(diary, parel, "want");

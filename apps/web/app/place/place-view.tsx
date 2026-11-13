@@ -157,6 +157,8 @@ export function PlaceView({ diary, placeId: asked }: { diary: Diary; placeId: st
     const outlet = c.allOutlets ? undefined : outlets.find((o) => o.id === c.placeId);
     return outlet ? outletLabel(place, outlet) : "All locations";
   };
+  const outletOptions = (outlets ?? []).map((o) => ({ id: o.id, label: outletLabel(place, o) }));
+  const scopeValue = (c: CommentOpinion): string => (c.placeId && !c.allOutlets && outlets?.some((o) => o.id === c.placeId) ? c.placeId : "all");
 
   const board = (id: string) => snapshot.boards.find((b) => b.id === id);
   const basis = place.signatureDish ? dishBasis(place.signatureDish) : [];
@@ -433,7 +435,8 @@ export function PlaceView({ diary, placeId: asked }: { diary: Diary; placeId: st
                     snapshot={snapshot}
                     mine={c.authorId === me}
                     scope={scopeOf(c)}
-                    onEdit={(text) => run(() => editComment(diary, c.id, c.placeId ?? place.id, text))}
+                    {...(outlets && c.authorId === me ? { locations: { options: outletOptions, value: scopeValue(c) } } : {})}
+                    onEdit={(text, about) => run(() => editComment(diary, c.id, c.placeId ?? place.id, text, about))}
                     onDelete={() => run(() => removeOpinion(diary, c.id))}
                   />
                 ))}
@@ -592,13 +595,17 @@ interface CommentRowProps {
   mine: boolean;
   /** On a chain: which location the comment is about, or "All locations". */
   scope: string | undefined;
-  onEdit: (text: string) => void;
+  /** On a chain: the locations it can be about, and which it is about now ("all" or an outlet's id). */
+  locations?: { options: readonly { id: string; label: string }[]; value: string };
+  /** `about` is set only when the person picked another location. */
+  onEdit: (text: string, about?: string) => void;
   onDelete: () => void;
 }
 
-function CommentRow({ comment, snapshot, mine, scope, onEdit, onDelete }: CommentRowProps) {
+function CommentRow({ comment, snapshot, mine, scope, locations, onEdit, onDelete }: CommentRowProps) {
   const [editing, setEditing] = useState(false);
   const [text, setText] = useState(comment.text);
+  const [about, setAbout] = useState(locations?.value ?? "all");
   const [ask, confirmSheet] = useConfirm();
   const me = mine ? comment.authorId : "";
   // Screen readers list every comment's buttons together, so each names its own comment.
@@ -609,8 +616,29 @@ function CommentRow({ comment, snapshot, mine, scope, onEdit, onDelete }: Commen
       {editing ? (
         <>
           <textarea className={styles.textarea} aria-label="Edit comment" value={text} onChange={(e) => setText(e.target.value)} autoFocus />
+          {locations && (
+            <label className={styles.row}>
+              <span className={styles.label}>About</span>
+              <select className={styles.input} aria-label="Comment is about" value={about} onChange={(e) => setAbout(e.target.value)}>
+                <option value="all">All locations</option>
+                {locations.options.map((o) => (
+                  <option key={o.id} value={o.id}>
+                    {o.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
           <div className={styles.row}>
-            <button type="button" className={styles.textbutton} onClick={() => setEditing(false)}>
+            <button
+              type="button"
+              className={styles.textbutton}
+              onClick={() => {
+                setText(comment.text);
+                setAbout(locations?.value ?? "all");
+                setEditing(false);
+              }}
+            >
               Cancel
             </button>
             <button
@@ -618,7 +646,7 @@ function CommentRow({ comment, snapshot, mine, scope, onEdit, onDelete }: Commen
               className={styles.textbutton}
               disabled={!text.trim()}
               onClick={() => {
-                onEdit(text);
+                onEdit(text, locations && about !== locations.value ? about : undefined);
                 setEditing(false);
               }}
             >
@@ -642,7 +670,16 @@ function CommentRow({ comment, snapshot, mine, scope, onEdit, onDelete }: Commen
             <Badges snapshot={snapshot} ids={comment.boards} />
             {mine && (
               <span className={p.commentActions}>
-                <button type="button" className={styles.textbutton} onClick={() => setEditing(true)} aria-label={`Edit comment: ${short}`}>
+                <button
+                  type="button"
+                  className={styles.textbutton}
+                  onClick={() => {
+                    setText(comment.text);
+                    setAbout(locations?.value ?? "all");
+                    setEditing(true);
+                  }}
+                  aria-label={`Edit comment: ${short}`}
+                >
                   Edit
                 </button>
                 <button
