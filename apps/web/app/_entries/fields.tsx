@@ -7,7 +7,7 @@ import { pickBoard } from "@/lib/places/boards";
 import { CATEGORY_STYLES, categoryStyle, STATUS_LABELS } from "@/lib/places/categories";
 import type { TagDefPayload } from "@/lib/places/payloads";
 import { BUILTIN_CATEGORIES, type Category, type Status } from "@/lib/places/types";
-import { Icon } from "@/lib/ui";
+import { BoardBadge, Icon } from "@/lib/ui";
 import styles from "./entries.module.css";
 
 /** Want to and Visited as two rubber stamps; the one that is on is inked in. */
@@ -263,6 +263,7 @@ export function FollowBoards({
   value,
   onChange,
   noPublic,
+  compact = false,
 }: {
   what: string;
   boards: readonly BoardChoice[];
@@ -270,17 +271,27 @@ export function FollowBoards({
   value: readonly string[] | null;
   onChange: (ids: string[] | null) => void;
   noPublic?: boolean;
+  /** One short line ("on Personal · Change"), where the page already says tags and notes follow the status. */
+  compact?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const shown = value ?? statusBoards;
-  const names = boards.filter((b) => shown.includes(b.id)).map((b) => b.name);
+  const picked = boards.filter((b) => shown.includes(b.id));
+  const names = picked.map((b) => b.name);
   return (
     <div className={styles.section}>
       <div className={styles.row}>
-        <span className={styles.note}>
-          {what} shown on {names.join(", ") || "Personal"}
-          {value === null ? ", like the status" : ""}
-        </span>
+        {compact ? (
+          <span className={styles.onboards}>
+            {what === "Comment" ? "on" : `${what} on`}
+            {picked.length > 0 ? picked.map((b) => <BoardBadge key={b.id} kind={b.kind} name={b.name} />) : " Personal"}
+          </span>
+        ) : (
+          <span className={styles.note}>
+            {what} shown on {names.join(", ") || "Personal"}
+            {value === null ? ", like the status" : ""}
+          </span>
+        )}
         <button type="button" className={styles.textbutton} aria-expanded={open} onClick={() => setOpen(!open)}>
           {open ? "Done" : "Change"}
         </button>

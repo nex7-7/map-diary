@@ -16,7 +16,7 @@ import type { StatusOpinion } from "@/lib/places/types";
 import { EMPTY_FILTERS, filterPlaces } from "@/lib/places/filter";
 import { visitedOn } from "@/lib/places/visited";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
-import { Badge, Emoji, Icon } from "@/lib/ui";
+import { Badge, Emoji, Icon, SealFace } from "@/lib/ui";
 import { NearbyAlerts } from "./nearby-alerts";
 import y from "./you.module.css";
 
@@ -143,9 +143,8 @@ function You({ diary }: { diary: Diary }) {
           <div className={y.stamps}>
             {visited.slice(0, 6).map(({ l, at }, i) => (
               <Link key={l.place.id} href={`/place#${encodeURIComponent(l.place.id)}`} className="flex flex-col items-center gap-1.5 text-center text-ink no-underline">
-                <span className="seal slam size-[72px] gap-0.5" style={{ "--r": STAMP_TILTS[i], animationDelay: `${400 + i * 90}ms` } as CSSProperties}>
-                  <span className="text-[7px] tracking-[0.14em]">Visited</span>
-                  <span className="text-[15px]">{sealDate(at)}</span>
+                <span className="seal slam size-[72px]" style={{ "--r": STAMP_TILTS[i], animationDelay: `${400 + i * 90}ms` } as CSSProperties} role="img" aria-label={`Visited ${sealDate(at)}`}>
+                  <SealFace date={sealDate(at)} size={72} />
                 </span>
                 <span className="text-[11.5px] leading-tight font-semibold">{l.place.name}</span>
               </Link>

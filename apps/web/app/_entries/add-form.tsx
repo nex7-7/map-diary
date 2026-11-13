@@ -6,15 +6,15 @@ import { useEffect, useMemo, useState } from "react";
 import { api, type Diary } from "@/lib/device";
 import { addOpinions, addPlace, findCataloguePlace, findLocalPlace } from "@/lib/entries/actions";
 import { buildFacts } from "@/lib/entries/facts";
-import { STATUS_LABELS } from "@/lib/places/categories";
-import { branchOf, knownByName } from "@/lib/places/chains";
+import { categoryStyle, STATUS_LABELS } from "@/lib/places/categories";
+import { branchOf, knownByName, nearestArea, outletAreas, statusOf } from "@/lib/places/chains";
 import { userMessage } from "@/lib/errors";
-import { parseEntry, parseLink, type ParsedEntry } from "@/lib/entries/parse-input";
+import { parseEntry, parseLink, type LinkSource, type ParsedEntry } from "@/lib/entries/parse-input";
 import { getPendingQueue, MAX_QUERY_LENGTH, type PendingItem } from "@/lib/pending";
 import { readPayload, type TagDefPayload } from "@/lib/places/payloads";
 import type { Category, LngLat, Status } from "@/lib/places/types";
 import { BoardPicker, boardChoices, CategoryPicker, FollowBoards, StatusToggle, TagPicker, type TagChoice } from "./fields";
-import { Icon } from "@/lib/ui";
+import { Icon, Slip } from "@/lib/ui";
 import { useItems } from "./use-items";
 import styles from "./entries.module.css";
 
@@ -88,8 +88,9 @@ export function AddForm({ diary, initial, onSaved, onQueued, onCancel }: Props) 
   // Google place (a friend's own share link). Then it needs no lookup, wherever the pin came from.
   const duplicate = useMemo(() => findLocalPlace(items, [parsed.link, expandedUrl]), [items, parsed.link, expandedUrl]);
   const duplicateFacts = duplicate && (duplicate.type === "place" || duplicate.type === "private_place") ? readPayload(duplicate.type, duplicate.payload) : undefined;
-  // Saved onto the place already there, with no pin of its own and nothing to look up.
-  const onto = !pinned && !parsed.location && duplicate && duplicateFacts ? { id: duplicate.id, name: duplicateFacts.name, isPrivate: duplicate.type === "private_place" } : undefined;
+  // Saved onto the place already there, with no pin of its own and nothing to look up, even when
+  // the link carries a pin: it is that place's pin.
+  const onto = !pinned && duplicate && duplicateFacts ? { id: duplicate.id, name: duplicateFacts.name, isPrivate: duplicate.type === "private_place" } : undefined;
   const location = pinned ?? parsed.location ?? null;
   // No location yet, but something the resolver can look up: save now, find it later.
   const findLater = location === null && !onto && expansion.kind !== "loading" && (parsed.link !== undefined || !!parsed.name);
@@ -111,7 +112,6 @@ export function AddForm({ diary, initial, onSaved, onQueued, onCancel }: Props) 
   // A typed name is already the name; links and coordinates get a name field to fill or fix.
   const hasLinkOrCoords = parsed.link !== undefined || (parsed.location !== undefined && !parsed.name) || (pinned !== null && !parsed.name);
   const name = nameEdit ?? parsed.name ?? "";
-  const category = categoryEdit ?? guessCategory(parsed);
   // The same name elsewhere on the map is probably another branch; here, the same place.
   const match = useMemo(
     () => (kind === "place" && location && name.trim() && !duplicate ? branchOf(items, { name, location }) : undefined),
@@ -126,6 +126,16 @@ export function AddForm({ diary, initial, onSaved, onQueued, onCancel }: Props) 
     [items, findLater, duplicate, name, diary.device.accountId],
   );
   const [joinBranch, setJoinBranch] = useState(true);
+  // A new branch takes the chain's category, cuisine and wallet bleeder, as the resolver's outlets do.
+  const branchFacts = useMemo(() => {
+    if (match?.kind !== "branch" || !joinBranch) return undefined;
+    const item = items.find((i) => i.id === match.placeId);
+    return item ? readPayload("place", item.payload) : undefined;
+  }, [items, match, joinBranch]);
+  const branchAreas = useMemo(() => (match?.kind === "branch" ? (outletAreas(items, match.placeId) ?? match.area) : undefined), [items, match]);
+  const category = categoryEdit ?? branchFacts?.category ?? guessCategory(parsed);
+  const duplicateStatus = duplicate ? statusOf(items, duplicate.id, diary.device.accountId) : undefined;
+  const near = useMemo(() => (location ? nearestArea(items, location) : undefined), [items, location]);
   const showPicker = adjusting || (location === null && !findLater && !onto && expansion.kind !== "loading");
 
   const tagChoices: TagChoice[] = [
@@ -232,7 +242,11 @@ export function AddForm({ diary, initial, onSaved, onQueued, onCancel }: Props) 
       // Someone may have put it in the catalogue already: add to theirs rather than a copy.
       const existing =
         kind === "place" ? ((await findCataloguePlace(diary, result.facts.sourceLinks)) ?? (match?.kind === "same" ? match.placeId : undefined)) : undefined;
-      if (match?.kind === "branch" && joinBranch) result.facts.chain = { ...match.chain };
+      if (match?.kind === "branch" && joinBranch) {
+        result.facts.chain = { ...match.chain };
+        if (branchFacts?.cuisine && !result.facts.cuisine) result.facts.cuisine = branchFacts.cuisine;
+        if (branchFacts?.signatureDish && !result.facts.signatureDish && categoryEdit === null) result.facts.signatureDish = { ...branchFacts.signatureDish };
+      }
       let id: string;
       if (existing) {
         await addOpinions(diary, existing, opinions);
@@ -257,67 +271,121 @@ export function AddForm({ diary, initial, onSaved, onQueued, onCancel }: Props) 
       }}
     >
       <div className={styles.section}>
-        <label className={styles.label} htmlFor="add-input">
-          Name, link or pin
-        </label>
-        <textarea
-          id="add-input"
-          className={styles.headline}
-          rows={text.includes("\n") ? 3 : 1}
-          autoFocus={!initial?.text && !initial?.location}
-          placeholder="Bastian Worli, or paste a Google Maps link"
-          value={text}
-          onChange={(e) => setText(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" && !e.shiftKey) {
-              e.preventDefault();
-              void save();
-            }
-          }}
-        />
-        <InputSummary parsed={parsed} pinned={pinned} expansion={expansion.kind} findLater={findLater && !adjusting} />
-        {duplicate && (
-          <p className={styles.found}>
-            {duplicateFacts ? `${duplicateFacts.name} is already on the map.` : "Already on the map."} Saving adds your notes to it, no lookup needed.{" "}
-            <Link href={`/place#${duplicate.id}`} className={styles.textbutton}>
-              Open it
-            </Link>
-          </p>
+        {parsed.link ? <span className={styles.label}>Name, link or pin</span> : (
+          <label className={styles.label} htmlFor="add-input">
+            Name, link or pin
+          </label>
         )}
-        {match?.kind === "same" && (
-          <p className={styles.found}>
-            {match.name} is already on the map here. Saving adds your notes to it.{" "}
-            <Link href={`/place#${match.placeId}`} className={styles.textbutton}>
-              Open it
-            </Link>
-          </p>
-        )}
-        {known && (
-          <p className={styles.found}>
-            {known.status ? `You already have ${known.name} (${STATUS_LABELS[known.status]}).` : `${known.name} is already on the map.`} If
-            the lookup finds the same place, your notes go onto it.{" "}
-            <Link href={`/place#${known.placeId}`} className={styles.textbutton}>
-              Open it
-            </Link>{" "}
+        {parsed.link ? (
+          <div className={styles.linkchip}>
+            <span className={styles.linkicon} aria-hidden="true">
+              <Icon name="link" size="m" />
+            </span>
+            <span className={styles.linktext}>
+              <b>{parsed.name ?? `${SOURCE_NAMES[parsed.source ?? "other"]} link`}</b>
+              <span>
+                {parsed.name ? `${SOURCE_NAMES[parsed.source ?? "other"]} · ` : ""}
+                {shortUrl(parsed.link)}
+              </span>
+            </span>
             <button
               type="button"
-              className={styles.textbutton}
-              disabled={saving}
-              onClick={() => void saveOnto(known.placeId, known.name, items.find((i) => i.id === known.placeId)?.type === "private_place")}
+              className={styles.linkclear}
+              aria-label="Clear the link"
+              onClick={() => {
+                setText("");
+                setNameEdit(null);
+                setTimeout(() => document.getElementById("add-input")?.focus(), 0);
+              }}
             >
-              It&apos;s this one, add to it
+              <Icon name="x" size="s" />
             </button>
-          </p>
+          </div>
+        ) : (
+          <>
+            <textarea
+              id="add-input"
+              className={styles.headline}
+              rows={text.includes("\n") ? 3 : 1}
+              autoFocus={!initial?.text && !initial?.location}
+              placeholder="A name or a link"
+              aria-describedby="add-input-help"
+              value={text}
+              onChange={(e) => setText(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !e.shiftKey) {
+                  e.preventDefault();
+                  void save();
+                }
+              }}
+            />
+            {!text.trim() && (
+              <p id="add-input-help" className={styles.note}>
+                Like Bastian Worli, or paste a Google Maps, Zomato or District link.
+              </p>
+            )}
+          </>
+        )}
+        <InputSummary parsed={parsed} pinned={pinned} expansion={expansion.kind} findLater={findLater && !adjusting} />
+        {duplicate && (
+          <Slip kicker="Already in your diary">
+            <p className={styles.slipline}>
+              <b>{duplicateFacts?.name ?? "This place"}</b>
+              {duplicateStatus ? ` · ${STATUS_LABELS[duplicateStatus]}` : ""}. Saving adds your notes to it. Nothing is looked up.
+            </p>
+            <div className={styles.slipactions}>
+              <Link href={`/place#${duplicate.id}`} className={styles.textbutton}>
+                Open it instead
+              </Link>
+            </div>
+          </Slip>
+        )}
+        {match?.kind === "same" && (
+          <Slip kicker="Already in your diary">
+            <p className={styles.slipline}>
+              <b>{match.name}</b> is already on the map here. Saving adds your notes to it.
+            </p>
+            <div className={styles.slipactions}>
+              <Link href={`/place#${match.placeId}`} className={styles.textbutton}>
+                Open it instead
+              </Link>
+            </div>
+          </Slip>
+        )}
+        {known && (
+          <Slip kicker="Already in your diary">
+            <p className={styles.slipline}>
+              <b>{known.name}</b>
+              {known.status ? ` · ${STATUS_LABELS[known.status]}` : " is on the map"}. Is it this one? If the lookup finds it, your notes go onto it anyway.
+            </p>
+            <div className={styles.slipactions}>
+              <button
+                type="button"
+                className={styles.textbutton}
+                disabled={saving}
+                onClick={() => void saveOnto(known.placeId, known.name, items.find((i) => i.id === known.placeId)?.type === "private_place")}
+              >
+                Yes, add my notes
+              </button>
+              <Link href={`/place#${known.placeId}`} className={styles.textbutton}>
+                Open it
+              </Link>
+            </div>
+          </Slip>
         )}
         {match?.kind === "branch" && (
-          <label className={styles.found}>
-            <input type="checkbox" checked={joinBranch} onChange={(e) => setJoinBranch(e.target.checked)} /> Another branch of {match.chain.name}
-            {match.area ? ` (on the map in ${match.area})` : ""}. Show them as one place, with your notes on this branch.
-          </label>
+          <Slip kicker="Another branch?">
+            <p className={styles.slipline}>
+              <b>{match.chain.name}</b> is already on the map{branchAreas ? ` in ${branchAreas}` : ""}.
+            </p>
+            <label className={styles.tickline}>
+              <input type="checkbox" checked={joinBranch} onChange={(e) => setJoinBranch(e.target.checked)} /> Show them as one place
+            </label>
+          </Slip>
         )}
       </div>
 
-      {hasLinkOrCoords && (
+      {hasLinkOrCoords && !onto && (
         <div className={styles.section}>
           <label className={styles.label} htmlFor="add-name">
             Name
@@ -335,14 +403,14 @@ export function AddForm({ diary, initial, onSaved, onQueued, onCancel }: Props) 
       <div className={styles.section}>
         <div className={styles.row}>
           <span className={styles.label}>On the map</span>
-          {location && !showPicker && (
+          {location && !showPicker && !onto && (
             <button type="button" className={styles.textbutton} onClick={() => setAdjusting(true)}>
               Adjust pin
             </button>
           )}
           {findLater && !showPicker && (
             <button type="button" className={styles.textbutton} onClick={() => setAdjusting(true)}>
-              Drop a pin instead
+              Drop a pin
             </button>
           )}
         </div>
@@ -360,14 +428,18 @@ export function AddForm({ diary, initial, onSaved, onQueued, onCancel }: Props) 
             </p>
           </>
         ) : onto ? (
-          <p className={styles.note}>On the map already, at {onto.name}&apos;s pin.</p>
+          <p className={styles.note}>On the map already, at {onto.name}&apos;s pin. Its name and category come from the diary.</p>
         ) : findLater ? (
           <p className={styles.note}>It waits in your Inbox until it&apos;s found. Only the {parsed.link ? (nameEdit?.trim() ? "name and link" : "link") : "name"} is sent to look it up.</p>
         ) : (
           location && (
-            <p className={styles.note}>
-              {location.lat.toFixed(5)}, {location.lng.toFixed(5)} {fromLink ? "from the link" : "· dropped pin, stays private"}
-            </p>
+            <>
+              <PinPicker value={location} onChange={() => undefined} still />
+              <p className={styles.note}>
+                {fromLink ? "Pin from the link" : "Dropped pin, stays private"}
+                {near ? ` · near ${near}` : ""}
+              </p>
+            </>
           )
         )}
       </div>
@@ -382,10 +454,26 @@ export function AddForm({ diary, initial, onSaved, onQueued, onCancel }: Props) 
         <BoardPicker boards={choices} value={pickedBoards} onChange={setBoards} noPublic={noPublic} />
       </div>
 
-      <div className={styles.section}>
-        <span className={styles.label}>Category</span>
-        <CategoryPicker value={category} onChange={setCategoryEdit} />
-      </div>
+      {onto ? null : branchFacts && categoryEdit === null ? (
+        <div className={styles.section}>
+          <span className={styles.label}>Category</span>
+          <p className={styles.note}>
+            Category, cuisine and wallet bleeder come from {match?.kind === "branch" ? match.chain.name : branchFacts.name} (
+            {[categoryStyle(branchFacts.category).label, branchFacts.signatureDish ? `${branchFacts.signatureDish.name} ₹${branchFacts.signatureDish.priceInr}` : ""]
+              .filter(Boolean)
+              .join(" · ")}
+            ).{" "}
+            <button type="button" className={styles.textbutton} onClick={() => setCategoryEdit(branchFacts.category)}>
+              Change
+            </button>
+          </p>
+        </div>
+      ) : (
+        <div className={styles.section}>
+          <span className={styles.label}>Category</span>
+          <CategoryPicker value={category} onChange={setCategoryEdit} />
+        </div>
+      )}
 
       <div className={styles.section}>
         <span className={styles.label}>Tags</span>
@@ -425,13 +513,20 @@ export function AddForm({ diary, initial, onSaved, onQueued, onCancel }: Props) 
             </button>
           )}
           <button type="submit" className={`${styles.primary} ${styles.grow}`} disabled={saving || (!location && !findLater && !onto)}>
-            {saving ? "Saving…" : location || onto ? "Save it" : findLater ? "Save and find it" : expansion.kind === "loading" ? "Opening the link…" : "Drop a pin to save"}
+            {saving ? "Saving…" : onto ? "Add my notes to it" : location ? "Save it" : findLater ? "Save and find it" : expansion.kind === "loading" ? "Opening the link…" : "Drop a pin to save"}
             {!saving && (location || findLater || onto) && <Icon name="check" size="m" />}
           </button>
         </div>
       </div>
     </form>
   );
+}
+
+const SOURCE_NAMES: Record<LinkSource, string> = { "google-maps": "Google Maps", zomato: "Zomato", district: "District", other: "Web" };
+
+/** A link without its scheme and www, for a one-line label. */
+function shortUrl(link: string): string {
+  return link.replace(/^[a-z]+:\/\//i, "").replace(/^www\./, "");
 }
 
 interface SummaryProps {
@@ -443,7 +538,6 @@ interface SummaryProps {
 
 function InputSummary({ parsed, pinned, expansion, findLater }: SummaryProps) {
   if (expansion === "loading") return <p className={styles.note}>Opening the short link…</p>;
-  if (parsed.source === "google-maps" && parsed.location) return <p className={styles.note}>Found the place on the link.</p>;
   if (pinned || !findLater) return null;
   if (expansion === "partial") return <p className={styles.note}>The link doesn&apos;t carry a pin, so it will be looked up.</p>;
   if (parsed.shortLink) return <p className={styles.note}>Couldn&apos;t open the short link here, so it will be looked up.</p>;

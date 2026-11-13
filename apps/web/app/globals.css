@@ -16,6 +16,8 @@
   --paper-deep: #e6ddc9;
   --rule: #e3dac7;
   --rule-ink: #cbbfa6;
+  /* The dashed edge of a button that is not ready yet. */
+  --off-line: #b3a68b;
   --ink: #201f1b;
   --ink-2: #4f4a42;
   --ink-3: #6a6356;
@@ -236,6 +238,30 @@
   :focus-visible {
     outline: 2px solid var(--indigo);
     outline-offset: 2px;
+  }
+
+  /* The ink tick box: an inked square; ticked, a red square is stamped inside it. */
+  input[type="checkbox"] {
+    appearance: none;
+    -webkit-appearance: none;
+    flex: none;
+    width: 22px;
+    height: 22px;
+    margin: 0;
+    border: 1.8px solid var(--ink);
+    border-radius: 6px;
+    background: var(--page);
+    vertical-align: middle;
+    cursor: var(--cursor-press);
+    transition: background-color 0.15s, box-shadow 0.15s;
+  }
+  input[type="checkbox"]:checked {
+    background: var(--seal);
+    box-shadow: inset 0 0 0 3.5px var(--page);
+  }
+  input[type="checkbox"]:disabled {
+    opacity: 0.45;
+    cursor: var(--cursor);
   }
 
   ::selection {

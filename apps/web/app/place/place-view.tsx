@@ -10,7 +10,7 @@ import styles from "@/app/_entries/entries.module.css";
 import { Avatar } from "@/app/_account/parts";
 import { sealDate } from "@/app/diary/places-list";
 import { toastError } from "@/lib/errors";
-import { BoardBadge, buttonClass, Icon, Pin, useConfirm } from "@/lib/ui";
+import { BoardBadge, buttonClass, Icon, MoreMenu, useConfirm, type MenuItem } from "@/lib/ui";
 import { onMap } from "@/lib/map/style";
 import { PlaceMap } from "./place-map";
 import { RedateSheet } from "./redate-sheet";
@@ -69,6 +69,7 @@ export function PlaceView({ diary, placeId: asked }: { diary: Diary; placeId: st
   const [focusId, setFocusId] = useState(placeId);
   /** On a chain: "all", or the location a new comment is about; null until picked (the one visited). */
   const [commentScope, setCommentScope] = useState<string | null>(null);
+  const [showDishes, setShowDishes] = useState(false);
 
   const me = diary.device.accountId;
   const place = viewOf(snapshot.places, placeId);
@@ -172,18 +173,36 @@ export function PlaceView({ diary, placeId: asked }: { diary: Diary; placeId: st
         </span>
         <span className="stub worn grid place-items-center pr-4 pl-3.5 text-[28px]">₹{place.signatureDish.priceInr.toLocaleString("en-IN")}</span>
       </div>
-      {basis.length > 0 && (
-        <details className="text-[12.5px] text-[var(--ink-2)]">
-          <summary className="cursor-pointer">The {basis.length} dishes</summary>
-          <ul className="mt-1 flex flex-col gap-0.5">
-            {basis.map((d, i) => (
-              <li key={i} className="flex justify-between gap-3">
-                <span className="min-w-0">{d.name}</span>
-                <span className="shrink-0 tabular-nums">₹{d.priceInr.toLocaleString("en-IN")}</span>
-              </li>
-            ))}
+      {basis.length > 0 && !showDishes && (
+        <button type="button" className={`${styles.textbutton} self-start text-[12.5px]`} aria-expanded={false} onClick={() => setShowDishes(true)}>
+          See the {basis.length} dishes
+        </button>
+      )}
+      {basis.length > 0 && showDishes && place.signatureDish && (
+        <div className={p.receipt}>
+          {place.signatureDish.section && (
+            <span className="kicker text-[9.5px]">
+              {[place.signatureDish.section, place.signatureDish.chicken === false ? "veg" : place.signatureDish.chicken ? "chicken" : undefined].filter(Boolean).join(" · ")}
+            </span>
+          )}
+          <ul>
+            {basis.map((d, i) => {
+              const middle = d.priceInr === place.signatureDish?.priceInr;
+              return (
+                <li key={i} className={middle ? "font-bold" : undefined}>
+                  <span className="min-w-0">
+                    {d.name}
+                    {middle ? " · middle price" : ""}
+                  </span>
+                  <span className="shrink-0 tabular-nums">₹{d.priceInr.toLocaleString("en-IN")}</span>
+                </li>
+              );
+            })}
           </ul>
-        </details>
+          <button type="button" className={`${styles.textbutton} self-start text-[12.5px]`} aria-expanded onClick={() => setShowDishes(false)}>
+            Hide the dishes
+          </button>
+        </div>
       )}
     </div>
   );
@@ -201,6 +220,26 @@ export function PlaceView({ diary, placeId: asked }: { diary: Diary; placeId: st
       ))}
     </div>
   );
+
+  const takeOff = async () => {
+    const body = othersHere
+      ? "Your stamp, tags and comments on it are deleted. The place and everyone else's notes stay."
+      : "Your stamp, tags and comments on it are deleted. The place stays in the diary.";
+    if (!(await ask({ title: `Take ${place.name} off your list?`, body, confirmLabel: "Take it off", danger: true }))) return;
+    run(() => removeFromList(diary, place.id));
+  };
+  const relook = () => {
+    setRelookQuery(defaultQuery(facts as PlacePayload));
+    setRelooking(true);
+    // The form opens in the details card, at the foot of the page.
+    setTimeout(() => document.getElementById("relook")?.scrollIntoView({ behavior: "smooth", block: "center" }), 50);
+  };
+  const editLabel = focus ? `Edit ${outletLabel(place, focus)}` : "Edit details";
+  const menu: MenuItem[] = [
+    ...(myStatus !== null && item.type === "place" ? [{ label: "Take off my list", icon: "trash" as const, onSelect: () => void takeOff() }] : []),
+    ...(canEdit ? [{ label: editLabel, icon: "pencil" as const, onSelect: () => setEditing(true) }] : []),
+    ...(canEdit && item.type === "place" ? [{ label: "Look it up again", icon: "search" as const, onSelect: relook }] : []),
+  ];
 
   if (editing) {
     return (
@@ -236,6 +275,11 @@ export function PlaceView({ diary, placeId: asked }: { diary: Diary; placeId: st
           <Link href="/?view=list" className={p.backFab} aria-label="Back to your places">
             <Icon name="chevronLeft" />
           </Link>
+          {menu.length > 0 && (
+            <span className={p.moreFab}>
+              <MoreMenu label={`More: ${menu.map((m) => m.label.toLowerCase()).join(", ")}`} items={menu} className={p.fab ?? ""} />
+            </span>
+          )}
         </div>
         <div className={p.wideOnly}>{bleeder}</div>
       </aside>
@@ -254,7 +298,9 @@ export function PlaceView({ diary, placeId: asked }: { diary: Diary; placeId: st
               </span>
             </h1>
             {outlets ? (
-              <p className="sub">{outlets.length} locations</p>
+              <p className="sub">
+                {outlets.length} locations{been && been.size > 0 ? ` · you've been to ${been.size === outlets.length ? "all of them" : been.size}` : ""}
+              </p>
             ) : (
               (place.address || place.isPrivate) && (
                 <p className="sub">
@@ -287,21 +333,6 @@ export function PlaceView({ diary, placeId: asked }: { diary: Diary; placeId: st
 
           <StatusToggle label="Your status" value={myStatus} onChange={(s: Status) => run(() => setStatus(diary, place.id, s, boards))} />
           {myStatus === null && <p className="hand -mt-2 text-[16px] text-ink-2">Stamp it Want to or Visited to put it on your list.</p>}
-          {myStatus !== null && item.type === "place" && (
-            <button
-              type="button"
-              className={`${styles.textbutton} -mt-2 self-start text-seal-deep`}
-              onClick={async () => {
-                const body = othersHere
-                  ? "Your stamp, tags and comments on it are deleted. The place and everyone else's notes stay."
-                  : "Your stamp, tags and comments on it are deleted. The place stays in the diary.";
-                if (!(await ask({ title: `Take ${place.name} off your list?`, body, confirmLabel: "Take it off", danger: true }))) return;
-                run(() => removeFromList(diary, place.id));
-              }}
-            >
-              Take off my list
-            </button>
-          )}
           {myStatus === "visited" && myStatusOpinion && (
             <RedateSheet
               open={redating}
@@ -321,34 +352,47 @@ export function PlaceView({ diary, placeId: asked }: { diary: Diary; placeId: st
           {outlets && (
             <section className={styles.section}>
               <h2>Locations</h2>
-              <ul className={p.outlets}>
-                {outlets.map((o) => (
-                  <li key={o.id} className={o.id === at.id ? `${p.outlet} ${p.outletFocus}` : p.outlet}>
-                    <div className={p.outletHead}>
-                      <button type="button" className={p.outletName} onClick={() => setFocusId(o.id)} aria-pressed={o.id === at.id}>
-                        <Icon name="pin" size="s" />
-                        <span>
-                          <strong>{outletLabel(place, o)}</strong>
-                          {o.address && <span className="sub"> · {o.address}</span>}
-                        </span>
-                      </button>
-                      {/* Which locations this person has been to: tap to mark one, or unmark it. */}
-                      <button
-                        type="button"
-                        className={p.outletSeal}
-                        aria-pressed={been?.has(o.id) ?? false}
-                        aria-label={`${been?.has(o.id) ? "Been to" : "Not been to"} ${outletLabel(place, o)}`}
-                        onClick={() => run(() => setOutletVisited(diary, place.id, o.id, !been?.has(o.id), boards))}
-                      >
-                        <Pin kind={been?.has(o.id) ? "visited" : myStatus === "visited" ? "outlet" : "want"} category={place.category} />
-                        <span className="hand">{been?.has(o.id) ? "Been here" : myStatus === "visited" ? "Not yet" : "Been here?"}</span>
-                      </button>
-                    </div>
-                    {links(o, true)}
-                  </li>
-                ))}
-              </ul>
-              <AddLocation diary={diary} items={items} placeId={place.id} onDone={setNotice} />
+              <div className={p.locs}>
+                <ul className={p.outlets}>
+                  {outlets.map((o) => {
+                    const label = outletLabel(place, o);
+                    const rest = addressRest(o.address, label);
+                    const on = been?.has(o.id) ?? false;
+                    return (
+                      <li key={o.id} className={o.id === at.id ? `${p.outlet} ${p.outletFocus}` : p.outlet}>
+                        <button type="button" className={p.outletName} onClick={() => setFocusId(o.id)} aria-pressed={o.id === at.id} aria-label={`Show ${label} on the map`}>
+                          <Icon name="pin" size="s" />
+                        </button>
+                        <div className={p.outletBody}>
+                          <button type="button" className={p.outletTitle} onClick={() => setFocusId(o.id)} tabIndex={-1}>
+                            {label}
+                          </button>
+                          {rest && <span className={p.outletSub}>{rest}</span>}
+                          {links(o, true)}
+                        </div>
+                        {/* Which locations this person has been to: tap to mark one, or unmark it. */}
+                        <button
+                          type="button"
+                          className={p.outletSeal}
+                          aria-pressed={on}
+                          aria-label={on ? `Been to ${label}. Unmark it` : `Mark ${label} as been here`}
+                          onClick={() => run(() => setOutletVisited(diary, place.id, o.id, !on, boards))}
+                        >
+                          {on ? (
+                            <span className="seal solid" aria-hidden="true">
+                              <Icon name="check" size="s" />
+                            </span>
+                          ) : (
+                            <span className={`seal ${p.sealOpen}`} aria-hidden="true" />
+                          )}
+                          <span className={on ? "board warn" : "board personal"}>{on ? "Been" : myStatus === "visited" ? "Not yet" : "Been here?"}</span>
+                        </button>
+                      </li>
+                    );
+                  })}
+                </ul>
+                <AddLocation diary={diary} items={items} placeId={place.id} onDone={setNotice} />
+              </div>
             </section>
           )}
           {/* On a single place, another location makes it a chain. */}
@@ -365,6 +409,7 @@ export function PlaceView({ diary, placeId: asked }: { diary: Diary; placeId: st
           {/* Where this person's own stamp, tags and notes go, not where others posted theirs. */}
           <section className={`${styles.section} ${myStatus === null ? "opacity-60" : ""}`}>
             <h2>{myStatus === null ? "Your stamp will go on" : "Your stamp is on"}</h2>
+            <p className={`${styles.note} order-last`}>Tags and comments you add here go on the same boards, unless you pick otherwise as you write.</p>
             <BoardPicker
               boards={choices}
               value={boards}
@@ -423,7 +468,7 @@ export function PlaceView({ diary, placeId: asked }: { diary: Diary; placeId: st
               onCreate={(def) => run(async () => applyTag(diary, place.id, await defineTag(diary, def, tagBoards), tagBoards))}
             />
             {myStatus !== null && (
-              <FollowBoards what="New tags" boards={choices} statusBoards={boards} value={tagBoardEdit && tagBoards} onChange={setTagBoardEdit} noPublic={place.isPrivate} />
+              <FollowBoards compact what="New tags" boards={choices} statusBoards={boards} value={tagBoardEdit && tagBoards} onChange={setTagBoardEdit} noPublic={place.isPrivate} />
             )}
           </section>
 
@@ -467,54 +512,40 @@ export function PlaceView({ diary, placeId: asked }: { diary: Diary; placeId: st
                 value={draft}
                 onChange={(e) => setDraft(e.target.value)}
               />
-              {outlets && myStatus !== null && (
-                <label className={styles.row}>
-                  <span className={styles.label}>About</span>
-                  <select className={styles.input} value={scope} onChange={(e) => setCommentScope(e.target.value)}>
-                    <option value="all">All locations</option>
-                    {outlets.map((o) => (
-                      <option key={o.id} value={o.id}>
-                        {outletLabel(place, o)}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-              )}
-              {myStatus !== null && (
-                <FollowBoards what="Comment" boards={choices} statusBoards={boards} value={commentBoardEdit && commentBoards} onChange={setCommentBoardEdit} noPublic={place.isPrivate} />
-              )}
-              <div className={styles.row}>
+              {outlets && myStatus !== null && <AboutChips options={outletOptions} value={scope} onChange={setCommentScope} />}
+              <div className={p.send}>
                 <button type="submit" className={buttonClass({ size: "m" })} disabled={myStatus === null || !draft.trim()}>
                   Add comment
                 </button>
+                {myStatus !== null && (
+                  <FollowBoards compact what="Comment" boards={choices} statusBoards={boards} value={commentBoardEdit && commentBoards} onChange={setCommentBoardEdit} noPublic={place.isPrivate} />
+                )}
               </div>
             </form>
           </section>
 
-          {canEdit && (
+          {(canEdit || canDelete) && (
             <section className={styles.section}>
-              <div className={styles.row}>
-                <button type="button" className="chip soft" onClick={() => setEditing(true)}>
-                  <Icon name="pencil" size="s" />
-                  {focus ? `Edit ${outletLabel(place, focus)}` : "Edit details"}
-                </button>
-                {item.type === "place" && (
-                  <button
-                    type="button"
-                    className="chip soft"
-                    onClick={() => {
-                      setRelookQuery(defaultQuery(facts as PlacePayload));
-                      setRelooking(true);
-                    }}
-                  >
-                    <Icon name="search" size="s" />
-                    Look it up again
+              <h2>{isAdmin && !isAuthor ? "Place details · admin" : "Place details"}</h2>
+              <div className={p.details}>
+                {canEdit && (
+                  <button type="button" className={p.detailRow} onClick={() => setEditing(true)}>
+                    <Icon name="pencil" size="m" />
+                    <span>{editLabel}</span>
+                    <Icon name="chevronRight" size="s" />
+                  </button>
+                )}
+                {canEdit && item.type === "place" && (
+                  <button type="button" className={p.detailRow} onClick={relook} aria-expanded={relooking}>
+                    <Icon name="search" size="m" />
+                    <span>Look it up again</span>
+                    <Icon name="chevronRight" size="s" />
                   </button>
                 )}
                 {canDelete && (
                   <button
                     type="button"
-                    className="chip soft text-seal-deep"
+                    className={`${p.detailRow} text-seal-deep`}
                     onClick={async () => {
                       const what = focus ? `the ${outletLabel(place, focus)} location of ${place.name}` : place.name;
                       const body =
@@ -528,12 +559,15 @@ export function PlaceView({ diary, placeId: asked }: { diary: Diary; placeId: st
                       });
                     }}
                   >
-                    {focus ? "Delete this location" : "Delete place"}
+                    <Icon name="trash" size="m" />
+                    <span>{focus ? "Delete this location" : "Delete place"}</span>
                   </button>
                 )}
               </div>
+              {isAdmin && !isAuthor && <p className={styles.note}>Only you see this card, as the admin.</p>}
               {relooking && (
                 <form
+                  id="relook"
                   className="flex flex-col gap-2"
                   onSubmit={(e) => {
                     e.preventDefault();
@@ -620,19 +654,7 @@ function CommentRow({ comment, snapshot, mine, scope, locations, onEdit, onDelet
       {editing ? (
         <>
           <textarea className={styles.textarea} aria-label="Edit comment" value={text} onChange={(e) => setText(e.target.value)} autoFocus />
-          {locations && (
-            <label className={styles.row}>
-              <span className={styles.label}>About</span>
-              <select className={styles.input} aria-label="Comment is about" value={about} onChange={(e) => setAbout(e.target.value)}>
-                <option value="all">All locations</option>
-                {locations.options.map((o) => (
-                  <option key={o.id} value={o.id}>
-                    {o.label}
-                  </option>
-                ))}
-              </select>
-            </label>
-          )}
+          {locations && <AboutChips options={locations.options} value={about} onChange={setAbout} />}
           <div className={styles.row}>
             <button
               type="button"
@@ -674,28 +696,29 @@ function CommentRow({ comment, snapshot, mine, scope, locations, onEdit, onDelet
             <Badges snapshot={snapshot} ids={comment.boards} />
             {mine && (
               <span className={p.commentActions}>
-                <button
-                  type="button"
-                  className={styles.textbutton}
-                  onClick={() => {
-                    setText(comment.text);
-                    setAbout(locations?.value ?? "all");
-                    setEditing(true);
-                  }}
-                  aria-label={`Edit comment: ${short}`}
-                >
-                  Edit
-                </button>
-                <button
-                  type="button"
-                  className={styles.textbutton}
-                  aria-label={`Delete comment: ${short}`}
-                  onClick={async () => {
-                    if (await ask({ title: "Delete this comment?", confirmLabel: "Delete", danger: true })) onDelete();
-                  }}
-                >
-                  Delete
-                </button>
+                <MoreMenu
+                  label={`Comment options: ${short}`}
+                  items={[
+                    {
+                      label: locations ? "Edit or move" : "Edit",
+                      icon: "pencil",
+                      onSelect: () => {
+                        setText(comment.text);
+                        setAbout(locations?.value ?? "all");
+                        setEditing(true);
+                      },
+                    },
+                    {
+                      label: "Delete",
+                      icon: "trash",
+                      danger: true,
+                      onSelect: () =>
+                        void (async () => {
+                          if (await ask({ title: "Delete this comment?", confirmLabel: "Delete", danger: true })) onDelete();
+                        })(),
+                    },
+                  ]}
+                />
               </span>
             )}
           </div>
@@ -704,6 +727,33 @@ function CommentRow({ comment, snapshot, mine, scope, locations, onEdit, onDelet
       {confirmSheet}
     </li>
   );
+}
+
+/** Which location a comment is about, as chips: All locations, then each outlet. */
+function AboutChips({ options, value, onChange }: { options: readonly { id: string; label: string }[]; value: string; onChange: (id: string) => void }) {
+  return (
+    <div className="flex flex-col gap-1.5">
+      <span className="kicker text-[9.5px]" id="about-label">
+        About
+      </span>
+      <div className="flex flex-wrap gap-1.5" role="group" aria-labelledby="about-label">
+        {[{ id: "all", label: "All locations" }, ...options].map((o) => (
+          <button key={o.id} type="button" className={`chip ${o.id === value ? "on" : "soft"} h-8 text-[12.5px]`} aria-pressed={o.id === value} onClick={() => onChange(o.id)}>
+            {o.label}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/** An address without the part already shown as the location's name, the city or the postcode. */
+function addressRest(address: string | undefined, label: string): string | undefined {
+  const parts = (address ?? "")
+    .split(",")
+    .map((x) => x.replace(/\b\d{3}\s?\d{3}\b/g, "").trim())
+    .filter((x) => x && x.toLowerCase() !== label.toLowerCase() && !/^(mumbai|bombay|maharashtra|india)$/i.test(x));
+  return parts.length > 0 ? parts.join(", ") : undefined;
 }
 
 function Author({ snapshot, id }: { snapshot: DiarySnapshot; id: string }) {

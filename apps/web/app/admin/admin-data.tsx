@@ -98,7 +98,8 @@ export function AdminData({ diary }: { diary: Diary }) {
           Saves the whole database as a SQL file. It holds what the server holds: sealed envelopes, wrapped keys and everyone&apos;s passphrase-sealed backups,
           never anything readable. Keep it private all the same.
         </p>
-        <p className={s.hint}>To restore into an empty database: wrangler d1 execute map-diary --remote --file=the-file.sql</p>
+        <p className={s.hint}>To restore into an empty database, run:</p>
+        <code className={s.command}>wrangler d1 execute map-diary --remote --file=the-file.sql</code>
         {notice && (
           <p className={s.okText} role="status">
             {notice}

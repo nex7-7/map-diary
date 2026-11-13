@@ -127,7 +127,11 @@
 }
 
 .button:disabled {
-  opacity: 0.5;
+  border-style: dashed;
+  border-color: var(--off-line);
+  background: var(--paper-deep);
+  color: var(--ink-3);
+  box-shadow: none;
   cursor: var(--cursor);
 }
 

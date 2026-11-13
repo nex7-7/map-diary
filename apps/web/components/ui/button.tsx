@@ -7,8 +7,11 @@ import { Slot } from "radix-ui"
  * Ink & Paper buttons: a 2px ink outline sitting on a hard ink shadow, which squishes flat
  * when pressed. The main action is inked in vermilion like a seal.
  */
+const OFF =
+  "disabled:border-dashed disabled:border-[#b3a68b] disabled:bg-paper-deep disabled:text-ink-3 disabled:shadow-none aria-disabled:border-dashed aria-disabled:border-[#b3a68b] aria-disabled:bg-paper-deep aria-disabled:text-ink-3 aria-disabled:shadow-none"
+
 const buttonVariants = cva(
-  "inline-flex shrink-0 items-center justify-center gap-2 border-2 border-ink font-sans font-bold whitespace-nowrap no-underline transition-[transform,box-shadow,background-color] duration-200 ease-spring outline-none select-none focus-visible:ring-[3px] focus-visible:ring-ring/40 enabled:active:translate-y-[3px] disabled:pointer-events-none disabled:opacity-45 aria-disabled:pointer-events-none aria-disabled:opacity-45 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
+  "inline-flex shrink-0 items-center justify-center gap-2 border-2 border-ink font-sans font-bold whitespace-nowrap no-underline transition-[transform,box-shadow,background-color] duration-200 ease-spring outline-none select-none focus-visible:ring-[3px] focus-visible:ring-ring/40 enabled:active:translate-y-[3px] disabled:pointer-events-none aria-disabled:pointer-events-none [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
   {
     variants: {
       variant: {
@@ -31,6 +34,9 @@ const buttonVariants = cva(
       },
     },
     compoundVariants: [
+      // Not ready yet: dashed paper with grey ink, readable but clearly not pressable.
+      { variant: ["default", "ink", "outline", "secondary", "destructive", "claude"], className: OFF },
+      { variant: ["ghost", "link"], className: "disabled:opacity-45 aria-disabled:opacity-45" },
       // Small buttons sit on a shallower shadow.
       { size: ["sm", "icon-sm"], variant: ["default", "outline", "secondary", "claude"], className: "shadow-[0_3px_0_var(--ink)]" },
       { size: ["sm", "icon-sm"], variant: "destructive", className: "shadow-[0_3px_0_var(--seal-deep)]" },

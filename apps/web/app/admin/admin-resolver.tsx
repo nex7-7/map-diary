@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { accountStyles as s, day } from "@/app/_account/parts";
 import { userMessage } from "@/lib/errors";
 import { refreshWallets, resolver, retryAllFailed, retryJob, walletsToRefresh, type AdminResolverView, type Diary } from "@/lib/device";
-import { Button } from "@/lib/ui";
+import { Button, Icon } from "@/lib/ui";
 
 /**
  * The resolver queue: what is waiting, what failed, and putting failed jobs back. Jobs are
@@ -60,13 +60,21 @@ export function AdminResolver({ diary }: { diary: Diary }) {
       )}
       <section className={s.card}>
         <h2 className="heading-s">Queue</h2>
-        <p className="sub" style={{ margin: 0 }}>
-          {view.counts.pending} waiting · {view.counts.failed} failed · {view.counts.resolved} found and not yet collected
-        </p>
-        <p className={s.hint}>
-          The resolver takes the oldest waiting jobs on each run and gives up on one after 5 tries. A job leaves the queue once the device that asked collects
-          it.
-        </p>
+        <div className={s.stats}>
+          <div className={s.stat}>
+            <strong>{view.counts.pending}</strong>
+            <span>Waiting</span>
+          </div>
+          <div className={view.counts.failed > 0 ? `${s.stat} ${s.statAlert}` : s.stat}>
+            <strong>{view.counts.failed}</strong>
+            <span>Failed</span>
+          </div>
+          <div className={s.stat}>
+            <strong>{view.counts.resolved}</strong>
+            <span>Uncollected</span>
+          </div>
+        </div>
+        <p className={s.hint}>Oldest jobs first. A job fails after 5 tries and leaves once the device that asked collects it.</p>
         <div className={s.buttons}>
           <Button
             variant="secondary"
@@ -74,9 +82,10 @@ export function AdminResolver({ diary }: { diary: Diary }) {
             disabled={busy || failed.length === 0}
             onClick={() => void run(async () => `${await retryAllFailed(diary)} back in the queue.`)}
           >
-            Retry every failed job
+            Retry failed jobs
           </Button>
-          <Button variant="ghost" size="m" disabled={busy} onClick={load}>
+          <Button variant="secondary" size="m" disabled={busy} onClick={load}>
+            <Icon name="refresh" size="s" />
             Refresh
           </Button>
         </div>
@@ -88,8 +97,8 @@ export function AdminResolver({ diary }: { diary: Diary }) {
           {wallets === null ? "Counting…" : wallets === 0 ? "Every food place has a wallet bleeder from the current rules." : `${wallets} food ${wallets === 1 ? "place needs" : "places need"} one (a chain counts once).`}
         </p>
         <p className={s.hint}>
-          Looks each one up again so it gets its wallet bleeder from the current rules, is filed as Restaurant or One hit wonders, and gets any outlets of its
-          chain that are missing. Nothing else about the place changes. A clear match fills in by itself; the rest wait in your Inbox.
+          Looks each one up again with the current rules, and adds any missing outlets of its chain. Clear matches fill in by themselves; the rest wait in your
+          Inbox. Nothing else about a place changes.
         </p>
         <div className={s.buttons}>
           <Button
@@ -131,7 +140,7 @@ function JobList({ title, jobs, busy, onRetry }: { title: string; jobs: Job[]; b
               </span>
             </span>
             {j.query !== null && (j.status === "failed" || j.attempts > 0) && (
-              <Button variant="ghost" size="m" disabled={busy} onClick={() => onRetry(j.id)}>
+              <Button variant="secondary" size="m" disabled={busy} onClick={() => onRetry(j.id)} aria-label={`Retry ${j.query}`}>
                 Retry
               </Button>
             )}

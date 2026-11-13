@@ -345,71 +345,226 @@
   display: none !important;
 }
 
+/* The locations of a chain: one card, a row each, with a small seal for the ones you've been to. */
+.locs {
+  border: 1.5px solid var(--ink);
+  border-radius: 14px;
+  background: var(--page);
+  overflow: hidden;
+}
+
 .outlets {
   list-style: none;
   margin: 0;
   padding: 0;
   display: grid;
-  gap: 10px;
 }
 
 .outlet {
-  display: grid;
-  gap: 6px;
-  padding: 12px 14px;
-  border-radius: 14px;
-  border: 1.5px dashed var(--rule-ink);
-  background: var(--page);
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 12px 12px 10px;
+  border-bottom: 1px dashed var(--rule-ink);
 }
 
+/* The location the map is showing. */
 .outletFocus {
+  background: var(--cream);
+}
+
+.outletName {
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 28px;
+  height: 28px;
+  margin-top: 1px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: none;
+  color: var(--ink-2);
+}
+
+.outletFocus .outletName {
+  color: var(--seal);
+}
+
+.outletBody {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.outletTitle {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--ink);
+  font-family: var(--serif);
+  font-size: 18px;
+  line-height: 1.2;
+  text-align: start;
+}
+
+.outletSub {
+  font-size: 12px;
+  color: var(--ink-2);
+}
+
+.outletBody .links {
+  gap: 2px 14px;
+  font-size: 12.5px;
+}
+
+.outletSeal {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+  width: 70px;
+  padding: 0;
+  border: 0;
+  background: none;
+}
+
+.outletSeal :global(.seal) {
+  width: 30px;
+  height: 30px;
+}
+
+.outletSeal :global(.seal.solid) {
+  color: var(--seal);
+}
+
+.outletSeal :global(.seal.solid) svg {
+  color: var(--cream);
+}
+
+.outletSeal :global(.board) {
+  transform: none;
+}
+
+.sealOpen {
+  box-shadow: none;
+  border-width: 1.6px;
+  border-style: dashed;
+}
+
+/* Inside the card, Add a location is its last row. */
+.locs .addOutlet {
+  border: 0;
+  border-radius: 0;
+  background: repeating-linear-gradient(135deg, transparent 0 8px, rgb(203 191 166 / 0.18) 8px 9px);
+}
+
+.locs .addOutletForm {
+  border: 0;
+  border-top: 1.5px dashed var(--seal);
+  border-radius: 0;
+  background: var(--cream);
+}
+
+.locs .addOutletPlus {
+  border-style: dashed;
+}
+
+/* The ⋯ on the map: Take off my list, Edit details, Look it up again. */
+.moreFab {
+  position: absolute;
+  z-index: 2;
+  top: max(14px, env(safe-area-inset-top));
+  right: 14px;
+}
+
+.fab {
+  display: grid;
+  place-items: center;
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  background: var(--page);
+  color: var(--ink);
   border: 1.5px solid var(--ink);
   box-shadow: 0 3px 0 var(--ink);
 }
 
-.outletHead {
+/* The wallet bleeder's dishes, as a receipt slid out under the ticket. */
+.receipt {
   display: flex;
-  gap: 10px;
-  align-items: flex-start;
-  justify-content: space-between;
-}
-
-.outletSeal {
-  display: grid;
-  justify-items: center;
-  gap: 2px;
-  flex-shrink: 0;
-  padding: 0;
-  border: 0;
-  background: none;
-  color: var(--ink-2);
+  flex-direction: column;
+  gap: 4px;
+  margin: -2px 10px 0;
+  padding: 12px 14px 4px;
+  background: var(--cream);
+  border: 1px solid var(--rule-ink);
+  border-top: 0;
+  border-radius: 0 0 8px 8px;
   font-size: 13px;
-  line-height: 1.1;
-  cursor: var(--cursor-press);
+  max-width: 340px;
 }
 
-.outletSeal[aria-pressed="true"] {
-  color: var(--seal);
-}
-
-.outletName {
-  display: flex;
-  gap: 8px;
-  align-items: flex-start;
+.receipt ul {
+  list-style: none;
+  margin: 0;
   padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.receipt li {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.send {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+}
+
+.send > div {
+  flex: 1;
+  min-width: 0;
+}
+
+/* Edit, look up again and delete, as rows of one card rather than loose pills. */
+.details {
+  display: flex;
+  flex-direction: column;
+  border: 1.5px solid var(--rule-ink);
+  border-radius: 14px;
+  background: var(--page);
+  overflow: hidden;
+}
+
+.detailRow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 48px;
+  padding: 0 14px;
   border: 0;
+  border-bottom: 1px dashed var(--rule-ink);
   background: none;
   color: inherit;
-  font: inherit;
   font-size: 14.5px;
   text-align: start;
-  cursor: var(--cursor-press);
 }
 
-.outletName strong {
-  font-family: var(--serif);
-  font-weight: 400;
-  font-size: 18px;
+.detailRow:last-child {
+  border-bottom: 0;
+}
+
+.detailRow span {
+  flex: 1;
 }
 
 /* "Add a location": a blank outlet row waiting to be filled in. */
@@ -454,7 +609,12 @@
 }
 
 .addOutletForm {
-  gap: 10px;
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+  border-radius: 14px;
+  border: 1.5px dashed var(--rule-ink);
+  background: var(--page);
 }
 
 .addOutletTitle {
@@ -471,16 +631,51 @@
 
 .addOutletCheck {
   display: flex;
-  gap: 8px;
+  gap: 10px;
   align-items: center;
-  font-size: 15px;
+  min-height: 44px;
+  font-size: 14.5px;
 }
 
 .addOutletActions {
   display: flex;
-  gap: 14px;
+  gap: 16px;
   align-items: center;
-  justify-content: flex-end;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.field > span {
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+.field small {
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--ink-2);
+}
+
+/* What the pasted link gave: a pin, or a lookup. */
+.found {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  margin: 0;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: var(--indigo-wash);
+  color: var(--indigo);
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.found svg {
+  margin-top: 2px;
 }
 
 .addOutletSave {

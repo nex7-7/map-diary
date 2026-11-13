@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react
 import { AccountPage, Avatar, IconTile, accountStyles as s, day, seen } from "@/app/_account/parts";
 import { userMessage } from "@/lib/errors";
 import {
+  resolver,
   cancelInvite,
   inviteFriend,
   inviteNotes,
@@ -18,7 +19,7 @@ import {
   type NewAppInvite,
 } from "@/lib/device";
 import { profilesOf } from "@/lib/places/items-source";
-import { Badge, Button, ChipRow, CloseButton, CopyCode, FilterChip, Icon, Sheet } from "@/lib/ui";
+import { Badge, Button, CloseButton, CopyCode, FilterChip, Icon, Sheet } from "@/lib/ui";
 import { AdminData } from "./admin-data";
 import { AdminDevices } from "./admin-devices";
 import { AdminPlaces } from "./admin-places";
@@ -53,6 +54,14 @@ function tabFromHash(): Tab {
 
 function AdminTabs({ diary }: { diary: Diary }) {
   const [tab, setTab] = useState<Tab>("members");
+  const [failed, setFailed] = useState(0);
+  useEffect(() => {
+    // The Resolver tab carries a count of failed jobs, so they're seen without opening it.
+    resolver(diary).then(
+      (v) => setFailed(v.counts.failed),
+      () => setFailed(0),
+    );
+  }, [diary, tab]);
   useEffect(() => {
     setTab(tabFromHash());
     const onHash = () => setTab(tabFromHash());
@@ -65,13 +74,18 @@ function AdminTabs({ diary }: { diary: Diary }) {
   };
   return (
     <>
-      <ChipRow label="Admin sections">
+      <nav aria-label="Admin sections" className="flex flex-wrap gap-2">
         {TABS.map(([t, label]) => (
           <FilterChip key={t} on={tab === t} onClick={() => pick(t)}>
             {label}
+            {t === "resolver" && failed > 0 && (
+              <span className={s.tabBadge} aria-label={`${failed} failed`}>
+                {failed}
+              </span>
+            )}
           </FilterChip>
         ))}
-      </ChipRow>
+      </nav>
       {tab === "members" && <Admin diary={diary} />}
       {tab === "places" && <AdminPlaces diary={diary} />}
       {tab === "resolver" && <AdminResolver diary={diary} />}

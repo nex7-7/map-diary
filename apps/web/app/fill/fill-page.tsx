@@ -13,6 +13,7 @@ import type { FactsForm } from "@/lib/entries/facts";
 import { getPendingQueue, type PendingItem } from "@/lib/pending";
 import { chainFor } from "@/lib/places/chains";
 import { readPayload } from "@/lib/places/payloads";
+import { Icon } from "@/lib/ui";
 
 /**
  * `/fill#pending=<id>` or `/fill#place=<id>`: the person types a place's details in themselves
@@ -30,9 +31,20 @@ export function FillPage() {
     <DeviceGate>
       {(diary) => (
         <DiaryShell diary={diary} current="inbox">
-          <div className={styles.page}>
-            <h1 className={styles.title}>Fill in the details</h1>
-            {target.placeId ? <FillPlace diary={diary} placeId={target.placeId} /> : <FillPending diary={diary} pendingId={target.pendingId} />}
+          <div className="mx-auto max-w-[40rem] px-5 pt-[max(16px,env(safe-area-inset-top))] pb-6">
+            <div className={styles.page}>
+              <Link href={target.placeId ? `/place#${encodeURIComponent(target.placeId)}` : "/inbox"} className={styles.back}>
+                <Icon name="chevronLeft" size="m" />
+                {target.placeId ? "Place" : "Inbox"}
+              </Link>
+              <header className="flex flex-col gap-1.5">
+                <p className="kicker">{target.placeId ? "Put a wrong match right" : "A lookup that needs you"}</p>
+                <h1 className="display">
+                  Fill in the <em>details</em>
+                </h1>
+              </header>
+              {target.placeId ? <FillPlace diary={diary} placeId={target.placeId} /> : <FillPending diary={diary} pendingId={target.pendingId} />}
+            </div>
           </div>
         </DiaryShell>
       )}
@@ -40,14 +52,18 @@ export function FillPage() {
   ) : null;
 }
 
-function Gone({ text }: { text: string }) {
+function Gone({ title, text, back = "/inbox" }: { title: string; text: string; back?: string }) {
   return (
-    <>
-      <p>{text}</p>
-      <Link href="/inbox" className={styles.secondary}>
-        Back to the Inbox
+    <div className="mt-6 flex flex-col items-center gap-3.5 rounded-[18px] border-[1.5px] border-dashed border-rule-ink bg-page px-[18px] py-7 text-center">
+      <span className="slot size-[72px] [transform:rotate(-6deg)]" aria-hidden="true">
+        <Icon name="envelope" size="l" />
+      </span>
+      <p className="m-0 font-serif text-[22px]">{title}</p>
+      <p className="m-0 max-w-[280px] text-[14px] leading-normal text-ink-2">{text}</p>
+      <Link href={back} className={styles.secondary}>
+        {back === "/inbox" ? "Back to the Inbox" : back === "/" ? "Back to the diary" : "Back to the place"}
       </Link>
-    </>
+    </div>
   );
 }
 
@@ -66,7 +82,7 @@ function FillPending({ diary, pendingId }: { diary: Diary; pendingId: string | u
     };
   }, [diary, pendingId]);
   if (item === undefined || !loaded) return <p className="muted">Opening…</p>;
-  if (!item) return <Gone text="That Inbox item is gone. It may have been found or removed already." />;
+  if (!item) return <Gone title="That letter's already opened" text="This Inbox item was found or removed, maybe on another device, so there's nothing to fill in." />;
 
   const isLink = /^https?:\/\//i.test(item.query);
   const start: FactsForm = {
@@ -82,7 +98,7 @@ function FillPending({ diary, pendingId }: { diary: Diary; pendingId: string | u
   };
   return (
     <>
-      <p className="hand m-0 text-[16px] text-ink-2">
+      <p className="m-0 text-[14px] leading-normal text-ink-2">
         It goes on the map for everyone on the app, with your {item.draft.status === "visited" ? "Visited" : "Want to"}, tags and note where you chose. Put the pin where the place is.
       </p>
       <FactsEditor
@@ -105,9 +121,13 @@ function FillPlace({ diary, placeId }: { diary: Diary; placeId: string }) {
   if (!loaded) return <p className="muted">Opening…</p>;
   const item = items.find((i) => i.id === placeId && i.type === "place");
   const facts = item && readPayload("place", item.payload);
-  if (!item || !facts) return <Gone text="That place isn't on this device. It may have been deleted, or not synced yet." />;
+  if (!item || !facts) return <Gone title="Not on this device" text="That place isn't here. It may have been deleted, or not synced yet." back="/" />;
   if (!canChangeFacts(items, placeId, diary.device.accountId, diary.device.isAdmin === true)) {
-    return <Gone text="Someone else has put this place on their list, so only the admin can change its details now." />;
+    return <Gone
+        title="Only the admin can change it now"
+        text="Someone else has put this place on their list, so its details are the admin's to change."
+        back={`/place#${encodeURIComponent(placeId)}`}
+      />;
   }
   return (
     <FactsEditor
