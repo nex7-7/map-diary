@@ -302,7 +302,15 @@
 
 .primary:disabled,
 .secondary:disabled,
-.danger:disabled,
+.danger:disabled {
+  border-style: dashed;
+  border-color: var(--off-line);
+  background: var(--paper-deep);
+  color: var(--ink-3);
+  box-shadow: none;
+  cursor: var(--cursor);
+}
+
 .textbutton:disabled {
   opacity: 0.5;
   cursor: var(--cursor);

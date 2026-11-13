@@ -11,7 +11,7 @@ import { EMPTY_FILTERS, filterPlaces } from "@/lib/places/filter";
 import { categoryStyle } from "@/lib/places/categories";
 import type { Board, DiarySnapshot, Person, PlaceView, StatusOpinion } from "@/lib/places/types";
 import { visitedOn } from "@/lib/places/visited";
-import { boardTint, Emoji, Glyph, Icon, Notebook, type NotebookTab } from "@/lib/ui";
+import { boardTint, Emoji, Glyph, Icon, Notebook, SealFace, type NotebookTab } from "@/lib/ui";
 import { cn } from "@/lib/utils";
 import k from "./boards.module.css";
 
@@ -182,9 +182,8 @@ function BoardPage({ board, snapshot, me }: { board: Board; snapshot: DiarySnaps
                       <Glyph category={place.category} />
                     </span>
                     {o.status === "visited" && (
-                      <span className="seal slam absolute top-1.5 right-1.5 size-11 gap-px bg-page text-[6px] tracking-[0.12em] [--r:-12deg]" style={{ animationDelay: `${500 + i * 80}ms` }}>
-                        <span>Visited</span>
-                        <span className="text-[10.5px] tracking-normal">{sealDate(visitedOn(o))}</span>
+                      <span className="seal slam absolute top-1.5 right-1.5 size-11 bg-page [--r:-12deg]" style={{ animationDelay: `${500 + i * 80}ms` }} role="img" aria-label={`Visited ${sealDate(visitedOn(o))}`}>
+                        <SealFace date={sealDate(visitedOn(o))} size={44} />
                       </span>
                     )}
                   </span>

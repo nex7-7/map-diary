@@ -36,16 +36,26 @@ export function PlaceRow({ category, name, meta, dish, current, onOpen, action }
   );
 }
 
+/**
+ * The inside of a small Visited seal: the day over the month, so a two-digit day never runs
+ * past the inner ring. `date` is "13 NOV" (sealDate's form); `size` is the seal's width in px.
+ */
+export function SealFace({ date, size, label = true }: { date: string; size: number; label?: boolean }) {
+  const [day, month] = date.split(" ");
+  return (
+    <span className="flex flex-col items-center leading-[0.95]" aria-hidden="true">
+      {label && <span style={{ fontSize: Math.max(5.5, size * 0.12), letterSpacing: "0.14em" }}>Visited</span>}
+      <span style={{ fontSize: size * 0.32 }}>{day}</span>
+      <span style={{ fontSize: size * 0.16, letterSpacing: "0.06em" }}>{month}</span>
+    </span>
+  );
+}
+
 /** The Visited seal at the end of a row, with the day it was stamped. */
 export function Seal({ date, tilt = "-8deg", size = 50 }: { date: string; tilt?: string; size?: number }) {
   return (
-    <span
-      className="seal slam shrink-0 flex-col gap-px"
-      style={{ width: size, height: size, ["--r" as string]: tilt }}
-      aria-label={`Visited ${date}`}
-    >
-      <span className="text-[6.5px] tracking-[0.14em]">Visited</span>
-      <span className="text-[12px]">{date}</span>
+    <span className="seal slam shrink-0" style={{ width: size, height: size, ["--r" as string]: tilt }} role="img" aria-label={`Visited ${date}`}>
+      <SealFace date={date} size={size} />
     </span>
   );
 }

@@ -111,6 +111,12 @@
   gap: 10px;
 }
 
+/* Outlets of one chain: two equal columns, every tile the same height. */
+.outlets {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-auto-rows: 1fr;
+}
+
 .cand {
   width: 100%;
   height: 100%;
@@ -143,9 +149,9 @@
 
 .found {
   display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 8px 12px;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 6px 10px 12px;
   border-radius: 14px;
   border: 1.5px solid var(--rule);
   background: var(--page);

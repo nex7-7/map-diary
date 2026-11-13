@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState, type CSSProperties, type ReactNode } from "react";
 import type { ResolvedPlace } from "@map-diary/crypto";
 import styles from "@/app/_entries/entries.module.css";
@@ -9,7 +10,7 @@ import { Avatar } from "@/app/_account/parts";
 import { sealDate } from "@/app/diary/places-list";
 import { MeLink } from "@/app/_shell/me-link";
 import { DiaryShell } from "@/app/_shell/diary-shell";
-import { BoardBadge, Button, Glyph, Icon } from "@/lib/ui";
+import { BoardBadge, Button, Glyph, Icon, MoreMenu, SealFace, Slip, type MenuItem } from "@/lib/ui";
 import { toastError } from "@/lib/errors";
 import b from "./inbox.module.css";
 import { DeviceGate, type Diary } from "@/lib/device";
@@ -87,39 +88,7 @@ function Inbox({ diary }: { diary: Diary }) {
       {queue && waiting.length > 0 && (
         <Section title="Being looked up">
           {waiting.map((i) => (
-            <Letter key={i.id} style={delay()} postage={<span className="seal size-[26px] border-[1.5px] shadow-none" />}>
-              <div className="flex items-center gap-3 pr-12">
-                {i.draft.category ? (
-                  <Glyph category={i.draft.category} />
-                ) : (
-                  <span className="grid size-9 shrink-0 place-items-center rounded-full border-[1.5px] border-dashed border-ink-3 text-ink-2">
-                    <Icon name="search" size="s" />
-                  </span>
-                )}
-                <ItemHead item={i} />
-              </div>
-              <KnownPrompt item={i} diaryItems={diaryItems} accountId={diary.device.accountId} queue={queue} run={run} />
-              <div className="flex items-center gap-2">
-                <span className={b.dots} aria-hidden>
-                  <span />
-                  <span />
-                  <span />
-                </span>
-                <span className="hand text-[15px] text-ink-2">
-                  {i.state.kind === "unsent" ? "Not sent yet. It goes when you're back online." : `Looking it up. Only the ${i.draft.link ? "link" : "name"} was sent.`}
-                </span>
-              </div>
-              <div className={styles.row}>
-                {!i.draft.refreshPlaceId && (
-                  <Link href={`/add#pending=${encodeURIComponent(i.id)}`} className={styles.textbutton}>
-                    Drop a pin instead
-                  </Link>
-                )}
-                <button type="button" className={styles.textbutton} onClick={() => run(() => queue.dismiss(i.id))}>
-                  Remove
-                </button>
-              </div>
-            </Letter>
+            <WaitingLetter key={i.id} item={i} queue={queue} run={run} style={delay()} known={<KnownPrompt item={i} diaryItems={diaryItems} accountId={diary.device.accountId} queue={queue} run={run} />} />
           ))}
         </Section>
       )}
@@ -141,38 +110,22 @@ function Inbox({ diary }: { diary: Diary }) {
       {queue && failed.length > 0 && (
         <Section title="Returned to sender">
           {failed.map((i) => (
-            <Letter key={i.id} style={delay()} postage={<span className="worn text-[18px] text-seal">?</span>}>
-              <div className="pr-12">
-                <ItemHead item={i} />
-              </div>
-              <p className="hand m-0 text-[15px] text-seal-deep">{failText(i.state.kind === "failed" ? i.state.reason : "not_found")}</p>
-              <KnownPrompt item={i} diaryItems={diaryItems} accountId={diary.device.accountId} queue={queue} run={run} />
-              <Correct
-                start={i.query}
-                onLookUp={(q) => run(() => queue.requery(i.id, q))}
-                fillHref={`/fill#pending=${encodeURIComponent(i.id)}`}
-              />
-              <div className={styles.row}>
-                <Button variant="secondary" size="m" onClick={() => run(() => queue.retry(i.id))}>
-                  Try again
-                </Button>
-                {!i.draft.refreshPlaceId && (
-                  <Link href={`/add#pending=${encodeURIComponent(i.id)}`} className="chip soft">
-                    <Icon name="pin" size="s" />
-                    Drop a pin
-                  </Link>
-                )}
-                <button type="button" className={styles.textbutton} onClick={() => run(() => queue.dismiss(i.id))}>
-                  Remove
-                </button>
-              </div>
-            </Letter>
+            <FailedLetter key={i.id} item={i} queue={queue} run={run} style={delay()} known={<KnownPrompt item={i} diaryItems={diaryItems} accountId={diary.device.accountId} queue={queue} run={run} />} />
           ))}
         </Section>
       )}
 
       {queue && added.length > 0 && (
-        <Section title="Found">
+        <Section
+          title="Found"
+          action={
+            added.length > 1 ? (
+              <button type="button" className={styles.textbutton} onClick={() => run(async () => { for (const i of added) await queue.dismiss(i.id); })}>
+                Clear all
+              </button>
+            ) : undefined
+          }
+        >
           {added.map((i) =>
             i.state.kind === "added" ? (
               <FoundRow
@@ -271,34 +224,122 @@ function KnownPrompt({
   const known = useMemo(() => knownForItem(diaryItems, item, accountId), [diaryItems, item, accountId]);
   if (!known) return null;
   return (
-    <div className="flex flex-col gap-1.5">
-      <span className="hand text-[15px] leading-snug text-ink-2">
-        {known.status ? `You already have ${known.name} (${STATUS_LABELS[known.status]}).` : `${known.name} is already on the map.`} Is it this one?
-      </span>
+    <Slip kicker="Already in your diary">
+      <p className="m-0">
+        <b>{known.name}</b>
+        {known.status ? ` · ${STATUS_LABELS[known.status]}` : " · on the map"}. Is it this one?
+      </p>
       <div className={styles.row}>
         <Button size="m" onClick={() => run(() => queue.useKnown(item.id, known.placeId))}>
-          Yes, add my notes to it
+          Yes, add my notes
         </Button>
         <Link href={`/place#${known.placeId}`} className={styles.textbutton}>
           Open it
         </Link>
       </div>
-    </div>
+    </Slip>
   );
 }
 
 type LetterProps = { item: PendingItem; queue: PendingQueue; run: (a: () => Promise<unknown>) => void; style: CSSProperties };
 
+/**
+ * The foot of a letter: the main thing as a button, a squiggle link or two, and everything
+ * else (always including Remove) behind the ⋯ menu.
+ */
+function Actions({ children, more, label }: { children?: ReactNode; more: MenuItem[]; label: string }) {
+  return (
+    <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+      {children}
+      <span className="ml-auto">
+        <MoreMenu label={label} items={more} />
+      </span>
+    </div>
+  );
+}
+
+/** The ⋯ items most letters share: drop a pin by hand, or take the letter away. */
+function useCommonMore(item: PendingItem, queue: PendingQueue, run: (a: () => Promise<unknown>) => void) {
+  const router = useRouter();
+  const pin: MenuItem[] = item.draft.refreshPlaceId
+    ? []
+    : [{ label: "Drop a pin", icon: "pin", onSelect: () => router.push(`/add#pending=${encodeURIComponent(item.id)}`) }];
+  const fill: MenuItem = { label: "Fill it in yourself", icon: "pencil", onSelect: () => router.push(`/fill#pending=${encodeURIComponent(item.id)}`) };
+  const remove: MenuItem = { label: "Remove", icon: "x", danger: true, onSelect: () => run(() => queue.dismiss(item.id)) };
+  return { pin, fill, remove };
+}
+
+function WaitingLetter({ item: i, queue, run, style, known }: LetterProps & { known: ReactNode }) {
+  const { pin, remove } = useCommonMore(i, queue, run);
+  return (
+    <Letter style={style} postage={<span className="seal size-[26px] border-[1.5px] shadow-none" />}>
+      <div className="flex items-center gap-3 pr-12">
+        {i.draft.category ? (
+          <Glyph category={i.draft.category} />
+        ) : (
+          <span className="grid size-9 shrink-0 place-items-center rounded-full border-[1.5px] border-dashed border-ink-3 text-ink-2">
+            <Icon name="search" size="s" />
+          </span>
+        )}
+        <ItemHead item={i} />
+      </div>
+      {known}
+      <div className="flex items-center gap-2">
+        <span className={b.dots} aria-hidden>
+          <span />
+          <span />
+          <span />
+        </span>
+        <span className="text-[13px] text-ink-2">
+          {i.state.kind === "unsent" ? "Not sent yet. It goes when you're back online." : `Looking it up. Only the ${i.draft.link ? "link" : "name"} was sent.`}
+        </span>
+      </div>
+      <Actions label={`More for ${i.draft.label || i.query}`} more={[...pin, remove]} />
+    </Letter>
+  );
+}
+
+function FailedLetter({ item: i, queue, run, style, known }: LetterProps & { known: ReactNode }) {
+  const [correcting, setCorrecting] = useState(false);
+  const { pin, remove } = useCommonMore(i, queue, run);
+  return (
+    <Letter style={style} postage={<span className="worn text-[18px] text-seal">?</span>}>
+      <div className="pr-12">
+        <ItemHead item={i} />
+      </div>
+      <p className="m-0 text-[13.5px] text-seal-deep">{failText(i.state.kind === "failed" ? i.state.reason : "not_found")}</p>
+      {known}
+      {correcting ? (
+        <Correct start={i.query} onLookUp={(q) => run(() => queue.requery(i.id, q))} fillHref={`/fill#pending=${encodeURIComponent(i.id)}`} onCancel={() => setCorrecting(false)} />
+      ) : (
+        <Actions
+          label={`More for ${i.draft.label || i.query}`}
+          more={[{ label: "Look up something else", icon: "search", onSelect: () => setCorrecting(true) }, ...pin, remove]}
+        >
+          <Button variant="secondary" size="m" onClick={() => run(() => queue.retry(i.id))}>
+            Try again
+          </Button>
+          <Link href={`/fill#pending=${encodeURIComponent(i.id)}`} className={styles.textbutton}>
+            Fill it in yourself
+          </Link>
+        </Actions>
+      )}
+    </Letter>
+  );
+}
+
 function ChooseLetter({ item, queue, run, style }: LetterProps) {
+  const [correcting, setCorrecting] = useState(false);
+  const { pin, fill, remove } = useCommonMore(item, queue, run);
   if (item.state.kind !== "choose") return null;
   const n = item.state.candidates.length;
   const refresh = item.draft.refreshPlaceId !== undefined;
   return (
     <Letter style={style}>
       <div className="flex flex-col gap-0.5">
-        <span className="text-[13px] text-ink-2">{refresh ? "New details for" : "You typed"}</span>
+        <span className="text-[12.5px] text-ink-3">{refresh ? "New details for" : "You typed"}</span>
         <span className="font-serif text-[21px] [overflow-wrap:anywhere]">“{item.draft.label || item.query}”</span>
-        <span className="hand text-[15px] text-ink-2">
+        <span className="text-[13px] leading-snug text-ink-2">
           {refresh
             ? item.draft.correcting
               ? "Pick the right place. Its details and links are replaced; everyone's notes stay."
@@ -317,22 +358,15 @@ function ChooseLetter({ item, queue, run, style }: LetterProps) {
           </li>
         ))}
       </ul>
-      <Correct
-        prompt="None of these?"
-        start={item.query}
-        onLookUp={(q) => run(() => queue.requery(item.id, q))}
-        fillHref={`/fill#pending=${encodeURIComponent(item.id)}`}
-      />
-      <div className={styles.row}>
-        {!refresh && (
-          <Link href={`/add#pending=${encodeURIComponent(item.id)}`} className={styles.textbutton}>
-            Drop a private pin instead
-          </Link>
-        )}
-        <button type="button" className={styles.textbutton} onClick={() => run(() => queue.dismiss(item.id))}>
-          Remove
-        </button>
-      </div>
+      {correcting ? (
+        <Correct start={item.query} onLookUp={(q) => run(() => queue.requery(item.id, q))} fillHref={`/fill#pending=${encodeURIComponent(item.id)}`} onCancel={() => setCorrecting(false)} />
+      ) : (
+        <Actions label={`More for ${item.draft.label || item.query}`} more={[fill, ...(refresh ? [] : pin), remove]}>
+          <button type="button" className={styles.textbutton} onClick={() => setCorrecting(true)}>
+            None of these? Look up something else
+          </button>
+        </Actions>
+      )}
     </Letter>
   );
 }
@@ -342,6 +376,7 @@ function ChooseLetter({ item, queue, run, style }: LetterProps) {
  * which outlet the person went to; a Want to one (found by name) asks to add them all.
  */
 function ChainLetter({ item, queue, run, style }: LetterProps) {
+  const { remove } = useCommonMore(item, queue, run);
   if (item.state.kind !== "choose" || !item.state.chain) return null;
   const { chain } = item.state;
   const choices = choicesOf(item.state);
@@ -349,37 +384,36 @@ function ChainLetter({ item, queue, run, style }: LetterProps) {
   // The match and the chain's other outlets are what gets added.
   const count = chain.outlets.length + 1;
   const visited = item.draft.status === "visited";
+  const first = choices[0];
+  const kind = first ? [categoryStyle(first.category).label, first.cuisine].filter(Boolean).join(" · ") : "";
   return (
     <Letter style={style} postage={<span className="worn text-[11px] text-seal">×{count}</span>}>
       <div className="flex flex-col gap-1 pr-12">
         <span className="font-serif text-[21px]">{chain.name}</span>
-        <span className="hand text-[15px] leading-snug text-ink-2">
-          {visited
-            ? `It has ${count} outlets in Mumbai, and they all go on the map. Which one did you go to?`
-            : `It has ${count} outlets in Mumbai. They all go on the map as one place.`}
+        <span className="text-[12.5px] text-ink-3">{[kind, `${count} outlets in Mumbai`].filter(Boolean).join(" · ")}</span>
+        <span className="text-[13.5px] leading-snug text-ink">
+          {visited ? <b>Which one did you go to?</b> : "They all go on the map as one place."}
         </span>
       </div>
-      {!visited && (
-        <Button size="m" onClick={() => run(() => queue.addAll(item.id))}>
-          Add all {count}
-        </Button>
-      )}
       {visited && (
-        <ul className={b.candidates}>
+        <ul className={`${b.candidates} ${b.outlets}`}>
           {choices.map((c, n) => (
             <li key={n}>
               <button type="button" className={b.cand} onClick={() => run(() => queue.addAll(item.id, n))}>
-                <Candidate place={c} note={n < matches ? (item.draft.link ? "The one you linked" : "Best match") : undefined} />
+                <Outlet place={c} note={n < matches ? (item.draft.link ? "Your link" : "Best match") : undefined} />
               </button>
             </li>
           ))}
         </ul>
       )}
-      <div className={styles.row}>
-        <button type="button" className={styles.textbutton} onClick={() => run(() => queue.dismiss(item.id))}>
-          Remove
-        </button>
-      </div>
+      {visited && <p className="m-0 text-[12.5px] text-ink-3">All {count} go on the map as one place.</p>}
+      <Actions label={`More for ${chain.name}`} more={[remove]}>
+        {!visited && (
+          <Button size="m" onClick={() => run(() => queue.addAll(item.id))}>
+            Add all {count}
+          </Button>
+        )}
+      </Actions>
     </Letter>
   );
 }
@@ -390,13 +424,13 @@ function BranchLetter({ item, queue, run, style }: LetterProps) {
   const { candidate, chain, area } = item.state;
   return (
     <Letter style={style}>
-      <div className="flex flex-col gap-1">
-        <span className="font-serif text-[21px]">Another branch of {chain.name}?</span>
-        <span className="hand text-[15px] leading-snug text-ink-2">
-          {chain.name} is already on the map{area ? ` in ${area}` : ""}. If this is the same restaurant, they show as one place with a row per location, and
-          your notes stay on this branch.
-        </span>
-      </div>
+      <span className="font-serif text-[21px]">{candidate.name}</span>
+      <Slip kicker="Another branch?">
+        <p className="m-0">
+          <b>{chain.name}</b> is already on the map{area ? ` in ${area}` : ""}. If this is the same restaurant, they show as one place with a row per
+          location, and your notes stay on this branch.
+        </p>
+      </Slip>
       <div className={b.cand}>
         <Candidate place={candidate} />
       </div>
@@ -404,9 +438,9 @@ function BranchLetter({ item, queue, run, style }: LetterProps) {
         <Button size="m" onClick={() => run(() => queue.answerBranch(item.id, true))}>
           Yes, same restaurant
         </Button>
-        <Button variant="secondary" size="m" onClick={() => run(() => queue.answerBranch(item.id, false))}>
+        <button type="button" className={styles.textbutton} onClick={() => run(() => queue.answerBranch(item.id, false))}>
           No, a different place
-        </Button>
+        </button>
       </div>
     </Letter>
   );
@@ -414,36 +448,10 @@ function BranchLetter({ item, queue, run, style }: LetterProps) {
 
 /**
  * Puts a lookup right by hand: a better link or name to look up instead, or the details typed
- * in by the person themselves.
+ * in by the person themselves. Shown once the person asks for it; Cancel closes it.
  */
-function Correct({
-  prompt,
-  start,
-  onLookUp,
-  fillHref,
-  onCancel,
-}: {
-  prompt?: string;
-  start: string;
-  onLookUp: (query: string) => void;
-  fillHref: string;
-  /** Given when the form starts open; Cancel then closes it from outside. */
-  onCancel?: () => void;
-}) {
-  const [open, setOpen] = useState(onCancel !== undefined);
+function Correct({ start, onLookUp, fillHref, onCancel }: { start: string; onLookUp: (query: string) => void; fillHref: string; onCancel: () => void }) {
   const [query, setQuery] = useState(start);
-  if (!open) {
-    return (
-      <div className={styles.row}>
-        <button type="button" className={styles.textbutton} onClick={() => setOpen(true)}>
-          {prompt ? `${prompt} Look up something else` : "Look up something else"}
-        </button>
-        <Link href={fillHref} className={styles.textbutton}>
-          Fill it in yourself
-        </Link>
-      </div>
-    );
-  }
   return (
     <form
       className="flex flex-col gap-2"
@@ -453,18 +461,20 @@ function Correct({
       }}
     >
       <label className="flex flex-col gap-1">
-        <span className="text-[12px] text-ink-2">The right Zomato or Google Maps link, or the name and area</span>
-        <input className={styles.input} value={query} onChange={(e) => setQuery(e.target.value)} autoFocus inputMode="url" />
+        <span className="text-[12.5px] font-semibold text-ink">Look up something else</span>
+        <input className={styles.input} value={query} onChange={(e) => setQuery(e.target.value)} autoFocus inputMode="url" aria-describedby="correct-help" />
+        <span id="correct-help" className="text-[12px] text-ink-3">
+          A Zomato or Google Maps link, or the name and area
+        </span>
       </label>
       <div className={styles.row}>
         <Button size="m" type="submit" disabled={!query.trim()}>
           Look it up
         </Button>
-        <Link href={fillHref} className="chip soft">
-          <Icon name="pencil" size="s" />
+        <Link href={fillHref} className={styles.textbutton}>
           Fill it in yourself
         </Link>
-        <button type="button" className={styles.textbutton} onClick={() => (onCancel ? onCancel() : setOpen(false))}>
+        <button type="button" className={styles.textbutton} onClick={onCancel}>
           Cancel
         </button>
       </div>
@@ -486,26 +496,33 @@ function FoundRow({
 }: LetterProps & { placeId: string; name: string; existing: boolean; status: Status | undefined; canFix: boolean }) {
   const [fixing, setFixing] = useState(false);
   return (
-    <div className="rise flex flex-col gap-2" style={style}>
-      <div className={b.found}>
-        <span className="seal size-[44px] shrink-0 text-[7px] tracking-[0.12em] [transform:rotate(-8deg)]">Added</span>
-        <Link href={`/place#${encodeURIComponent(placeId)}`} className="sketch-link min-w-0 flex-1 font-serif text-[19px] no-underline">
-          {name}
-        </Link>
-        {canFix && !fixing && (
-          <button type="button" className={styles.textbutton} onClick={() => setFixing(true)}>
-            Wrong place?
-          </button>
-        )}
-        <button type="button" className={styles.textbutton} onClick={() => run(() => queue.dismiss(item.id))}>
-          Clear
+    <div className={`rise ${b.found}`} style={style}>
+      <div className="flex items-center gap-3">
+        <span className="seal size-[40px] shrink-0 text-[7px] tracking-[0.12em] [transform:rotate(-8deg)]" aria-hidden>
+          Added
+        </span>
+        <div className="flex min-w-0 flex-1 flex-col items-start gap-0.5">
+          <Link href={`/place#${encodeURIComponent(placeId)}`} className="sketch-link font-serif text-[18px] leading-tight no-underline [overflow-wrap:break-word]">
+            {name}
+          </Link>
+          {existing && !fixing && (
+            <span className="text-[12px] text-ink-3">{status ? `Already on your list as ${STATUS_LABELS[status]}` : "Already on the map"}, so your notes went onto it.</span>
+          )}
+          {canFix && !fixing && (
+            <button type="button" className={`${styles.textbutton} px-0 py-1 text-[13px]`} onClick={() => setFixing(true)}>
+              Wrong place?
+            </button>
+          )}
+        </div>
+        <button
+          type="button"
+          className="grid size-10 shrink-0 place-items-center rounded-full text-ink-2 hover:bg-paper-deep hover:text-ink"
+          aria-label={`Clear ${name}`}
+          onClick={() => run(() => queue.dismiss(item.id))}
+        >
+          <Icon name="x" size="s" />
         </button>
       </div>
-      {existing && !fixing && (
-        <p className="text-[12.5px] text-ink-3">
-          {status ? `Already on your list as ${STATUS_LABELS[status]}` : "Already on the map"}, so your notes went onto it.
-        </p>
-      )}
       {fixing && (
         <Correct
           start={item.query}
@@ -529,10 +546,29 @@ function Candidate({ place, note }: { place: ResolvedPlace; note?: string | unde
     <>
       <span className="kicker text-[9.5px]">{[style.label, place.cuisine].filter(Boolean).join(" · ")}</span>
       <span className="font-serif text-[17px] leading-tight">{place.name}</span>
-      {note && <span className="hand text-[14px] text-seal">{note}</span>}
+      {note && <span className="board text-seal-deep">{note}</span>}
       {place.address && <span className="text-[11.5px] text-ink-3">{place.address}</span>}
       {place.signatureDish && (
         <span className="text-[11.5px] text-ink-2">
+          {place.signatureDish.name} <span className="worn">₹{place.signatureDish.priceInr.toLocaleString("en-IN")}</span>
+        </span>
+      )}
+    </>
+  );
+}
+
+/** One outlet of a chain: every outlet has the chain's name, so its address leads. */
+function Outlet({ place, note }: { place: ResolvedPlace; note?: string | undefined }) {
+  const [area, ...rest] = (place.address ?? place.name).split(",").map((x) => x.trim());
+  return (
+    <>
+      <span className="flex items-start justify-between gap-2">
+        <span className="font-serif text-[17px] leading-tight">{rest.length > 0 ? rest[rest.length - 1] : area}</span>
+        {note && <span className="board shrink-0 text-seal-deep">{note}</span>}
+      </span>
+      {rest.length > 0 && <span className="text-[11.5px] text-ink-3">{[area, ...rest.slice(0, -1)].join(", ")}</span>}
+      {place.signatureDish && (
+        <span className="mt-auto text-[11.5px] text-ink-2">
           {place.signatureDish.name} <span className="worn">₹{place.signatureDish.priceInr.toLocaleString("en-IN")}</span>
         </span>
       )}
@@ -612,9 +648,8 @@ function FriendNote({ news, snapshot, index }: { news: FriendNews; snapshot: Dia
         </span>
       </span>
       {o.kind === "status" && o.status === "visited" && (
-        <span className="seal size-10 shrink-0 gap-px text-[6px] tracking-[0.12em] [transform:rotate(10deg)]">
-          <span>Visited</span>
-          <span className="text-[9.5px] tracking-normal">{sealDate(visitedOn(o))}</span>
+        <span className="seal size-10 shrink-0 [transform:rotate(10deg)]" role="img" aria-label={`Visited ${sealDate(visitedOn(o))}`}>
+          <SealFace date={sealDate(visitedOn(o))} size={40} />
         </span>
       )}
     </Link>
