@@ -101,7 +101,7 @@ export class PendingQueue {
     await ready();
     const keys = generateReplyKeys();
     try {
-      const job = await this.api.submitResolverJob(item.query, toBase64(keys.publicKey));
+      const job = await this.api.submitResolverJob(lookupQuery(item), toBase64(keys.publicKey));
       return this.save(item, { kind: "waiting", jobId: job.id, publicKey: keys.publicKey, secretKey: keys.secretKey, expiresAt: job.expiresAt });
     } catch (err) {
       if (err instanceof NetworkError || (err instanceof ApiError && (err.status >= 500 || err.status === 429))) return item;
@@ -513,6 +513,19 @@ export function knownForItem(items: readonly StoredItem[], item: PendingItem, ac
     if (found) return found;
   }
   return undefined;
+}
+
+/**
+ * What the resolver is asked. A Zomato share link (zomato.onelink.me) often says nothing about
+ * the place, but the Zomato app's share text puts the restaurant's name next to it, which the
+ * item keeps as its label: send that name along. Other links go as they are, since the Worker
+ * reads short Google links only when the query is the bare link.
+ */
+export function lookupQuery(item: Pick<PendingItem, "query" | "draft">): string {
+  const query = item.query.trim();
+  const name = item.draft.label.trim();
+  if (!isLink(query) || pointsAtOnePlace(query) || !name || isLink(name) || query.includes(name)) return query;
+  return `${name} ${query}`.slice(0, MAX_QUERY_LENGTH);
 }
 
 /** Whether text is a link rather than a name. */
