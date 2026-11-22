@@ -35,6 +35,14 @@ links only carry a token the Zomato app opens; asked like a link preview
 Worker reads. It never says which branch, so the resolver searches the name like a plain
 name and the person picks the branch in the Inbox.
 
+Some share links carry only Zomato's own title (`af_og_title=Zomato`), and a browser lands on
+the `zomato.com/mobile` install page with nothing but the app token: no name, no branch (seen
+2026-11-22). The Worker treats such a title as no name. The Add sheet asks the Worker for the
+name as soon as a share link is pasted; when there is none, it asks the person to type the
+name (or paste the zomato.com link) before saving, so no unanswerable job is queued. A job
+that still arrives without `linkName` is failed by the resolver and can be looked up again
+from the Inbox with a name.
+
 **Fixing a failed job from a chat:** with the connector on, ask Claude to list failed jobs,
 then give it the right link for one ("the Samai one is
 https://www.zomato.com/mumbai/samai-marathmola-jewanachi-mejwani-lower-parel"). It calls

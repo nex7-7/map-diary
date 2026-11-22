@@ -1,7 +1,7 @@
 import { env, exports } from "cloudflare:workers";
 import { describe, expect, it } from "vitest";
 import { fromBase64, generateReplyKeys, openResolverResult, ready, toBase64 } from "@map-diary/crypto";
-import { expandShortLink, isShortMapsLink, isZomatoOnelink, onelinkName } from "../src/expand";
+import { expandShortLink, isGenericTitle, isShortMapsLink, isZomatoOnelink, onelinkName } from "../src/expand";
 import { MAX_ATTEMPTS, listFailedJobs, requeueJob, takePendingJobs } from "../src/resolver";
 import { expireResolverJobs } from "../src/scheduled";
 
@@ -226,6 +226,14 @@ describe("Zomato share links", () => {
     expect(calls).toBe(1);
     expect(isZomatoOnelink(link)).toBe(true);
     expect(isZomatoOnelink("https://www.zomato.com/mumbai/x")).toBe(false);
+  });
+
+  it("treats Zomato's own title as no name", async () => {
+    for (const title of ["Zomato", "zomato", "Zomato | Food Delivery", "Zomato - Restaurants"]) {
+      const location = `https://www.zomato.com/mobile?af_og_title=${encodeURIComponent(title)}`;
+      expect(await onelinkName(link, async () => new Response(null, { status: 301, headers: { Location: location } }))).toBeNull();
+    }
+    expect(isGenericTitle("Zomato Cafe Bandra")).toBe(false);
   });
 
   it("hands the resolver the name with the job", async () => {

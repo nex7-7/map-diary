@@ -4,7 +4,7 @@ import { ApiError, NetworkError, type ResolverJobResponse } from "@map-diary/syn
 import { readPayload } from "../lib/places/payloads";
 import { setStatus } from "../lib/entries/actions";
 import { unwrittenChains } from "../lib/places/chains";
-import { ADDED_KEEP_MS, PendingQueue, knownForItem, type ResolverApi } from "../lib/pending/queue";
+import { ADDED_KEEP_MS, PendingQueue, knownForItem, lookupQuery, type ResolverApi } from "../lib/pending/queue";
 import { MemoryPendingStore, type PendingDraft } from "../lib/pending/store";
 import { placesNeedingWallet } from "../lib/pending/wallet";
 import { FakeDiary } from "./fake-diary";
@@ -805,5 +805,21 @@ describe("Add a location", () => {
     await queue.fillIn(item.id, { name: "Loyka", category: "desserts", location: oshiwara.location, sourceLinks: [OSHIWARA] });
     expect(diary.snapshot().places).toHaveLength(1);
     expect(diary.snapshot().places[0]!.outlets).toHaveLength(2);
+  });
+});
+
+describe("lookupQuery", () => {
+  const draft = (label: string): PendingDraft => ({ label, status: "want", tagIds: [], newTags: [], comment: "" });
+  const onelink = "https://zomato.onelink.me/xqzv/gnbcu245";
+
+  it("sends the shared name with a Zomato share link", () => {
+    expect(lookupQuery({ query: onelink, draft: draft("Ustaadi - Masters of World Cuisine") })).toBe(`Ustaadi - Masters of World Cuisine ${onelink}`);
+  });
+
+  it("leaves other queries as they are", () => {
+    expect(lookupQuery({ query: onelink, draft: draft(onelink) })).toBe(onelink);
+    expect(lookupQuery({ query: `Ustaadi ${onelink}`, draft: draft("Ustaadi") })).toBe(`Ustaadi ${onelink}`);
+    expect(lookupQuery({ query: "https://maps.app.goo.gl/abc", draft: draft("Cafe") })).toBe("https://maps.app.goo.gl/abc");
+    expect(lookupQuery({ query: "Cafe Madras", draft: draft("Cafe Madras") })).toBe("Cafe Madras");
   });
 });
