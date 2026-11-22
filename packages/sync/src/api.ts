@@ -578,6 +578,14 @@ export class Api {
     return this.call<undefined>("DELETE", `/api/resolver/jobs/${encodeURIComponent(id)}`, undefined, null);
   }
 
+  /**
+   * The restaurant's name behind a Zomato share link (zomato.onelink.me), read by the Worker.
+   * Fails with 422 `not_expanded` when the link names no restaurant.
+   */
+  zomatoLinkName(url: string) {
+    return this.call<{ name: string }>("POST", "/api/resolver/expand", { url }, null);
+  }
+
   /** Expands a short Google Maps link to the full URL; parse its coordinates on the device. */
   expandMapsLink(url: string) {
     return this.call<{ url: string }>("POST", "/api/resolver/expand", { url }, null);

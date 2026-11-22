@@ -126,5 +126,13 @@ export async function onelinkName(raw: string, doFetch: (r: Request) => Promise<
     return null;
   }
   const name = (next.searchParams.get("af_og_title") ?? "").replace(/\s+/g, " ").trim();
-  return name && name.length <= 200 ? name : null;
+  return name && name.length <= 200 && !isGenericTitle(name) ? name : null;
+}
+
+/**
+ * Some share links carry only Zomato's own title ("Zomato", or "Zomato | Food delivery…"),
+ * not a restaurant's: seen 2026-11-22. That names no place, so it counts as no name.
+ */
+export function isGenericTitle(name: string): boolean {
+  return /^zomato(\s*[|:\-–—].*)?$/i.test(name.trim());
 }

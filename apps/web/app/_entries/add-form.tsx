@@ -8,6 +8,7 @@ import { addOpinions, addPlace, findCataloguePlace, findLocalPlace } from "@/lib
 import { buildFacts } from "@/lib/entries/facts";
 import { categoryStyle, STATUS_LABELS } from "@/lib/places/categories";
 import { branchOf, knownByName, nearestArea, outletAreas, statusOf } from "@/lib/places/chains";
+import { ApiError } from "@map-diary/sync";
 import { userMessage } from "@/lib/errors";
 import { parseEntry, parseLink, type LinkSource, type ParsedEntry } from "@/lib/entries/parse-input";
 import { getPendingQueue, MAX_QUERY_LENGTH, type PendingItem } from "@/lib/pending";
@@ -76,13 +77,18 @@ export function AddForm({ diary, initial, onSaved, onQueued, onCancel }: Props) 
 
   const typed = useMemo(() => parseEntry(text), [text]);
   const expansion = useExpandedLink(typed);
+  const zomato = useZomatoLinkName(typed);
   // A short Maps link the Worker expanded reads like the full link, but keeps the link as shared.
   const parsed: ParsedEntry =
     expansion.kind === "done"
       ? { ...typed, location: expansion.location, source: "google-maps", shortLink: false, ...(typed.name || expansion.name ? { name: typed.name ?? expansion.name } : {}) }
       : expansion.kind === "partial" && !typed.name && expansion.name
         ? { ...typed, name: expansion.name }
-        : typed;
+        : zomato.kind === "found" && !typed.name
+          ? { ...typed, name: zomato.name }
+          : typed;
+  // A Zomato share link that names no restaurant can't be looked up: it needs a name typed in.
+  const needsName = zomato.kind === "missing" && !nameEdit?.trim();
   const expandedUrl = expansion.kind === "done" || expansion.kind === "partial" ? expansion.url : undefined;
   // The link may be for a place already in the diary: the same link, or another link to the same
   // Google place (a friend's own share link). Then it needs no lookup, wherever the pin came from.
@@ -93,7 +99,8 @@ export function AddForm({ diary, initial, onSaved, onQueued, onCancel }: Props) 
   const onto = !pinned && duplicate && duplicateFacts ? { id: duplicate.id, name: duplicateFacts.name, isPrivate: duplicate.type === "private_place" } : undefined;
   const location = pinned ?? parsed.location ?? null;
   // No location yet, but something the resolver can look up: save now, find it later.
-  const findLater = location === null && !onto && expansion.kind !== "loading" && (parsed.link !== undefined || !!parsed.name);
+  const findLater =
+    location === null && !onto && expansion.kind !== "loading" && zomato.kind !== "loading" && !needsName && (parsed.link !== undefined || !!parsed.name);
   // A place is catalogue-bound only when a Google Maps link located it; anything placed by
   // hand is a dropped pin, which stays private.
   const fromLink = !pinned && parsed.location !== undefined && parsed.source === "google-maps";
@@ -136,7 +143,7 @@ export function AddForm({ diary, initial, onSaved, onQueued, onCancel }: Props) 
   const category = categoryEdit ?? branchFacts?.category ?? guessCategory(parsed);
   const duplicateStatus = duplicate ? statusOf(items, duplicate.id, diary.device.accountId) : undefined;
   const near = useMemo(() => (location ? nearestArea(items, location) : undefined), [items, location]);
-  const showPicker = adjusting || (location === null && !findLater && !onto && expansion.kind !== "loading");
+  const showPicker = adjusting || (location === null && !findLater && !onto && expansion.kind !== "loading" && zomato.kind !== "loading" && !needsName);
 
   const tagChoices: TagChoice[] = [
     ...snapshot.tags.map((t) => ({ id: t.id, name: t.name, emoji: t.emoji, description: t.description })),
@@ -397,6 +404,9 @@ export function AddForm({ diary, initial, onSaved, onQueued, onCancel }: Props) 
             value={name}
             onChange={(e) => setNameEdit(e.target.value)}
           />
+          {zomato.kind === "missing" && (
+            <p className={styles.note}>This Zomato link doesn&apos;t say which restaurant. Type its name, or paste its zomato.com link instead.</p>
+          )}
         </div>
       )}
 
@@ -513,7 +523,19 @@ export function AddForm({ diary, initial, onSaved, onQueued, onCancel }: Props) 
             </button>
           )}
           <button type="submit" className={`${styles.primary} ${styles.grow}`} disabled={saving || (!location && !findLater && !onto)}>
-            {saving ? "Saving…" : onto ? "Add my notes to it" : location ? "Save it" : findLater ? "Save and find it" : expansion.kind === "loading" ? "Opening the link…" : "Drop a pin to save"}
+            {saving
+              ? "Saving…"
+              : onto
+                ? "Add my notes to it"
+                : location
+                  ? "Save it"
+                  : findLater
+                    ? "Save and find it"
+                    : expansion.kind === "loading" || zomato.kind === "loading"
+                      ? "Opening the link…"
+                      : needsName
+                        ? "Type its name to save"
+                        : "Drop a pin to save"}
             {!saving && (location || findLater || onto) && <Icon name="check" size="m" />}
           </button>
         </div>
@@ -545,6 +567,45 @@ function InputSummary({ parsed, pinned, expansion, findLater }: SummaryProps) {
     return <p className={styles.note}>Saved as a source link. The place and its signature dish get looked up.</p>;
   }
   return null;
+}
+
+export type ZomatoName = { kind: "none" } | { kind: "loading" } | { kind: "found"; name: string } | { kind: "missing" } | { kind: "unknown" };
+
+/**
+ * A Zomato share link (zomato.onelink.me) only opens the app, so the Worker reads the
+ * restaurant's name off it (only the link is sent). Some links carry no name at all; then the
+ * person types it, since nothing else can tell which place it meant. When the Worker can't be
+ * reached, the link is saved as it is and the resolver tries later.
+ */
+export function useZomatoLinkName(parsed: ParsedEntry): ZomatoName {
+  const link = parsed.link && isZomatoShareLink(parsed.link) && !parsed.name ? parsed.link : undefined;
+  const [result, setResult] = useState<{ link: string; value: ZomatoName } | null>(null);
+  useEffect(() => {
+    if (!link) return;
+    let live = true;
+    api.zomatoLinkName(link).then(
+      ({ name }) => {
+        if (live) setResult({ link, value: { kind: "found", name } });
+      },
+      (err: unknown) => {
+        const missing = err instanceof ApiError && err.status === 422;
+        if (live) setResult({ link, value: missing ? { kind: "missing" } : { kind: "unknown" } });
+      },
+    );
+    return () => {
+      live = false;
+    };
+  }, [link]);
+  if (!link) return { kind: "none" };
+  return result?.link === link ? result.value : { kind: "loading" };
+}
+
+function isZomatoShareLink(link: string): boolean {
+  try {
+    return new URL(link).hostname.toLowerCase() === "zomato.onelink.me";
+  } catch {
+    return false;
+  }
 }
 
 export type Expansion =
